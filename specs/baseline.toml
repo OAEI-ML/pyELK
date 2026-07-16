@@ -1,0 +1,45 @@
+[project]
+name = "pyELK"
+distribution_name = "pyelk-reasoner"
+import_name = "pyelk"
+python_requires = ">=3.10"
+specification_status = "implementation-ready"
+implementation_status = "wp0-foundation"
+
+[elk]
+repository = "https://github.com/liveontologies/elk-reasoner"
+release = "0.6.0"
+tag = "v0.6.0"
+release_date = "2024-05-25"
+latest_stable_verified_on = "2026-07-16"
+commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+tree = "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
+license = "Apache-2.0"
+owlapi_oracle_version = "5.1.20"
+
+[elk.reference_configuration]
+workers = 1
+incremental = false
+allow_fresh_entities = true
+unsupported_feature_treatment = "IGNORE"
+
+[scope]
+included_modules = [
+  "elk-owl-parent/elk-owl-model",
+  "elk-owl-parent/elk-owl-implementation",
+  "elk-owl-parent/elk-owl-parsing-javacc",
+  "elk-reasoner",
+]
+excluded_capabilities = [
+  "incremental updates",
+  "proofs, tracing, explanations, and justifications",
+  "OWL API and Protege adapters",
+  "CLI, ORE, and distribution applications",
+  "progress listeners and interruption API parity",
+]
+
+[oracle]
+java_required_at_runtime = false
+java_required_to_regenerate_fixtures = true
+java_version = "17"
+canonical_schema = 1
