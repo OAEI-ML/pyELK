@@ -1,0 +1,124 @@
+[build-system]
+requires = [
+  "setuptools>=77",
+  "setuptools-rust>=1.13,<2",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyelk-reasoner"
+version = "0.1.0.dev0"
+description = "ELK-compatible OWL 2 EL reasoning in pure Python with optional Rust acceleration"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  { name = "pyELK contributors" },
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2,<2",
+  "hypothesis>=6.100,<7",
+  "import-linter>=2.1,<3",
+  "mypy>=1.10,<3",
+  "pytest>=8.2,<10",
+  "pytest-cov>=5,<8",
+  "ruff>=0.5,<1",
+]
+
+[project.urls]
+Repository = "https://github.com/OAEI-ML/pyELK"
+Specifications = "https://github.com/OAEI-ML/pyELK/tree/main/specs"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pyelk = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "-ra",
+]
+testpaths = ["tests"]
+xfail_strict = true
+markers = [
+  "java_oracle: requires the opt-in pinned Java oracle",
+  "packaging: installed-artifact and build tests",
+  "performance: non-functional benchmark gate",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pyelk", "tests"]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = "src"
+files = ["src", "tests/helpers", "tests/unit"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+
+[tool.importlinter]
+root_package = "pyelk"
+include_external_packages = true
+exclude_type_checking_imports = false
+
+[[tool.importlinter.contracts]]
+id = "values-no-backends"
+name = "OWL, parsing, indexing, and public result values do not depend on backends"
+type = "forbidden"
+source_modules = [
+  "pyelk.owl",
+  "pyelk.parsing",
+  "pyelk.indexing",
+]
+forbidden_modules = [
+  "pyelk.backends",
+  "pyelk._native",
+]
+
+[[tool.importlinter.contracts]]
+id = "reasoning-no-native"
+name = "Python reasoning never imports the native extension"
+type = "forbidden"
+source_modules = ["pyelk.reasoning"]
+forbidden_modules = ["pyelk._native"]
+
+[[tool.importlinter.contracts]]
+id = "runtime-no-test-oracle"
+name = "Runtime package never imports tests or oracle tooling"
+type = "forbidden"
+source_modules = ["pyelk"]
+forbidden_modules = ["tests", "tools"]

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYELK_BUILD_PURE: "1"
+  PYELK_PURE_PYTHON: "1"
+
+jobs:
+  foundation:
+    name: Foundation / Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.14"]
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install development dependencies
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verify external toolchains are absent
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: >-
+          python -c "import shutil;
+          assert all(shutil.which(name) is None
+          for name in ('java', 'cargo', 'rustc', 'cc', 'gcc', 'clang'))"
+
+      - name: Test
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: python -m pytest
+
+      - name: Ruff
+        if: matrix.python == '3.14'
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: |
+          ruff format --check .
+          ruff check .
+
+      - name: Mypy
+        if: matrix.python == '3.14'
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: mypy
+
+      - name: Import boundaries
+        if: matrix.python == '3.14'
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: lint-imports
+
+  pure-wheel:
+    name: Universal wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - name: Build universal wheel
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: |
+          python -m pip install "build>=1.2,<2"
+          python -m build --wheel
+
+      - name: Inspect and install wheel
+        env:
+          PATH: ${{ env.pythonLocation }}/bin
+        run: |
+          python -c "from pathlib import Path; wheels=list(Path('dist').glob('*.whl')); assert len(wheels) == 1 and wheels[0].name.endswith('-py3-none-any.whl')"
+          python -m venv .wheel-venv
+          .wheel-venv/bin/python -m pip install --no-deps dist/*.whl
+          .wheel-venv/bin/python -I -c "import importlib.util, pyelk; assert importlib.util.find_spec('pyelk._native') is None"
+          .wheel-venv/bin/python -m pip check
