@@ -29,7 +29,9 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+  "pyowl-core>=0.1,<0.2",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -100,6 +102,7 @@ id = "values-no-backends"
 name = "OWL, parsing, indexing, and public result values do not depend on backends"
 type = "forbidden"
 source_modules = [
+  "pyelk.core",
   "pyelk.owl",
   "pyelk.parsing",
   "pyelk.indexing",
