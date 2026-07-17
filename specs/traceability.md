@@ -50,11 +50,11 @@ fate, pyELK destination, normative specification, and work package.
 | configuration evictors and incremental toggles | only frozen config fields in `contracts.md` survive |
 | OWL API parsing of RDF/XML/Turtle/OWL/XML/Manchester | Java adapters excluded; standalone formats come only from pyowl-core |
 
-## 3. Required inference-to-test manifest
+## 3. Inference-to-test manifests
 
-WP6 creates `tests/data/manifests/inferences.toml` with one row for every concrete
-non-incremental class in `saturation/inferences`. WP5 creates the same shape in
-`tests/data/manifests/property-inferences.toml` for
+`tests/data/manifests/inferences.toml` contains one row for every concrete non-incremental
+class in `saturation/inferences`. `tests/data/manifests/property-inferences.toml` uses the
+same shape for
 `saturation/properties/inferences`:
 
 ```toml
@@ -67,13 +67,17 @@ rust_test = "pyelk_core::rules::tests::tautology"
 status = "implemented"
 ```
 
-CI fails if a pinned concrete inference is absent, points to a missing symbol/test, or has a
-status other than `implemented`. Abstract base classes and incremental-only inferences are
-listed in a separate ignored section with an explicit reason.
+The class manifest has 30 implemented rows and 34 explicitly excluded abstract,
+incremental, tracing, or representation-only rows. The property manifest has three
+implemented rows and nine explicitly excluded rows. CI resolves every Python symbol and
+test pointer in `tests/unit/reasoning/rules/test_manifest.py` and
+`tests/unit/reasoning/test_properties.py`; Rust unit-test names are checked by the native
+crate suite. A pinned concrete inference cannot be absent or have a status other than
+`implemented`.
 
-## 4. Required feature-to-test manifest
+## 4. Feature-to-test manifest
 
-WP3 creates `tests/data/manifests/features.toml` from the exact enum order in `Feature.java`.
+`tests/data/manifests/features.toml` records the exact enum order in `Feature.java`.
 Every ontology feature records:
 
 ```text
@@ -85,10 +89,13 @@ expected count
 expected completeness issue
 ```
 
-Every `QUERY_*` feature records the unsupported entailment axiom family and expected
-`value=False`. CI checks that all enum values are represented and that no implementation-only
-feature has been inserted into the frozen IR enum. The separate
-`PolicyFeature.IGNORED_IMPORT` has its own facade test and is never encoded in that manifest.
+All 79 rows include a frozen fixture and a resolving test pointer. Every query feature
+records the unsupported entailment axiom family and expected false value. The exhaustive
+checks in `tests/unit/reasoning/test_completeness.py` and
+`tests/unit/indexing/test_feature_corpus.py` compare the manifest with the production enum,
+compiler counts, monitor conditions, and canonical issues. The separate
+`PolicyFeature.IGNORED_IMPORT` remains a facade policy issue and is tested in
+`tests/unit/test_api.py`.
 
 ## 5. Work-package ownership map
 
@@ -111,3 +118,49 @@ feature has been inserted into the frozen IR enum. The separate
 
 Shared-file changes after the owning WP merges are made by WP13 or sent as a small dependent
 PR to the owner. Same-wave agents do not edit each other's paths.
+
+## 6. Implemented source-to-verification matrix
+
+This matrix is the release-facing index from the upstream area through its normative
+contract to production code and executable evidence. Every row is implemented; exclusions
+are confined to the explicit scope table in §2.
+
+| Area | Normative source/spec | Production implementation | Executable evidence | Status |
+|---|---|---|---|---|
+| pyowl-core version and capability boundary | `parsing.md` §§1, 5 | `src/pyelk/core.py` | `tests/unit/core/test_core_contract.py` | implemented |
+| Paths, bytes, streams, views, providers, overlays, composites | `parsing.md` §§2–4 | `src/pyelk/inputs.py`, `src/pyelk/api.py` | `tests/unit/inputs/`, shared-snapshot and consumer integration tests | implemented |
+| Structural conversion and deterministic IR | `indexing.md`, `contracts.md` §7 | `src/pyelk/indexing/` | `tests/unit/indexing/`, indexing and fingerprint properties | implemented |
+| ELK feature counting and per-task completeness | `compatibility.md` §§2–6 | `src/pyelk/reasoning/completeness.py` | 79-row feature manifest and exhaustive completeness tests | implemented |
+| Property hierarchy, chains, reflexivity, ranges | `saturation.md` §2 | `src/pyelk/reasoning/properties.py` | property-inference manifest and generated property saturation | implemented |
+| Conclusions and contexts | `saturation.md` §§3–4 | `src/pyelk/reasoning/conclusions.py`, `contexts.py` | conclusion and context unit suites | implemented |
+| Non-incremental inference calculus and registration | `saturation.md` §§5–7 | `src/pyelk/reasoning/rules.py`, `registration.py` | 30-row inference and 23-row registration manifests | implemented |
+| Agenda, saturation, and consistency | `saturation.md` §§8–10 | `src/pyelk/reasoning/saturation.py` | saturation, consistency, and generated fixed-point suites | implemented |
+| Class/property taxonomy and reduction | `taxonomy-queries.md` §§2–5 | `src/pyelk/reasoning/taxonomy.py` | taxonomy/reduction unit and generated property suites | implemented |
+| Realization and same-individual nodes | `taxonomy-queries.md` §6 | `src/pyelk/reasoning/realization.py` | realization unit and frozen corpus cases | implemented |
+| Class-expression and entailment queries | `compatibility.md` §§7–8, `taxonomy-queries.md` §§7–8 | query reasoning and compiler conversion | query/entailment unit and frozen corpus cases | implemented |
+| Public lifecycle, result values, fresh entities | `contracts.md` §§2–6 | `src/pyelk/api.py`, `config.py`, `result.py` | facade, result, and configuration suites | implemented |
+| Python backend | `contracts.md` §8 | `src/pyelk/backends/python.py` | Python backend suite and full frozen runner | implemented |
+| Rust accelerator and worker determinism | `native-packaging.md` §§2–7 | both Rust crates and Python dispatcher | Rust crate, native core, and saturation differential suites | implemented |
+| Backend/core diagnostics and fallback policy | `native-packaging.md` §8 | backend dispatcher and `BackendReport` | dispatch unit suite and installed smoke | implemented |
+| Frozen ELK 0.6 parity and regression reduction | `verification.md` §§2–6 | `tests/parity/runner.py`, `tests/parity/minimize.py` | 124 ontology cases, 138 goldens, hash-seed/wheel runs, deterministic semantic minimizer | implemented |
+| W3C Direct-EL classification | `verification.md` §6 | `tests/data/w3c/build_manifest.py` | 65-case W3C manifest validation | implemented |
+| Shared-consumer and OAEI wire paths | `SPEC.md` §3.2, `parsing.md` §§3, 8 | core view/provider and verified wire boundaries | `tests/integration/test_consumer_paths.py` | implemented |
+| Distribution and Java/compiler exclusion | `native-packaging.md` §§9–11 | build configuration and artifact auditor | packaging suite and distribution workflows | implemented |
+| Performance corpus and semantic timing guard | `verification.md` §9 | `benchmarks/`, `tools/benchmark.py` | manifest validation and Java-free quick benchmark test | implemented |
+| User examples and attribution | WP13 deliverables 7–8 | `README.md`, `NOTICE.pyelk` | verbatim README execution and artifact notice audit | implemented |
+
+## 7. Release evidence routing
+
+| Gate | Local executable | Release automation/evidence |
+|---|---|---|
+| Pure Python 3.10/3.12, no Java/compiler | `PYELK_PURE_PYTHON=1 python -m pytest` | foundation and compiler-free wheel jobs |
+| Frozen semantic parity | `tests/parity/runner.py --backend python --workers 1` | installed Python and tier-one native wheel suites |
+| Native equality, workers 1/2/N, repetition | native backend and Rust crate tests | cibuildwheel platform matrix plus ABI3 Python 3.12 jobs |
+| Core shared-view identity and wire handoff | consumer/shared integration tests | full installed suite under both backend selections |
+| Artifact metadata, notice, ABI, dependency, JVM policy | `tools/check_artifact.py` | source, fallback, and native artifact jobs |
+| Performance and RSS | `tools/benchmark.py --suite full --native --workers N --enforce` | labelled runner with machine baseline and optional pinned Java report |
+| Oracle regeneration | `tools/oracle.py regenerate` with pinned JDK/Maven | opt-in Java oracle workflow; reports remain development evidence |
+
+Release publication is intentionally not performed by the verification code. Tier-one wheel
+and labelled-performance results are produced on their declared runners, while the same
+semantic assertions and artifact auditor are executable locally.

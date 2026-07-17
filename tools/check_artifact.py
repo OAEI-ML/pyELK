@@ -251,6 +251,8 @@ def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         raise AuditError(f"expected {expected}, found {inferred}")
 
     _, wheel_raw = _one_member(members, ".dist-info/WHEEL")
+    _one_member(members, ".dist-info/licenses/LICENSE")
+    _one_member(members, ".dist-info/licenses/NOTICE.pyelk")
     wheel_message = BytesParser().parsebytes(wheel_raw)
     root_is_pure = wheel_message.get("Root-Is-Purelib", "").lower()
     if inferred == "pure-wheel":
@@ -306,6 +308,7 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         "Cargo.lock",
         "Cargo.toml",
         "LICENSE",
+        "NOTICE.pyelk",
         "pyproject.toml",
         "rust-toolchain.toml",
         "rust/pyelk-core/Cargo.toml",

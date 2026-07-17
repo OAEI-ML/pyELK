@@ -61,6 +61,8 @@ def _wheel(
         "pyelk_reasoner-0.1.0.dev0.dist-info/METADATA": metadata,
         "pyelk_reasoner-0.1.0.dev0.dist-info/WHEEL": wheel,
         "pyelk_reasoner-0.1.0.dev0.dist-info/RECORD": b"",
+        "pyelk_reasoner-0.1.0.dev0.dist-info/licenses/LICENSE": b"license\n",
+        "pyelk_reasoner-0.1.0.dev0.dist-info/licenses/NOTICE.pyelk": b"notice\n",
     }
     if native:
         files["pyelk/_native.abi3.so"] = b"native"
@@ -78,6 +80,7 @@ def _sdist(tmp_path: Path, *, extra: dict[str, bytes] | None = None) -> Path:
         "Cargo.lock": b"version = 4\n",
         "Cargo.toml": b"[workspace]\n",
         "LICENSE": b"license\n",
+        "NOTICE.pyelk": b"notice\n",
         "pyproject.toml": b"[build-system]\n",
         "rust-toolchain.toml": b"[toolchain]\n",
         "setup.py": b"from setuptools import setup\nsetup()\n",

@@ -14,6 +14,7 @@ import pyowl_core as owl
 import pytest
 from pyowl_core.model.axioms import AxiomNode
 
+import pyelk
 from pyelk.indexing.compiler import compile_ontology
 from pyelk.indexing.ir import ExpressionTag
 
@@ -69,13 +70,13 @@ def test_hash_seeds_and_empty_path_produce_identical_no_java_output() -> None:
         environment = os.environ.copy()
         environment["PATH"] = ""
         environment["PYTHONHASHSEED"] = seed
-        environment["PYTHONPATH"] = os.pathsep.join(
-            (
-                str(repository / "src"),
-                str(pyowl_source),
-                environment.get("PYTHONPATH", ""),
-            )
-        )
+        paths = [str(repository)]
+        if repository in Path(pyelk.__file__).resolve().parents:
+            paths[:0] = (str(repository / "src"), str(pyowl_source))
+        inherited = environment.get("PYTHONPATH")
+        if inherited:
+            paths.append(inherited)
+        environment["PYTHONPATH"] = os.pathsep.join(paths)
         outputs.add(
             subprocess.check_output(
                 [sys.executable, "-c", script],

@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import pytest
 
+import pyelk
 from pyelk.indexing.compiler import compile_ontology
 from pyelk.indexing.ir import CompiledOntology, EntityId, ExpressionId, ExpressionTag
 from pyelk.reasoning.conclusions import Conclusion, SubClassInclusionDecomposed
@@ -256,9 +257,11 @@ print(repr((
     pyowl_source = _ROOT.parent / "pyOWLCore" / "src"
     for seed in ("1", "777"):
         environment = dict(os.environ)
-        paths = [str(_ROOT / "src")]
-        if pyowl_source.is_dir():
-            paths.append(str(pyowl_source))
+        paths = [str(_ROOT)]
+        if _ROOT in Path(pyelk.__file__).resolve().parents:
+            paths.insert(0, str(_ROOT / "src"))
+            if pyowl_source.is_dir():
+                paths.append(str(pyowl_source))
         inherited = environment.get("PYTHONPATH")
         if inherited:
             paths.append(inherited)

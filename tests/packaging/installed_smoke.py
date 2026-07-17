@@ -46,6 +46,11 @@ def main() -> int:
     )
     require_core_compatibility()
     report = pyelk.backend_report()
+    assert report.core_package_version == owl.__version__
+    assert report.core_api_version == owl.API_VERSION
+    assert report.core_model_schema_version == owl.MODEL_SCHEMA_VERSION
+    assert report.core_wire_format_version == owl.WIRE_FORMAT_VERSION
+    assert report.core_adapter_protocol_version == owl.ADAPTER_PROTOCOL_VERSION
     assert report.selected == args.expected_backend, report
     if args.expected_backend == "python" and args.force_python:
         assert report.rust.available is None and report.rust.reason

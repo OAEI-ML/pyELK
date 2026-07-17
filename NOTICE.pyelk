@@ -1,0 +1,24 @@
+pyELK
+=====
+
+pyELK is an independent Apache-2.0 reimplementation informed by the source code,
+documentation, and tests of ELK Reasoner 0.6.0 at commit
+b8ac5ce83db0704a7359d96aa382891e2f547863.
+
+ELK Reasoner is Copyright 2011-2024 the ELK contributors and is licensed under the Apache
+License, Version 2.0. Its repository is https://github.com/liveontologies/elk-reasoner.
+
+The pyELK implementation is newly authored in Python and Rust. It does not contain or embed
+ELK Java classes or a Java runtime. Behavioural translations and adaptations include a
+frozen immutable IR, deterministic codecs, explicit completeness values, pyowl-core shared
+snapshot interoperability, a Python backend, and a Rust accelerator.
+
+The source repository's tests/data/elk-v0.6.0/upstream directory contains unmodified copies
+of selected ELK 0.6.0 test resources. The adjacent UPSTREAM.toml, manifest.json, LICENSE.txt,
+NOTICE.md, and NOTICE.pyelk files record their original paths, hashes, licence, attribution,
+and pyELK-generated additions. Those test resources are excluded from release sdists and
+wheels. Development-only Java oracle dependencies and generated Java classes/JARs are also
+excluded from every pyELK distribution.
+
+This notice is informational and does not modify the Apache License, Version 2.0, included
+as LICENSE.

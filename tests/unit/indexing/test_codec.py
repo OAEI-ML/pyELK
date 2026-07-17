@@ -12,6 +12,7 @@ from struct import Struct
 
 import pytest
 
+import pyelk
 from pyelk.exceptions import BackendProtocolError
 from pyelk.indexing.codec import (
     CHECKSUM_SIZE,
@@ -295,7 +296,13 @@ def test_codec_is_hash_seed_independent() -> None:
     for seed in ("1", "987654"):
         environment = os.environ.copy()
         environment["PYTHONHASHSEED"] = seed
-        environment["PYTHONPATH"] = os.pathsep.join((str(repository / "src"), str(repository)))
+        paths = [str(repository)]
+        if repository in Path(pyelk.__file__).resolve().parents:
+            paths.insert(0, str(repository / "src"))
+        inherited = environment.get("PYTHONPATH")
+        if inherited:
+            paths.append(inherited)
+        environment["PYTHONPATH"] = os.pathsep.join(paths)
         outputs.append(
             subprocess.check_output(
                 [sys.executable, "-c", script],
