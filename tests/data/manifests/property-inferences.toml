@@ -1,0 +1,73 @@
+schema = 1
+elk_version = "0.6.0"
+elk_commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+java_package = "org.semanticweb.elk.reasoner.saturation.properties.inferences"
+
+[[inference]]
+java_class = "SubPropertyChainTautology"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/SubPropertyChainTautology.java"
+python_rule = "pyelk.reasoning.properties.sub_property_chain_tautology"
+unit_test = "tests/unit/reasoning/test_properties.py::test_sub_property_chain_tautology_inference"
+rust_test = "pyelk_core::properties::tests::sub_property_chain_tautology"
+status = "implemented"
+
+[[inference]]
+java_class = "SubPropertyChainExpandedSubObjectPropertyOf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/SubPropertyChainExpandedSubObjectPropertyOf.java"
+python_rule = "pyelk.reasoning.properties.sub_property_chain_expanded_sub_object_property_of"
+unit_test = "tests/unit/reasoning/test_properties.py::test_sub_property_chain_expansion_requires_both_premises"
+rust_test = "pyelk_core::properties::tests::sub_property_chain_expansion"
+status = "implemented"
+
+[[inference]]
+java_class = "PropertyRangeInherited"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/PropertyRangeInherited.java"
+python_rule = "pyelk.reasoning.properties.property_range_inherited"
+unit_test = "tests/unit/reasoning/test_properties.py::test_property_range_inheritance_requires_both_premises"
+rust_test = "pyelk_core::properties::tests::property_range_inherited"
+status = "implemented"
+
+[[ignored]]
+java_class = "AbstractObjectPropertyInference"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/AbstractObjectPropertyInference.java"
+reason = "abstract base class"
+
+[[ignored]]
+java_class = "AbstractPropertyRangeInference"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/AbstractPropertyRangeInference.java"
+reason = "abstract base class"
+
+[[ignored]]
+java_class = "AbstractSubPropertyChainInference"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/AbstractSubPropertyChainInference.java"
+reason = "abstract base class"
+
+[[ignored]]
+java_class = "DummyObjectPropertyInferenceVisitor"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/DummyObjectPropertyInferenceVisitor.java"
+reason = "visitor adapter, not an inference"
+
+[[ignored]]
+java_class = "ObjectPropertyInference"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/ObjectPropertyInference.java"
+reason = "inference interface"
+
+[[ignored]]
+java_class = "ObjectPropertyInferenceConclusionVisitor"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/ObjectPropertyInferenceConclusionVisitor.java"
+reason = "conclusion visitor, not an inference"
+
+[[ignored]]
+java_class = "PropertyRangeInference"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/PropertyRangeInference.java"
+reason = "inference interface"
+
+[[ignored]]
+java_class = "SubPropertyChainInference"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/SubPropertyChainInference.java"
+reason = "inference interface"
+
+[[ignored]]
+java_class = "SubPropertyChainInferenceConclusionVisitor"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/properties/inferences/SubPropertyChainInferenceConclusionVisitor.java"
+reason = "conclusion visitor, not an inference"
