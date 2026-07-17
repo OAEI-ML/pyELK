@@ -12,7 +12,10 @@ from collections import Counter
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
+
+from pyelk.reasoning.completeness import Feature, issues_for
+from pyelk.reasoning.contracts import CompletenessIssue, ReasoningTask
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "tests" / "data" / "elk-v0.6.0"
@@ -26,6 +29,20 @@ ORACLE_REPORT = CORPUS / "oracle-report.json"
 PINNED_COMMIT = "b8ac5ce83db0704a7359d96aa382891e2f547863"
 PINNED_TREE = "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
 PINNED_LICENSE_SHA256 = "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+
+_QUERY_OPERATIONS = (
+    "direct_instances",
+    "direct_subclasses",
+    "direct_superclasses",
+    "equivalent_classes",
+    "satisfiable",
+)
+_QUIET_TASKS = {
+    ReasoningTask.CLASS_TAXONOMY,
+    ReasoningTask.OBJECT_PROPERTY_TAXONOMY,
+    ReasoningTask.REALIZATION,
+    ReasoningTask.CLASS_EXPRESSION_QUERY,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +68,57 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _feature_vector(counts: Mapping[str, Any]) -> tuple[int, ...]:
+    values = [0] * len(Feature)
+    for name, count in counts.items():
+        assert isinstance(name, str)
+        assert isinstance(count, int) and not isinstance(count, bool) and count >= 0
+        values[Feature[name]] = count
+    return tuple(values)
+
+
+def _issue_payload(issue: CompletenessIssue) -> dict[str, Any]:
+    return {
+        "constructors": list(issue.constructors),
+        "features": list(issue.features),
+        "polarities": list(issue.polarities),
+        "task": issue.task.value,
+    }
+
+
+def _runtime_issues(
+    task: ReasoningTask,
+    ontology_counts: Mapping[str, Any],
+    *,
+    query_counts: Mapping[str, Any] | None = None,
+    oracle_complete: bool,
+) -> list[dict[str, Any]]:
+    ontology = _feature_vector(ontology_counts)
+    query = () if query_counts is None else _feature_vector(query_counts)
+    issues = issues_for(task, ontology, query_feature_counts=query)
+    if oracle_complete and issues and task in _QUIET_TASKS:
+        issues = issues_for(
+            task,
+            ontology,
+            query_feature_counts=query,
+            inconsistent=True,
+        )
+    return [_issue_payload(issue) for issue in issues]
+
+
+def _canonical_issue_union(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique = {json.dumps(value, sort_keys=True): value for value in values}
+    return sorted(
+        unique.values(),
+        key=lambda issue: (
+            issue["task"],
+            tuple(issue["features"]),
+            tuple(issue["constructors"]),
+            tuple(issue["polarities"]),
+        ),
+    )
 
 
 def _payload() -> dict[str, Any]:
@@ -269,6 +337,49 @@ def test_every_corpus_case_has_canonical_expected_result_with_exact_provenance()
             assert queries == sorted(queries, key=lambda query: query[query_key].encode())
 
 
+def test_all_frozen_java_issues_match_the_runtime_completeness_evaluator() -> None:
+    task_by_family = {
+        "class_classification": ReasoningTask.CLASS_TAXONOMY,
+        "object_property_classification": ReasoningTask.OBJECT_PROPERTY_TAXONOMY,
+        "realization": ReasoningTask.REALIZATION,
+    }
+
+    for case in frozen_cases():
+        payload = json.loads(case.expected.read_text(encoding="utf-8"))
+        result = payload["result"]
+        ontology_counts = result["features"]
+        if case.family in task_by_family:
+            actual = _runtime_issues(
+                task_by_family[case.family],
+                ontology_counts,
+                oracle_complete=result["complete"],
+            )
+            assert actual == result["issues"], case.case_id
+            continue
+
+        task = (
+            ReasoningTask.CLASS_EXPRESSION_QUERY
+            if case.family == "class_query"
+            else ReasoningTask.ENTAILMENT_QUERY
+        )
+        aggregate: list[dict[str, Any]] = []
+        for query in result["value"]["queries"]:
+            oracle_complete = (
+                all(query[operation]["complete"] for operation in _QUERY_OPERATIONS)
+                if task is ReasoningTask.CLASS_EXPRESSION_QUERY
+                else query["complete"]
+            )
+            actual = _runtime_issues(
+                task,
+                ontology_counts,
+                query_counts=query["query_features"],
+                oracle_complete=oracle_complete,
+            )
+            assert actual == query["issues"], (case.case_id, query)
+            aggregate.extend(actual)
+        assert _canonical_issue_union(aggregate) == result["issues"], case.case_id
+
+
 def test_all_79_feature_expectations_match_manifest_target_counts() -> None:
     entries = _feature_entries()
 
@@ -396,7 +507,10 @@ def test_evaluator_hook_runs_all_canonical_cases() -> None:
 
     def evaluator(case: FrozenCase) -> Mapping[str, Any]:
         calls.append(case.case_id)
-        return json.loads(case.expected.read_text(encoding="utf-8"))
+        return cast(
+            Mapping[str, Any],
+            json.loads(case.expected.read_text(encoding="utf-8")),
+        )
 
     results = list(evaluate_frozen_cases(evaluator))
 

@@ -4,7 +4,7 @@ distribution_name = "pyelk-reasoner"
 import_name = "pyelk"
 python_requires = ">=3.10"
 specification_status = "implementation-ready"
-implementation_status = "wp0-foundation"
+implementation_status = "wp0-wp3-complete"
 
 [elk]
 repository = "https://github.com/liveontologies/elk-reasoner"

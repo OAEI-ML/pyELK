@@ -66,3 +66,21 @@ Rust, build/release metadata, public facade.
 6. Runtime/sdist paths contain no JAR/class file and do not import oracle code.
 7. Copied resources carry repository/tag/commit/path/hash/licence/modified provenance.
 8. Full checks pass and only owned paths changed.
+
+## Implementation status
+
+Status: **complete and reproducibly verified** on 2026-07-17.
+
+- `Feature`, its 79-entry manifest, all monitor combinations, query mapping, quiet-task
+  behavior, and policy isolation are implemented and cross-checked against every frozen
+  Java issue record.
+- The 124 ontology inputs, 138 original golden outputs, 79 minimal feature fixtures, and
+  203 canonical oracle outputs are hash-inventoried with Apache-2.0 provenance.
+- `python tools/oracle.py regenerate --check` succeeds with the pinned Temurin 17.0.19+10,
+  Maven 3.9.16, and ELK 0.6.0 artifacts; two fresh oracle processes reproduce the committed
+  tree byte-for-byte.
+- `python tools/oracle.py verify` and all ordinary tests succeed without Java, Maven,
+  compilers, network access, or an executable on `PATH`, on Python 3.10 and 3.12.
+- The frozen-data evaluator hook is intentionally awaiting a `Reasoner` factory from WP13,
+  as specified in deliverable 8; no WP3 API or acceptance gate is blocked by that later
+  integration.

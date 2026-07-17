@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import importlib
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 import pytest
 
@@ -166,6 +166,31 @@ def _feature_names(issues: Iterable[object]) -> set[tuple[str, ...]]:
     return {issue.features for issue in issues}  # type: ignore[attr-defined]
 
 
+class _CountingFeatureVector(Sequence[int]):
+    """Single-pass instrumentation for the fixed-width evaluator boundary."""
+
+    def __init__(self, value: int) -> None:
+        self._values = (value,) * FEATURE_VECTOR_LENGTH
+        self.reads = 0
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    @overload
+    def __getitem__(self, index: int) -> int: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[int, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> int | tuple[int, ...]:
+        return self._values[index]
+
+    def __iter__(self) -> Iterator[int]:
+        for value in self._values:
+            self.reads += 1
+            yield value
+
+
 def test_feature_enum_exact_java_order_and_metadata() -> None:
     assert tuple(feature.name for feature in Feature) == _PINNED_FEATURE_NAMES
     assert tuple(int(feature) for feature in Feature) == tuple(range(FEATURE_VECTOR_LENGTH))
@@ -211,6 +236,62 @@ def test_feature_manifest_covers_every_enum_fixture_and_test_pointer() -> None:
         assert f"def {test_name}(" in test_source
         if feature.name.startswith("QUERY_"):
             assert entry["expected_value"] is False
+
+
+def test_feature_manifest_conditions_match_the_production_evaluator() -> None:
+    with _FEATURE_MANIFEST.open("rb") as handle:
+        entries = tomllib.load(handle)["features"]
+    query_tasks = {
+        ReasoningTask.CLASS_EXPRESSION_QUERY,
+        ReasoningTask.ENTAILMENT_QUERY,
+    }
+
+    for entry in entries:
+        feature = Feature(entry["index"])
+        if entry["scope"] == "query":
+            issues = issues_for(
+                ReasoningTask.ENTAILMENT_QUERY,
+                _counts(),
+                query_feature_counts=_counts(feature),
+            )
+            assert _feature_names(issues) == {(feature.name,)}
+            assert entry["affected_tasks"] == [ReasoningTask.ENTAILMENT_QUERY.value]
+            continue
+
+        actual_tasks: set[str] = set()
+        for task in ReasoningTask:
+            issues = issues_for(
+                task,
+                _counts(feature),
+                query_feature_counts=_counts() if task in query_tasks else (),
+            )
+            if any(feature.name in issue.features for issue in issues):
+                actual_tasks.add(task.value)
+        if entry["expected_issue"]:
+            assert actual_tasks == set(entry["affected_tasks"])
+        else:
+            assert actual_tasks == set()
+
+        conditional_tasks: set[str] = set()
+        for condition in entry["conditions"]:
+            scope, partner_name = condition.split(":", 1)
+            partner = Feature[partner_name]
+            selected_tasks = (
+                tuple(ReasoningTask) if scope == "all_tasks" else (ReasoningTask(scope),)
+            )
+            conditional_tasks.update(task.value for task in selected_tasks)
+            for task in selected_tasks:
+                issues = issues_for(
+                    task,
+                    _counts(feature, partner),
+                    query_feature_counts=_counts() if task in query_tasks else (),
+                )
+                assert (feature.name, partner.name) in _feature_names(issues) or (
+                    partner.name,
+                    feature.name,
+                ) in _feature_names(issues)
+        if entry["conditions"]:
+            assert conditional_tasks == set(entry["affected_tasks"])
 
 
 @pytest.mark.parametrize("feature", GENERAL_INCOMPLETENESS_FEATURES)
@@ -414,3 +495,20 @@ def test_count_and_argument_contract_validation() -> None:
         )
     with pytest.raises(ValueError, match="boolean"):
         issues_for(ReasoningTask.CONSISTENCY, _counts(), inconsistent=1)  # type: ignore[arg-type]
+
+
+def test_maximum_count_vectors_are_consumed_once_with_bounded_output() -> None:
+    ontology = _CountingFeatureVector(U64_MAX)
+    query = _CountingFeatureVector(U64_MAX)
+
+    issues = issues_for(
+        ReasoningTask.ENTAILMENT_QUERY,
+        ontology,
+        query_feature_counts=query,
+    )
+
+    assert ontology.reads == FEATURE_VECTOR_LENGTH
+    assert query.reads == FEATURE_VECTOR_LENGTH
+    assert len(issues) == 72
+    assert len(set(issues)) == len(issues)
+    assert sum(len(issue.features) for issue in issues) == 74
