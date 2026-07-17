@@ -19,7 +19,7 @@ explicitly splits it.
 ## 2. Rules for every WP
 
 - Branch: `wp<N>-<slug>`; one primary WP per branch.
-- Python 3.10+, `src/` layout, public typing, immutable public values.
+- Python 3.10+, `src/` layout, public typing, exact immutable `pyowl_core` public values.
 - Keep `ruff format`, `ruff check`, strict `mypy`, `import-linter`, and applicable pytest
   suites green.
 - Every production deliverable has unit/property tests in the same PR.
@@ -54,17 +54,13 @@ A passing unit subset does not make an incomplete WP complete.
 ## 4. Dependency graph
 
 ```text
-WP0 foundation
-├── WP1 OWL model ───────────┬── WP2 parser <── WP3
-│                            └── WP4 indexing ─┬── WP5 properties ─┐
-├── WP3 completeness/oracle ────────┘          └── WP6 calculus ───┴── WP7 engine
-│                                                                      ├── WP8 taxonomy
-│                                                                      ├── WP9 queries/realization
-│                                                                      └── WP11 Rust backend
-│
-WP2 + WP3 + WP4 + WP8 + WP9 ─────────────────────────────────────────────> WP10 facade
-WP10 + WP11 ─────────────────────────────────────────────────────────────> WP12 packaging
-all WPs ─────────────────────────────────────────────────────────────────> WP13 integration
+WP0 -> {WP1 core contract, WP3 completeness/oracle}
+{WP1, WP3} -> WP2 shared-view input
+{WP1, WP2, WP3} -> WP4 indexing -> {WP5 properties, WP6 calculus}
+{WP5, WP6} -> WP7 engine -> {WP8 taxonomy, WP9 queries/realization, WP11 Rust}
+{WP2, WP3, WP4, WP8, WP9} -> WP10 facade
+{WP10, WP11} -> WP12 packaging
+WP0..WP12 -> WP13 integration
 ```
 
 Parallel waves:
@@ -72,13 +68,14 @@ Parallel waves:
 ```text
 0: WP0
 1: {WP1, WP3}
-2: {WP2, WP4}
-3: {WP5, WP6}
-4: WP7
-5: {WP8, WP9, WP11}
-6: WP10
-7: WP12
-8: WP13
+2: WP2
+3: WP4
+4: {WP5, WP6}
+5: WP7
+6: {WP8, WP9, WP11}
+7: WP10
+8: WP12
+9: WP13
 ```
 
 WP11 starts only after the complete pure-Python saturation engine exists. It may implement
@@ -90,10 +87,10 @@ backend differential sign-off remains a WP13 gate.
 | WP | Assignment | Depends on | Primary owned area |
 |---:|---|---|---|
 | [WP0](WP0-foundation.md) | scaffold, codec, backend contracts, test doubles | — | build scaffold, `indexing/codec.py`, `reasoning/contracts.py` |
-| [WP1](WP1-owl-model.md) | immutable OWL model and structural keys | WP0 | `src/pyelk/owl/` |
-| [WP2](WP2-functional-parser.md) | streaming Functional Syntax parser/printer | WP1, WP3 | `src/pyelk/parsing/`, `ontology.py` |
+| [WP1](WP1-owl-model.md) | pyowl-core contract and exact public re-exports | WP0, pyowl-core 0.1 | `core.py`, re-export-only `owl/__init__.py` |
+| [WP2](WP2-shared-snapshot-input.md) | standalone/shared snapshot ingestion and Exact-OM handshake | WP1, WP3 | `inputs.py`, input integration tests |
 | [WP3](WP3-completeness-oracle.md) | feature matrix, completeness, Java oracle, frozen corpus | WP0 | completeness, oracle, upstream data |
-| [WP4](WP4-indexing.md) | polarity conversion and deterministic compiled IR | WP1, WP3 | `src/pyelk/indexing/` except codec |
+| [WP4](WP4-indexing.md) | polarity conversion and deterministic compiled IR | WP1, WP2, WP3 | `src/pyelk/indexing/` except codec |
 | [WP5](WP5-properties.md) | pure-Python property hierarchy/chain/range closure | WP4 | `reasoning/properties.py` |
 | [WP6](WP6-calculus.md) | conclusions, contexts, inference/rule catalogue | WP4 | conclusion/context/rule modules |
 | [WP7](WP7-saturation.md) | pure-Python scheduler, consistency, internal session | WP5, WP6 | saturation + internal session |
@@ -109,7 +106,11 @@ backend differential sign-off remains a WP13 gate.
 Frozen after WP0: IR major/minor framing, backend protocol, raw result framing, public
 exception categories, import graph, and test-double interfaces.
 
-Frozen after WP1/WP3: OWL structural keys and feature enum order.
+Frozen after WP1/WP3: pyowl-core API/model/wire/adapter compatibility line and ELK feature
+enum order. Public OWL structural identity is owned by pyowl-core, not frozen locally.
+
+`pyproject.toml` is sequentially shared: WP0 owns the historical scaffold, WP1 owns only the
+pyowl-core runtime/import-boundary amendment, and WP12 owns final release/build metadata.
 
 A needed change requires:
 

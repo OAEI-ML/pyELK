@@ -6,10 +6,16 @@ without a Java runtime dependency. The pure-Python backend is the complete porta
 fallback; supported wheels also contain the high-performance Rust backend behind the same
 public API.
 
+The revised implementation specification uses the separate Java-free distribution
+`pyowl-core` (import `pyowl_core`) as its canonical OWL structural/parser/view layer.
+pyELK will accept paths and streams standalone or reuse an Exact-OM/core view without
+reparsing, while keeping ELK-specific indexes and saturation state private.
+
 The WP0 foundation is implemented: packaging, typed IR/backend contracts, deterministic
-binary codecs, pure-build controls, test doubles, and foundation CI are in place. Parsing,
-reasoning semantics, the public facade, and the Rust accelerator remain assigned to the
-later work packages below, so this is not yet a usable OWL reasoner release.
+binary codecs, pure-build controls, test doubles, and foundation CI are in place. The
+pyowl-core dependency/input migration, reasoning semantics, public facade, and Rust
+accelerator remain assigned to later work packages, so this is not yet a usable OWL
+reasoner release.
 
 The distribution is named `pyelk-reasoner` and the Python import namespace is `pyelk`:
 
@@ -32,7 +38,7 @@ without colliding at installation.
 - [Component contracts](https://github.com/OAEI-ML/pyELK/blob/main/specs/contracts.md): public
   API, compiled IR, backend protocol, and wire values.
 - Subsystem specifications:
-  [parsing](https://github.com/OAEI-ML/pyELK/blob/main/specs/parsing.md),
+  [pyowl-core ingestion](https://github.com/OAEI-ML/pyELK/blob/main/specs/parsing.md),
   [indexing](https://github.com/OAEI-ML/pyELK/blob/main/specs/indexing.md),
   [saturation](https://github.com/OAEI-ML/pyELK/blob/main/specs/saturation.md),
   [taxonomy and queries](https://github.com/OAEI-ML/pyELK/blob/main/specs/taxonomy-queries.md),

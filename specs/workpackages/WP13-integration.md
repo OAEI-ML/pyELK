@@ -47,12 +47,13 @@ artifacts. Release execution is a separate owner action after this WP passes.
    wheels.
 2. Classified resolution of every upstream semantic/completeness/error diff.
 3. Full generated/metamorphic/backend differential suites and regression minimiser.
-4. W3C EL manifest with exact ELK-complete/incomplete/out-of-parser classification.
+4. W3C EL manifest with exact ELK-complete/incomplete/out-of-core-input classification.
 5. Integrated performance corpus manifest, Java/Python/Rust stage measurements, scaling,
    RSS, regression baselines, and optimisation fixes.
 6. Complete upstream feature/inference/source → spec → code → test traceability.
 7. User documentation for install, fallback/native diagnosis, supported fragment,
-   completeness handling, API examples, no-Java guarantee, and limitations.
+   completeness handling, standalone loading, Exact-OM/shared-snapshot use, core version
+   diagnostics, no-Java guarantee, and limitations.
 8. Attribution/modified notices and release checklist evidence.
 
 ## Acceptance criteria
@@ -63,7 +64,7 @@ artifacts. Release execution is a separate owner action after this WP passes.
    unless explicitly approved and documented in `compatibility.md`.
 3. Python/Rust equality holds for the extended generated corpus, all hash seeds, workers
    1/2/N, repeated/query permutations, and supported architectures.
-4. Exhaustive tiny, metamorphic, parser/decoder fuzz smoke, lint/type/import, and full
+4. Exhaustive tiny, metamorphic, input-adapter/private-decoder fuzz smoke, lint/type/import, and full
    compiler/JRE-free suites pass.
 5. Every feature and concrete inference manifest row resolves to implemented code and a
    passing test; traceability has no TODO/unknown status.
@@ -75,3 +76,6 @@ artifacts. Release execution is a separate owner action after this WP passes.
    completeness.
 9. `git status` is clean after a complete verification run and generated artifacts are
    reproducible from documented commands.
+10. Counting parser/provider and memory/RSS tests prove zero reparse/public-model copy for
+    shared views (including composites) and bounded-copy native transfer on representative large
+    biomedical ontologies.

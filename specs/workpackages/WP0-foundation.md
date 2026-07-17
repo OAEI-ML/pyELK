@@ -4,7 +4,8 @@
 
 Create the installable pure-Python project skeleton and freeze the cross-agent contracts:
 compiled IR records/codec, backend/session raw-result protocol, exception categories, import
-boundaries, and reusable test doubles. Implement no OWL parsing or reasoning semantics.
+boundaries, and reusable test doubles. Implement no OWL parsing/model or reasoning semantics;
+the later amended WP1 adopts the shared core dependency.
 
 ## Read first
 
@@ -41,16 +42,17 @@ no speculative exports and become owned by their later WP.
 
 ## Forbidden paths
 
-`src/pyelk/owl/**`, `parsing/**`, semantic indexing files, reasoning implementation files,
+`src/pyelk/owl/**`, input/core adapter implementation, semantic indexing files, reasoning implementation files,
 Rust crates, oracle data/tooling, benchmarks, and public facade implementation.
 
 ## Deliverables
 
 1. Setuptools `src/` package supporting Python 3.10+, distribution name `pyelk-reasoner`,
-   import namespace `pyelk`, `py.typed`, Apache licence metadata, and zero mandatory runtime
-   dependencies.
+   import namespace `pyelk`, `py.typed`, Apache licence metadata, and no mandatory runtime
+   dependency at the foundation checkpoint (WP1 later adds pyowl-core).
 2. Dev/test extras for pytest, Hypothesis, ruff, mypy, import-linter, and build tooling.
-3. Import-linter contracts matching `SPEC.md` §7.
+3. Foundational import-linter contracts that WP1 amends for the pyowl-core
+   adapter/re-export boundary.
 4. Frozen record/enums for `CompiledOntology`, `CompiledQuery`, 79-position feature vectors,
    query mini-IR/fresh-result IDs, raw
    taxonomy/realisation/query results, `ReasoningTask`, `PolicyFeature`,
@@ -72,7 +74,7 @@ Rust crates, oracle data/tooling, benchmarks, and public facade implementation.
    exception, not raw `IndexError`/`MemoryError` from trusted-small fixtures.
 3. A fake backend can return a valid class taxonomy through the frozen protocol without
    importing semantic modules.
-4. `import-linter` proves `owl`, parsing/indexing values, and public result layers cannot
+4. `import-linter` proves OWL/input/indexing values and public result layers cannot
    import `_native` or test/oracle code.
 5. `pytest`, ruff, mypy, and import-linter pass in an environment with Java and Cargo removed
    from `PATH`.

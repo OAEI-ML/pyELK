@@ -8,12 +8,12 @@ tests, benchmarks, provenance, and release gates.
 
 | Layer | Java? | Purpose |
 |---|---:|---|
-| unit | no | individual values, conversions, rules, taxonomy/query helpers |
+| unit | no | core identity/adapters, conversions, rules, taxonomy/query helpers |
 | exhaustive tiny oracle | no | slow independent fixed point / graph algorithms on bounded random inputs |
 | upstream frozen corpus | no | ELK 0.6.0 inputs and checked-in canonical expected JSON |
 | Java differential | yes, opt-in | regenerate fixtures and test new/random cases against pinned ELK |
 | backend differential | no | complete Python versus Rust equality on the same generated IR |
-| metamorphic/fuzz | no/optional Java | order, duplicate, worker, hash seed, decoder/parser robustness |
+| metamorphic/fuzz | no/optional Java | order, duplicate, overlay, worker, hash seed, adapter/decoder robustness |
 | packaging | no | installed wheels/sdist, fallback, ABI/dependency audits |
 | performance | Java for comparison | stage time, throughput, scaling, RSS, regression gates |
 
@@ -56,8 +56,10 @@ request contains:
 }
 ```
 
-Supported operations cover every public `Reasoner` method plus `parse`, `feature_counts`, and
-diagnostic `saturation_counts`. Responses contain either:
+Supported operations cover every public `Reasoner` method plus structural load observations,
+`feature_counts`, and diagnostic `saturation_counts`. pyowl-core owns parser conformance;
+pyELK compares the core snapshot-to-ELK conversion rather than implementing a second parser.
+Responses contain either:
 
 ```json
 {
@@ -176,7 +178,7 @@ ELK 0.6.0 result, and one of:
 ```text
 elk-complete
 elk-incomplete-as-designed
-outside-pyelk-parser-scope
+outside-pyowl-core-input-scope
 ```
 
 W3C correctness never overrides the compatibility mode's Java result. A future enhanced EL
@@ -213,6 +215,8 @@ For every applicable test, logical output must remain equal after:
 - Python versus Rust;
 - Rust workers 1, 2, and N;
 - insertion of declarations for already occurring entities.
+- replacing a path input with its already loaded snapshot or a no-op overlay;
+- equivalent import traversal/resolver order with the same core closure fingerprints.
 
 Relations expected to change results, such as property-chain reversal or removal of one
 duplicate position in `DisjointClasses(A,A)`, have explicit negative controls.
@@ -238,12 +242,15 @@ Required equality includes:
 Native-only optimisations land behind these tests. A native mismatch cannot be waived as a
 performance trade-off.
 
-## 8. Parser and decoder fuzzing
+## 8. Input-adapter and decoder fuzzing
 
-- Coverage-guided fuzz Functional Syntax bytes/chunking; outcomes are valid parse or bounded
-  `ParseError`, never crash/hang/unbounded allocation.
+- Consume pyowl-core's released parser/fingerprint conformance corpus and fuzz findings as a
+  dependency gate; do not copy its parser implementation or duplicate its full fuzz target.
+- Fuzz pyELK coercion with malformed/incompatible providers, core wire versions, overlays,
+  closed/erroring streams, and hostile resolver results; outcomes are core input errors or a
+  valid captured snapshot, never a retry/reparse, crash, hang, or unbounded copy.
 - Fuzz Python and Rust IR decoders with valid mutated/truncated bytes.
-- Seed fuzz corpora with every upstream input and codec golden.
+- Seed adapter/compiler cases with every upstream input and IR codec golden.
 - Run Rust `cargo fuzz`/libFuzzer in scheduled CI and short deterministic smoke fuzzing on
   pull requests.
 - Preserve every discovered crash or semantic mismatch as a minimal regression fixture.
@@ -258,7 +265,8 @@ optional when their licence prevents redistribution.
 Measure separately:
 
 ```text
-parse
+pyowl-core load/parse/import closure (standalone only)
+snapshot/provider capture (shared mode)
 compile/index
 property saturation
 consistency/class saturation
@@ -297,6 +305,8 @@ Test artifacts, not the source checkout:
 - offline import and representative reasoning fixture;
 - metadata/type-hint/Python-file equality across wheel variants;
 - no Java archive/class/launcher or unapproved shared dependency;
+- exact `pyowl-core>=0.1,<0.2` metadata, core-version diagnostics, and pure/native core ×
+  pure/native pyELK combinations where wheels exist;
 - `pip --only-binary` wheel preference from a local simple index containing both variants.
 
 ## 11. Provenance and licensing
@@ -324,8 +334,12 @@ A release candidate is acceptable only when:
 3. Java regeneration produces no unclassified semantic/completeness diff;
 4. generated/exhaustive/property tests pass;
 5. import/type/lint/format checks pass;
-6. parser/decoder fuzz smoke tests pass and scheduled fuzz has no open crash;
+6. input-adapter/decoder fuzz smoke tests pass, the supported pyowl-core conformance gate
+   passes, and scheduled fuzz has no open crash;
 7. wheel/sdist matrix and no-Java tests pass;
 8. native performance meets the current thresholds with results attached;
 9. every compatibility feature and upstream reference is mapped in `traceability.md`;
-10. there are no undocumented compatibility exceptions.
+10. there are no undocumented compatibility exceptions; and
+11. view/provider inputs prove zero reparsing and zero public-model copies; standalone
+    path/stream and shared Exact-OM-style snapshot/overlay/composite inputs return identical
+    results.

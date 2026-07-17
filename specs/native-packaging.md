@@ -61,7 +61,8 @@ session handle appears in a public signature.
 
 ## 2. FFI and threading rules
 
-- Create one native session per Python `Reasoner`; parse/copy the compiled ontology once.
+- Create one native session per Python `Reasoner`; capture the compatible core view without
+  parsing, compile one private ELK IR, and transfer that IR once.
 - Calls cross the boundary by complete ontology, complete query, or complete result, never by
   axiom, rule, edge, or set operation.
 - Validate magic, version, checksum, lengths, offsets, enum tags, IDs, CSR invariants, and
@@ -133,7 +134,8 @@ platform-specific fallback wheel and poison installer caches. Explicit pure mode
 
 The sdist includes Python sources, Cargo workspace, lockfile, licence, and build metadata.
 Without Cargo, its optional build succeeds as a complete Python install. With Cargo, it may
-build the native extension. No build step downloads Java or ontology assets.
+build the native extension. Project metadata requires `pyowl-core>=0.1,<0.2` in every
+artifact. No build step downloads Java, a JVM bridge/JAR, or ontology assets.
 
 ## 6. Published artifacts
 
@@ -203,7 +205,9 @@ Native architecture policy:
 - A session never changes backend after creation.
 
 `backend_report()` is side-effect-light and returns installed/selected availability,
-extension version, ABI/IR version, and fallback reason. It does not start a reasoner session.
+extension version, ABI/IR version, fallback reason, and captured pyowl-core package,
+`MODEL_SCHEMA_VERSION`, `WIRE_FORMAT_VERSION`, and `ADAPTER_PROTOCOL_VERSION`. It does not
+start a reasoner session.
 Under `PYELK_PURE_PYTHON=1` it does not import/probe `_native`; Rust availability is `None`
 with a pure-mode reason rather than a misleading installed/not-installed answer.
 
@@ -220,7 +224,7 @@ Use cibuildwheel with pinned action/tool versions. For every artifact:
 7. audit/repair Linux wheels with auditwheel, macOS with delocate, and Windows DLL
    dependencies with delvewheel-equivalent inspection;
 8. scan archive contents for `.jar`, `.class`, JVM launchers, absolute build paths, and
-   unapproved shared libraries;
+   unapproved shared libraries, and inspect dependency metadata for JPype/JNI/Java packages;
 9. compare pure/native metadata and Python file hashes;
 10. stage all artifacts and publish only if the complete matrix passes.
 
@@ -242,6 +246,8 @@ to publish a tier-one artifact.
 6. `abi3audit` and platform dependency audits pass.
 7. Results are exact across OS, architecture, Python minor, hash seed, and worker count.
 8. No JVM or unallowlisted dynamic-library dependency exists.
+9. Metadata contains the compatible pyowl-core requirement, and installed tests cover the
+   pyELK Python/Rust × pyowl-core Python/native matrix where artifacts exist.
 
 ## 11. Performance gates
 
@@ -257,7 +263,8 @@ Correctness gates always take precedence. Initial native release targets:
 - results and counts identical for workers 1 and N, with multi-core speedup reported rather
   than asserted on machines with at least four physical cores.
 
-Benchmarks compare parsing, compilation, property saturation, class saturation, taxonomy,
+Benchmarks compare standalone core loading and shared-view capture separately, then
+compilation, property saturation, class saturation, taxonomy,
 total time, peak RSS, and produced conclusion counts separately. `native` vs C is reconsidered
 only if profiling shows PyO3/Rust-specific overhead of at least 10% end-to-end after
 algorithm/data-layout optimisation.

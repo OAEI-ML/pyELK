@@ -15,10 +15,9 @@ Primary references:
 
 ```python
 def compile_ontology(
-    ontology: Ontology,
+    ontology: OntologyView,
     *,
     unsupported: Literal["ignore", "error"] = "ignore",
-    ignore_imports: bool = False,
 ) -> CompiledOntology: ...
 
 def compile_query_expression(
@@ -32,9 +31,10 @@ def compile_entailment_query(
 ) -> CompiledQuery: ...
 ```
 
-`indexing/` owns entity/expression IDs, the binary codec, logical fingerprints, and all axiom
-conversion. Reasoning modules treat a `CompiledOntology` as immutable. Neither backend may
-re-interpret public OWL objects independently.
+`indexing/` owns entity/expression IDs, the binary codec, the pyELK source-fingerprint
+derivation, and all ELK axiom conversion. pyowl-core owns structural values, closure
+fingerprints, and shared indexes. Reasoning modules treat a `CompiledOntology` as immutable.
+Neither backend may re-interpret public OWL objects independently.
 
 Query compilation records exact query-local feature counts and every fresh entity in the
 `CompiledQuery` contract. If ELK's converter rejects a class expression or entailment axiom,
@@ -44,16 +44,19 @@ pinned unindexed-query value rules.
 
 ## 2. Compile phases
 
-1. Validate import policy and public object invariants.
+1. Validate core model/adapter versions and the captured import-completeness policy.
 2. Add the four predefined entities.
-3. Visit logical axioms in document order in isolated transactions.
+3. Iterate the effective logical closure directly from the `OntologyView`, explicitly
+   requesting core canonical order (or an equivalent canonical bulk view), in isolated
+   transactions. Default view iteration order is never a semantic tie-breaker.
 4. Track polarity and exact upstream `Feature` occurrence counts.
 5. Commit supported/partial conversions; roll back unsupported containing axioms while
    retaining the unsupported feature occurrence.
 6. Freeze structural objects, assign deterministic IDs, and rewrite temporary handles.
 7. Deduplicate logical axiom rows where duplicate copies cannot change ELK's result; retain
    member multiplicity inside n-ary objects.
-8. Sort tables, encode a canonical semantic fingerprint, and validate the final IR.
+8. Sort tables, derive `source_fingerprint` from core fingerprints/version metadata as
+   specified in `contracts.md`, and validate the final IR.
 
 Compilation is iterative. Nesting depth greater than Python's recursion limit is accepted up
 to an explicit configurable safety ceiling of 1,000,000 nodes per axiom.
@@ -98,11 +101,12 @@ Temporary handles are opaque integers. Occurrence polarity is metadata on a stru
 object, not part of its identity. The same expression appearing positively and negatively
 therefore has one final expression ID with both occurrence flags.
 
-`DataHasValue` stores its data-property entity as the expression argument and the complete
-nonempty literal structural key from `owl/keys.py` as its opaque payload. That flat,
-length-delimited key includes the exact pinned-ELK stored lexical form and datatype IRI;
-plain and language literals use the `rdf:PlainLiteral` mapping in `parsing.md` §2.1. Backends
-compare these bytes only for structural equality and perform no datatype reasoning.
+`DataHasValue` stores its data-property entity as the expression argument and a private,
+nonempty `ElkCompatibilityKey` as its opaque payload. WP4 derives that flat,
+length-delimited key from the source-preserving and standards-canonical core literal without
+mutating or wrapping it. It includes the pinned ELK stored lexical/datatype spelling only
+where oracle compatibility requires it. Backends compare these bytes only for ELK structural
+equality and perform no datatype reasoning.
 
 Required simplifications match the pinned converter:
 
@@ -252,12 +256,16 @@ After conversion:
 6. preserve multiplicity within expression/member tuples but deduplicate identical axiom
    rows/groups;
 7. encode all 79 feature counts in the frozen upstream enum order;
-8. compute BLAKE2b-256 of canonical logical Functional Syntax plus the IR schema major.
+8. compute the domain-separated source fingerprint from captured core logical/signature
+   fingerprints, core
+   schema/adapter versions, compiler schema/options, and pinned ELK identifier; never print
+   Functional Syntax or RDF as an intermediate.
 
-Freezing the same `Ontology` twice is byte-identical under every `PYTHONHASHSEED`. Semantic
-input permutations need only produce equal reasoning results; byte-identical IR for every
-permutation is a desirable optimisation, not a v1 requirement where ELK's conversion
-orientation is order-sensitive internally.
+Freezing the same effective core view twice is byte-identical under every
+`PYTHONHASHSEED`. Syntax, path, prefix, import traversal, and insertion permutations that
+produce equal core fingerprints MUST produce byte-identical IR. Where pinned ELK definition
+orientation needs a choice, use the deterministic core structural order rather than source
+parse order.
 
 ## 9. Validation invariants
 
@@ -271,6 +279,8 @@ orientation is order-sensitive internally.
 - Disjoint-group member arrays retain positions and may contain duplicate IDs.
 - Feature counts are nonnegative and have the exact manifest length.
 - No object from a rolled-back axiom is reachable unless another committed axiom uses it.
+- Compilation does not materialize a second public axiom closure, mutate/compact overlays,
+  or retain parser/RDF objects.
 
 The Python decoder and Rust decoder both reject a violated invariant before saturation.
 
@@ -281,6 +291,8 @@ The Python decoder and Rust decoder both reject a violated invariant before satu
 - Golden-test every matrix row in `compatibility.md`, including feature counts.
 - Property-test interning: equal structural keys share IDs; unequal keys do not.
 - Property-test compile/encode/decode and hash-seed determinism.
+- Instrument core snapshot/provider/parser calls and allocation to prove zero reparse,
+  identity-preserving capture, and bounded shared-model copies.
 - Compare Java and Python entity enumeration so ignored-only entities do not leak.
 - Fuzz the binary decoder independently in Python and Rust with truncated, reordered,
   oversized, invalid-enum, invalid-UTF-8, bad-CSR, and bad-checksum inputs.

@@ -60,7 +60,7 @@ Logical polarity is assigned recursively:
 |---|---:|---|
 | named `Class`, `owl:Thing`, `owl:Nothing` | C | Structurally interned. Positive `owl:Nothing` additionally affects object-property-taxonomy completeness. |
 | named `ObjectProperty` | C | Structurally interned. Negative `owl:topObjectProperty` and positive `owl:bottomObjectProperty` are P. |
-| `ObjectIntersectionOf` | C | Zero operands become `owl:Thing`; one is identity; n-ary input is left-associated binary indexing in source order. |
+| `ObjectIntersectionOf` | C | Zero operands become `owl:Thing`; one is identity; n-ary input is left-associated in the deterministic core operand order. |
 | `ObjectSomeValuesFrom` | C | Intern `(property, filler)` at current polarity. |
 | `ObjectHasValue(R, a)` | C/P | Convert to `ObjectSomeValuesFrom(R, singleton(a))`; positive occurrence combined with any object-property range makes general results incomplete. |
 | `ObjectHasSelf` | C/P | Positive is supported; negative occurrence is tracked as incomplete. |
@@ -75,14 +75,15 @@ Logical polarity is assigned recursively:
 | `DataSomeValuesFrom` | I | Record `DATA_SOME_VALUES_FROM`, even though W3C OWL 2 EL admits it. |
 | data property or datatype entity | I/P | Data declarations/axioms are unsupported; structural `DataHasValue` remains the exception above. |
 
-The Python object model and parser MAY represent additional OWL objects so unsupported input
-can be diagnosed. Representability does not imply indexing support.
+pyowl-core represents every in-scope OWL structural object independently of pyELK support.
+pyELK diagnoses support through its exhaustive compiler adapter; representability never
+implies ELK indexing support and no generic unsupported public node is substituted.
 
 ## 4. Axiom indexing matrix
 
 | Axiom | Status | Conversion |
 |---|---:|---|
-| annotation axioms | N | Parse and retain in the document model if requested; do not index. |
+| annotation axioms | N | Retained by the core snapshot; do not index. |
 | `Declaration` | C | Register a supported entity. A declaration of an unsupported entity kind is ignored with that feature. |
 | `SubClassOf` | C | Negative-convert the subclass and positive-convert the superclass. |
 | `EquivalentClasses` | C | Use the first expression as the hub; create definition/equivalence conversions with ELK's named-class preference. |
@@ -334,9 +335,10 @@ Completeness metadata is part of exact parity. A backend returning the correct e
 the wrong completeness flag or reasons fails parity.
 
 The separate `PYELK_IGNORED_IMPORT` reason is an ingestion-policy issue, not an upstream
-`Feature` enum value. It appears only when `ignore_imports=True`, which has no Java-oracle
-equivalent because oracle fixtures supply a closed ontology. It never alters logical values
-computed from the supplied axioms.
+`Feature` enum value. It appears only when core snapshot provenance records an explicitly
+accepted ignored/unresolved import closure and `allow_incomplete_imports=True`; this has no
+Java-oracle equivalent because oracle fixtures supply a strict closed ontology. It never
+alters logical values computed from the available closure.
 
 ## 10. Canonical equality boundary
 
@@ -348,7 +350,8 @@ Parity comparisons use public IRIs and structural values, never internal IDs:
 - non-direct query results are sets of equivalence nodes;
 - completeness reasons are sorted by `(task, features, polarity)`;
 - booleans and exception categories compare exactly;
-- parse failures compare by category and source span, not English message text.
+- standalone input failures compare by the re-exported core category and source span, not
+  English message text; snapshot/provider input must not parse.
 
 All outputs MUST be identical for Python/Rust, workers 1/N, input permutations, and repeated
 runs. Java set ordering is explicitly outside the comparison.

@@ -8,11 +8,11 @@ fate, pyELK destination, normative specification, and work package.
 
 | ELK source | Fate | pyELK destination | Spec | WP |
 |---|---|---|---|---:|
-| `elk-owl-parent/elk-owl-model/.../owl/interfaces`, `iris`, `predefined` | model behaviour, Pythonic values | `src/pyelk/owl/` | `parsing.md` | 1 |
-| `elk-owl-parent/elk-owl-model/.../comparison`, `printers`, `util` | structural keys and canonical printer; selective | `owl/keys.py`, `parsing/printer.py` | `parsing.md` | 1–2 |
-| `elk-owl-parent/elk-owl-implementation/.../implementation`, `managers` | reproduce immutable construction/equality only; do not port visitor boilerplate | `src/pyelk/owl/` | `parsing.md` | 1 |
-| `elk-owl-parent/elk-owl-parsing-javacc/.../Owl2FunctionalStyleParser.jj` | reimplement grammar | `src/pyelk/parsing/` | `parsing.md` | 2 |
-| `elk-reasoner/.../loading/Owl2ParserLoader.java` | streaming/batching semantics, no Java thread copy | `parsing/parser.py`, `api.py` | `parsing.md` | 2, 10 |
+| `elk-owl-parent/elk-owl-model/.../owl/interfaces`, `iris`, `predefined` | do not port as public values; map exact `pyowl_core` types to private ELK conversion | `src/pyelk/owl/__init__.py`, `indexing/conversion.py` | `parsing.md`, `indexing.md` | 1, 4 |
+| `elk-owl-parent/elk-owl-model/.../comparison`, `printers`, `util` | compiler-only compatibility observations; public structural identity/writing remains pyowl-core | `indexing/conversion.py` | `parsing.md`, `indexing.md` | 4 |
+| `elk-owl-parent/elk-owl-implementation/.../implementation`, `managers` | do not port; core owns construction/equality | none | `parsing.md` | 1 |
+| `elk-owl-parent/elk-owl-parsing-javacc/.../Owl2FunctionalStyleParser.jj` | oracle grammar evidence only; no pyELK parser | pyowl-core dependency, frozen fixtures | `parsing.md`, `verification.md` | 2–3 |
+| `elk-reasoner/.../loading/Owl2ParserLoader.java` | preserve observable load/conversion behavior without its Java threading/parser | `inputs.py`, `api.py` | `parsing.md` | 2, 10 |
 | `reasoner/completeness/Feature.java` | exact enum manifest | `reasoning/completeness.py`, test manifest | `compatibility.md`, `contracts.md` | 3 |
 | `TopIncompletenessMonitor.java`, `ObjectPropertyTaxonomyIncompleteness.java` | exact monitor logic | `reasoning/completeness.py` | `compatibility.md` | 3 |
 | `indexing/conversion/ElkEntityConverterImpl.java` | exact entity support | `indexing/conversion.py` | `compatibility.md`, `indexing.md` | 4 |
@@ -29,7 +29,7 @@ fate, pyELK destination, normative specification, and work package.
 | `taxonomy/*`, including quiet singleton taxonomies | class/property nodes, edges, realization, inconsistent collapse | `reasoning/taxonomy.py`, `realization.py` | `taxonomy-queries.md` | 8–9 |
 | `query/*` | complex expression and supported entailment query semantics | `reasoning/queries.py` | `compatibility.md`, `taxonomy-queries.md` | 9 |
 | `entailments/model`, supported converter/evidence decision logic | decision semantics only; no proof graph | `reasoning/queries.py` | `taxonomy-queries.md` | 9 |
-| `Reasoner.java`, non-incremental parts of `AbstractReasonerState.java` | Python facade, quiet-operation binding, and lazy stage behaviour | `ontology.py`, `api.py`, `config.py`, `result.py` | `contracts.md`, `compatibility.md` | 2, 10 |
+| `Reasoner.java`, non-incremental parts of `AbstractReasonerState.java` | Python facade, quiet-operation binding, and lazy stage behaviour | `inputs.py`, `api.py`, `config.py`, `result.py` | `contracts.md`, `compatibility.md` | 2, 10 |
 | non-incremental stage dependencies in `ReasonerStageManager.java` | simplified immutable session stages | `api.py`, backend sessions | `SPEC.md`, `saturation.md` | 10–11 |
 | `elk-reasoner/src/test/resources/test_input` | copy with attribution and canonicalise | `tests/data/elk-v0.6.0/` | `verification.md` | 3, 13 |
 | relevant `elk-reasoner/src/test/java` invariants | translate/select | corresponding Python/Rust tests | subsystem specs | owning WP, 13 |
@@ -48,7 +48,7 @@ fate, pyELK destination, normative specification, and work package.
 | `elk-benchmark` | replace with Python/Rust/Java benchmark harness |
 | progress monitors, Java executor lifecycle, logging/statistics-only classes | non-semantic operational API |
 | configuration evictors and incremental toggles | only frozen config fields in `contracts.md` survive |
-| OWL API parsing of RDF/XML/Turtle/OWL/XML/Manchester | format adapters are post-v1 and must compile to the same model |
+| OWL API parsing of RDF/XML/Turtle/OWL/XML/Manchester | Java adapters excluded; standalone formats come only from pyowl-core |
 
 ## 3. Required inference-to-test manifest
 
@@ -95,8 +95,8 @@ feature has been inserted into the frozen IR enum. The separate
 | Owned area | Sole primary owner before integration |
 |---|---:|
 | packaging scaffold, IR codec/contracts/test doubles | WP0 |
-| `owl/` | WP1 |
-| `parsing/` | WP2 |
+| pyowl-core dependency/version guard and public re-exports | WP1 (WP12 finalizes release metadata) |
+| `inputs.py`, shared view/provider integration, obsolete parser removal | WP2 |
 | completeness + oracle + manifests/frozen fixtures | WP3 |
 | `indexing/` except codec | WP4 |
 | pure property saturation | WP5 |

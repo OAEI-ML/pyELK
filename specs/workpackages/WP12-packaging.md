@@ -45,10 +45,12 @@ completeness/oracle corpus, benchmark thresholds/results.
 2. PyO3 `abi3-py310`, pinned Rust/Python build toolchain, locked release build.
 3. cibuildwheel tier-one matrix and native-hardware tests/audits.
 4. Universal wheel and sdist builds; every native wheel bundles the full fallback.
-5. Local simple-index/TestPyPI preference tests with native and pure artifacts together.
-6. Artifact content/metadata/Python-hash/JVM/shared-library/ABI audit tool.
-7. Atomic release workflow that publishes nothing unless the whole staged matrix passes.
-8. Documented reproducible local build commands and failure diagnostics.
+5. Runtime metadata pins `pyowl-core>=0.1,<0.2`; installed tests cover compatible core
+   pure/native variants and reject incompatible model/wire/adapter versions.
+6. Local simple-index/TestPyPI preference tests with native and pure artifacts together.
+7. Artifact content/metadata/Python-hash/JVM/shared-library/ABI audit tool.
+8. Atomic release workflow that publishes nothing unless the whole staged matrix passes.
+9. Documented reproducible local build commands and failure diagnostics.
 
 ## Acceptance criteria
 
@@ -62,8 +64,10 @@ completeness/oracle corpus, benchmark thresholds/results.
    optional source mode with a diagnostic fallback reason.
 5. Local-index pip chooses native on compatible CPython and universal on an unsupported
    interpreter/platform simulation.
-6. ABI3 and platform audits pass; archive scan finds no Java and no unallowlisted shared
-   library/absolute path.
+6. ABI3 and platform audits pass; archive/dependency scan finds no Java/JAR/class, JVM bridge
+   (including JPype/JNI), and no unallowlisted shared library/absolute path.
 7. Pure/native project metadata, Python sources, stubs, and type marker are identical.
 8. Matrix includes Linux glibc/musl x86-64/AArch64, macOS x86-64/arm64, and Windows AMD64;
    an architecture without native-hardware validation publishes fallback only.
+9. CPython 3.10 and 3.12 installed-artifact lanes pass for standalone and already-parsed
+   snapshot inputs with zero Java available.

@@ -1,311 +1,298 @@
-# OWL Values and Functional-Syntax Parsing
+# pyowl-core ingestion and ELK structural adaptation
 
-The native ELK core reads OWL 2 Functional-Style Syntax through
-`elk-owl-parsing-javacc`; other serialisations arrive through the out-of-scope OWL API
-adapter. pyELK v1 therefore implements Functional Syntax and programmatic values only.
+pyELK does not define an OWL object model, ontology document class, parser, import
+resolver, canonical OWL writer, or general-purpose ontology index. Those responsibilities
+belong to the Java-free distribution `pyowl-core` and import package `pyowl_core`.
+pyELK 0.1.x requires `pyowl-core>=0.1,<0.2` and Python 3.10 or later.
 
-References:
+This document is the normative boundary between the shared structural layer and pyELK's
+private ELK compiler. The OWL 2 Structural Specification remains the language authority;
+the pinned ELK 0.6.0 implementation remains the reasoner-behaviour oracle.
 
-- [OWL 2 structural specification and Functional Syntax](https://www.w3.org/TR/owl2-syntax/)
-- [`Owl2FunctionalStyleParser.jj`](https://github.com/liveontologies/elk-reasoner/blob/b8ac5ce83db0704a7359d96aa382891e2f547863/elk-owl-parent/elk-owl-parsing-javacc/src/main/javacc/org/semanticweb/elk/owl/parsing/javacc/Owl2FunctionalStyleParser.jj)
-- [`Owl2ParserLoader`](https://github.com/liveontologies/elk-reasoner/blob/b8ac5ce83db0704a7359d96aa382891e2f547863/elk-reasoner/src/main/java/org/semanticweb/elk/loading/Owl2ParserLoader.java)
-- [`OwlFunctionalStylePrinter`](https://github.com/liveontologies/elk-reasoner/blob/b8ac5ce83db0704a7359d96aa382891e2f547863/elk-owl-parent/elk-owl-model/src/main/java/org/semanticweb/elk/owl/printers/OwlFunctionalStylePrinter.java)
+## 1. Shared values are public values
 
-## 1. Value rules
+pyELK MUST import and, where convenient, re-export the exact `pyowl_core` classes. It MUST
+NOT subclass, proxy, copy, or recreate them. In particular, `IRI`, `Literal`, entities,
+individuals, class/property expressions, annotations, axioms, `OntologyDocument`,
+`OntologySnapshot`, `OntologyDelta`, and `OntologyOverlay` have the same class identity in
+both packages. `OntologyView` is the read-only consumer protocol; `OntologySnapshot`,
+`OntologyOverlay`, and `OntologyComposite` are sibling implementations.
 
-Public OWL values are immutable, slotted, transitively hashable dataclasses. They contain no
-integer reasoner IDs and do not hold a reference to an ontology, parser, or backend.
+This identity rule lets Exact-OM, pyELK, pyHermiT, and projectors exchange one parsed
+ontology without object-by-object conversion. pyELK-specific support state, polarity,
+numeric IDs, feature counts, and saturation data are not added to shared values; they live
+in pyELK's private `CompiledOntology` and backend sessions.
 
-```python
-@dataclass(frozen=True, slots=True, order=True)
-class IRI:
-    value: str
+The old planned `src/pyelk/owl/`, `src/pyelk/parsing/`, and `src/pyelk/ontology.py` model and
+parser implementations are removed from scope. A small `pyelk/inputs.py` adapter and public
+re-exports replace them.
 
-class OWLObject: ...
-class Entity(OWLObject): ...
-class ClassExpression(OWLObject): ...
-class Individual(OWLObject): ...
-class Axiom(OWLObject):
-    annotations: tuple[Annotation, ...]
-```
+## 2. Accepted ontology inputs
 
-Recursive OWL dataclasses use `eq=False` and inherit iterative structural equality/hash from
-`OWLObject`; generated dataclass tuple equality/hash is forbidden because it consumes the
-Python call stack on deeply nested expressions. That equality preserves the public stored
-field order and annotations. Simple leaf values may use generated equality.
-
-Concrete inheritance follows the OWL surface model: `Class` is both `Entity` and
-`ClassExpression`; `NamedIndividual` is both `Entity` and `Individual`, but is not a public
-`ClassExpression`; and `ObjectProperty` is both `Entity` and
-`ObjectPropertyExpression`. Indexing maps an individual to an internal nominal context root,
-which is an `ExpressionRecord`, without making invalid public class expressions legal.
-
-All constructors accept `IRI | str` where an IRI is expected and coerce strings to `IRI`.
-IRIs are Unicode strings but canonical ordering compares their UTF-8 bytes. Empty IRIs and
-strings containing illegal control characters raise `ValueError`; pyELK does not perform
-network normalisation or percent-decoding.
-
-The public model preserves operand and axiom order for non-canonical printing. The compiler
-creates its own canonical structural keys. This separation is important: property-chain
-order is semantic, while many class/axiom operand lists are semantically unordered; repeated
-members can still be significant for ELK conversions such as `DisjointClasses(A, A)`.
-
-## 2. Required public values
-
-### 2.1 Entities and literals
-
-```text
-Class
-NamedIndividual
-ObjectProperty
-DataProperty
-Datatype
-AnnotationProperty
-Literal(lexical_form, datatype=None, language=None)
-Annotation(property, value, annotations=())
-```
-
-`Literal` rejects simultaneous `datatype` and `language`. Language-tagged literals compare
-using the exact case-sensitive spelling retained by ELK 0.6.0; pyELK MUST NOT lowercase the
-tag even though BCP 47 language tags are semantically case-insensitive. Lexical forms are
-not datatype-value-normalised because ELK's core does not implement datatype reasoning.
-
-Literal structural identity uses a dedicated pinned-ELK key. A parsed untagged plain literal
-maps to `(lexical + "@", rdf:PlainLiteral)`; a language literal maps to
-`(lexical + "@" + language, rdf:PlainLiteral)`; and an explicitly typed literal uses its
-lexical form unchanged with its datatype. The public `language` field stores the tag without
-the leading `@`. This intentionally preserves ELK's observable structural quirks for
-`DataHasValue`. The public printer still emits valid Functional Syntax (`"x"`, `"x"@en`, or
-`"x"^^datatype`) instead of copying ELK's internal lexical storage.
-
-Predefined singletons are exported as `OWL_THING`, `OWL_NOTHING`,
-`OWL_TOP_OBJECT_PROPERTY`, and `OWL_BOTTOM_OBJECT_PROPERTY`. Constructing the same IRI
-directly yields an equal value; identity is not promised.
-
-### 2.2 Indexed class expressions
+The public input union is conceptually:
 
 ```python
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectIntersectionOf(ClassExpression):
-    operands: tuple[ClassExpression, ...]
-
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectSomeValuesFrom(ClassExpression):
-    property: ObjectPropertyExpression
-    filler: ClassExpression
-
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectHasValue(ClassExpression):
-    property: ObjectPropertyExpression
-    individual: NamedIndividual
-
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectHasSelf(ClassExpression):
-    property: ObjectPropertyExpression
-
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectOneOf(ClassExpression):
-    individuals: tuple[Individual, ...]
-
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectComplementOf(ClassExpression):
-    operand: ClassExpression
-
-@dataclass(frozen=True, slots=True, eq=False)
-class ObjectUnionOf(ClassExpression):
-    operands: tuple[ClassExpression, ...]
-
-@dataclass(frozen=True, slots=True, eq=False)
-class DataHasValue(ClassExpression):
-    property: DataProperty
-    value: Literal
+OntologyInput = (
+    str
+    | bytes
+    | bytearray
+    | memoryview
+    | os.PathLike[str]
+    | TextIO
+    | BinaryIO
+    | OntologyDocument
+    | OntologyView
+    | OntologySnapshot
+    | OntologyOverlay
+    | OntologyComposite
+    | SnapshotProvider
+)
 ```
 
-`ObjectPropertyExpression` is a named `ObjectProperty` in the supported fragment. The
-individual-to-class-expression bridge exists only in the compiled IR for nominals,
-assertions, and query processing.
+`OntologyInput` and `DocumentInput` are public `pyowl_core` typing exports;
+pyELK imports them and defines no new runtime values.
 
-Programmatic constructors permit zero/one/n-ary intersection, union, and one-of values so
-the edge conversions in `compatibility.md` are testable even where the W3C surface grammar
-imposes a minimum arity.
-
-### 2.3 Supported logical axioms
-
-```text
-Declaration(entity)
-SubClassOf(sub_class, super_class)
-EquivalentClasses(class_expressions)
-DisjointClasses(class_expressions)
-DisjointUnion(defined_class, class_expressions)
-ClassAssertion(class_expression, individual)
-SameIndividual(individuals)
-DifferentIndividuals(individuals)
-ObjectPropertyAssertion(property, subject, object)
-EquivalentObjectProperties(properties)
-SubObjectPropertyOf(sub_property_or_chain, super_property)
-ObjectPropertyDomain(property, domain)
-ObjectPropertyRange(property, range)
-ReflexiveObjectProperty(property)
-TransitiveObjectProperty(property)
-ObjectPropertyChain(properties)
-```
-
-Fields use tuples and the exact Functional Syntax argument order. Arity validation matches
-the W3C grammar when parsed, while direct constructors allow edge-case arities used by ELK
-unit tests.
-
-### 2.4 Unsupported but diagnosable objects
-
-The parser must accept every constructor recognised by the pinned JavaCC grammar even when
-reasoning ignores it. Implementing a public dataclass for all 100+ OWL object types is not
-required. Unsupported values use lossless generic nodes:
+Every public standalone entry point delegates to the shared coercion operation:
 
 ```python
-@dataclass(frozen=True, slots=True, eq=False)
-class UnsupportedExpression(ClassExpression):
-    constructor: str
-    arguments: tuple[OWLObject | IRI | Literal | str | int, ...]
-    feature: str
+def load_snapshot(
+    source: DocumentInput,
+    *,
+    options: LoadOptions | None = None,
+    resolver: ImportResolver | None = None,
+) -> OntologySnapshot: ...
 
-@dataclass(frozen=True, slots=True, eq=False)
-class UnsupportedAxiom(Axiom):
-    constructor: str
-    arguments: tuple[OWLObject | IRI | Literal | str | int, ...]
-    feature: str
-    annotations: tuple[Annotation, ...] = ()
-
-@dataclass(frozen=True, slots=True, eq=False)
-class AnnotationAxiom(Axiom):
-    constructor: str
-    arguments: tuple[object, ...]
-    annotations: tuple[Annotation, ...] = ()
+class Reasoner:
+    def __init__(
+        self,
+        ontology: OntologyInput,
+        config: ReasonerConfig | None = None,
+        *,
+        load_options: LoadOptions | None = None,
+        resolver: ImportResolver | None = None,
+    ) -> None: ...
 ```
 
-The `feature` is the exact upstream `Feature` enum name for the current constructor and, for
-polarity-sensitive expressions, is finalised during indexing. Generic nodes must print back
-to valid Functional Syntax without retaining original whitespace.
+`load_snapshot` is a thin pyELK convenience facade over `pyowl_core.load_snapshot` for
+standalone acquisition and, like the core function, accepts acquisition/document input
+only; core rejects view/provider input to `load_snapshot`, and pyELK never materializes a
+view to satisfy the concrete snapshot return type. Shared callers pass a view to
+`Reasoner`, whose first operation is
+`coerce_snapshot`; it returns that view unchanged and establishes no second cache. Format
+selection, byte decoding, parse limits,
+document IRIs, resolver behavior, import policy, syntax support, and source ownership are
+defined only by `pyowl_core.LoadOptions` and the core specification.
 
-Required generic coverage includes all data restrictions/axioms, anonymous individuals,
-universal/cardinality restrictions, inverse properties, negative assertions, functional,
-inverse-functional, symmetric/asymmetric/irreflexive and disjoint properties, keys,
-datatype definitions, SWRL, and remaining annotation forms.
+A plain `str` is always a filesystem path, never inline ontology text or a URL. Inline text
+uses an explicit `TextIO` plus core-required format/document IRI; URL acquisition belongs to
+an explicitly configured `ImportResolver`.
 
-## 3. Factories and convenience functions
+`Reasoner` calls `pyowl_core.coerce_snapshot` exactly once. It MUST NOT pre-read a source to
+guess its format and then ask core to read it again.
+Options incompatible with an existing view propagate core `OptionConflictError`; pyELK never
+reparses to satisfy them.
 
-`pyelk.owl` exports Pythonic helpers without hiding the value classes:
+Before compilation it checks `view.capabilities`: adapter protocol/model compatibility and
+the complete structural constructor families required by the ELK scanner are mandatory;
+source-map spelling is optional with the explicit fallback in §7. Missing requirements raise
+core `AdapterCompatibilityError` before any private IR is published.
+
+## 3. Zero-reparse and adapter handshake
+
+Input coercion obeys these rules:
+
+1. A compatible `OntologyView` (`OntologySnapshot`, `OntologyOverlay`, or
+   `OntologyComposite`) is returned by identity. No axiom,
+   entity, literal, import graph, or index is copied merely to establish the session.
+2. For `SnapshotProvider`, pyELK calls `owl_snapshot()` once per reasoner construction and
+   then coerces the returned value. Exact-OM implements this protocol when it already owns
+   a shared snapshot. pyELK MUST NOT import Exact-OM or inspect its private records.
+3. An `OntologyDocument` is assembled into a snapshot by core without reparsing it.
+4. Only a path, bytes value, or stream invokes core parsing. Imports are acquired and
+   parsed at most once per core load/cache policy.
+5. Duck-typed legacy ontology objects are not traversed implicitly. An explicit adapter or
+   `SnapshotProvider` prevents accidental O(n) conversions and ambiguous semantics.
+
+`pyowl_core.compose_views(*views, delta=None, roles=None)` builds a zero-copy
+`OntologyComposite` for Exact-OM source + target + bridge/mapping axioms. pyELK compiles its
+effective logical view while retaining component/provenance roles. It does not concatenate
+the component axiom collections.
+
+The handshake is view-based, not reasoner-to-reasoner. pyELK never consumes pyHermiT
+clauses or Exact-OM records, and neither package consumes ELK indexes.
+
+## 4. Imports closure and completeness
+
+An `OntologyView` is an immutable read-only view. Snapshots retain resolved document
+boundaries; overlays retain base+delta; composites retain their component roles. Every view
+exposes effective closure provenance, ontology/import identities, source provenance, and
+unresolved-import diagnostics. pyELK
+iterates the logical axiom closure through `view.iter_axioms(...)`, obtains entity universes
+through `view.signature(...)`, and requests core's lazily cached shared indexes/views where
+appropriate; it MUST NOT flatten and
+copy all imported axioms into a second public ontology.
+
+For standalone loading, `LoadOptions.imports` is authoritative and uses core's secure
+`RESOLVE_LOCAL`/offline default. Network access is never implicit. Callers may explicitly
+choose core `ImportPolicy.IGNORE` or `RECORD_UNRESOLVED` only with pyELK's
+incomplete-import guard. Missing, rejected, or deliberately ignored imports have these effects:
+
+- a strict policy fails in `pyowl_core` before compilation;
+- a snapshot explicitly marked as incomplete may be consumed only when pyELK configuration
+  permits incomplete imports; and
+- every affected reasoning result carries `PolicyFeature.IGNORED_IMPORT`, so it can never
+  be reported complete accidentally.
+
+For a composite, one incomplete member makes the effective view incomplete for this policy;
+component roles do not hide or downgrade the issue.
+
+The legacy `ReasonerConfig.ignore_imports` boolean is removed. Import acquisition is an
+input-layer policy; pyELK configuration may contain only an explicit
+`allow_incomplete_imports` guard for accepting a snapshot whose core provenance already
+records that condition.
+
+## 5. Fingerprints, revisions, and overlays
+
+pyELK uses core-defined fingerprints without redefining their bytes:
+
+- per-source byte SHA-256 is acquisition provenance only;
+- `document_fingerprint` identifies a canonical complete document;
+- `structural_fingerprint` identifies the resolved closure including annotations and the
+  import graph;
+- `logical_fingerprint` identifies the logical axiom closure; and
+- `signature_fingerprint` identifies the visible declared/used signature.
+
+ELK compilation and semantic caches key at least on `logical_fingerprint`,
+`signature_fingerprint`, the pyowl-core public/wire compatibility versions, pyELK compiler
+schema, pinned ELK compatibility version, and compiler options. A cache concerned with
+annotations/import diagnostics additionally includes `structural_fingerprint`. Source
+paths, timestamps, syntax, prefix spelling, Python hashes, and object addresses are never
+semantic cache keys.
+
+`OntologyOverlay` is an immutable `OntologyDelta` over an allowed base view and is a sibling
+implementation, not an `OntologySnapshot` subclass. pyELK v1 is
+not required to update saturation incrementally: it may compile a new private ELK IR for an
+overlay. It MUST nevertheless traverse the overlay read-through view without materializing
+or copying the unchanged base axiom closure. Core alone decides when an overlay chain is
+compacted according to explicit depth/memory policy. A reasoner captures one exact
+view revision; later overlays/composites do not mutate that session.
+
+## 6. Ownership, lifetime, and copy budget
+
+Core documents, ontology views, axioms, and indexes are immutable and caller-shareable.
+A `Reasoner` retains a strong reference to its captured view until `close()` so
+borrowed native buffers and public entity mappings cannot dangle. Closing a reasoner never
+closes or invalidates the core object.
+
+Source ownership is delegated to core: core closes streams it opens and never closes a
+caller-provided stream. Resolver-owned resources follow the resolver contract.
+
+Copy expectations are normative:
+
+- view/provider ingestion: zero structural-model copies and zero reparses;
+- Python compilation: one new private ELK IR plus bounded temporary tables, with iteration
+  directly over core `iter_axioms`/`signature` values and indexes;
+- native compilation/transfer: prefer borrowed buffers, `memoryview`, or an mmap-backed
+  snapshot from `pyowl_core.open_snapshot`; otherwise at most one contiguous bulk copy per
+  created session;
+- no per-axiom Python/Rust callback in a hot reasoning loop; and
+- no canonical Functional Syntax or RDF serialization as an intermediate representation.
+
+Necessary ELK indexes, normalized expressions, feature occurrence vectors, and saturation
+state are intentionally new reasoner-owned data, not a violation of the zero-copy input
+contract.
+
+## 7. ELK compiler compatibility keys
+
+pyowl-core provides the standards-correct, source-preserving OWL structural model. Pinned
+ELK quirks MUST NOT alter that public model. The pyELK compiler derives private compatibility
+keys only where ELK 0.6.0 observable behavior needs them.
+
+For literals, core preserves lexical form, canonicalizes language tags to lowercase public
+identity, and may retain the original tag token in an optional `SourceMap`. Public `Literal`
+equality and writing follow core. When the pinned ELK oracle distinguishes source tag case or
+maps plain literals to its historical `(lexical + "@tag", rdf:PlainLiteral)` representation,
+indexing creates an `ElkCompatibilityKey` in the compiled IR. If source spelling is
+available, the key uses it. If a programmatic/wire/shared view has no source spelling, it uses
+the canonical core tag, records that fallback in compiler diagnostics, and MUST NOT reparse a
+path to recover trivia. A digest of any source-spelling compatibility inputs participates in
+the pyELK compiler cache key. The private key is not exported, written back into the core
+literal, or used by another consumer. Tests prove standards-correct shared identity, pinned
+ELK source compatibility, and deterministic canonical fallback.
+
+Likewise, ELK-supported/unsupported constructors are determined by an exhaustive pyELK
+adapter table over core axiom/expression types. Core never creates generic
+`UnsupportedExpression` or `UnsupportedAxiom` placeholders for pyELK. A structurally valid
+OWL construct remains a real core value; pyELK's transactional converter records the exact
+ELK `Feature` and ignores/partially indexes it according to `compatibility.md`.
+
+## 8. Version and wire compatibility
+
+- Packaging requires `pyowl-core>=0.1,<0.2`; dependency resolution, not a best-effort duck
+  type, enforces the initial API line.
+- Compatibility reads core `API_VERSION` and parses package SemVer; it never compares
+  `__version__` strings lexically.
+- A provider/view with missing capabilities or incompatible model/adapter versions fails
+  before compilation with core `AdapterCompatibilityError`, reporting expected and actual
+  package/API/model/wire/adapter values.
+- Core's independent wire format begins with `PYOCORE\0`. Major mismatch is a hard error;
+  readers may skip unknown optional sections within a compatible major; corrupt or unknown
+  required sections fail closed.
+- Shared persistence uses only `pyowl_core.encode_snapshot`, `decode_snapshot`, and
+  `open_snapshot(path, mmap=True, verify=True)`; pyELK does not invent aliases or inspect
+  private core buffers.
+- Persistent shared-model caches are discarded and rebuilt on incompatible core API/wire
+  or fingerprint schema. They are never interpreted optimistically.
+- pyELK's private `PYELKIR` schema remains separate. It may change without changing the
+  pyowl-core format and MUST NOT be presented as a shared ontology serialization.
+
+Adapters declare the exact pyowl-core API range they implement. There is no global adapter
+registry import at package import time; optional adapters are loaded only on explicit use.
+
+## 9. Public construction helpers
+
+pyELK may re-export selected `pyowl_core` factories such as class/entity constructors for
+ergonomics, but the objects returned are exact core instances. Convenience functions such
+as `intersection` are aliases/delegates to core behavior and MUST NOT introduce ELK-only
+simplifications into public OWL values. ELK simplification belongs in indexing.
+
+Standalone examples use ordinary paths/streams:
 
 ```python
-def class_(iri: IRI | str) -> Class: ...
-def individual(iri: IRI | str) -> NamedIndividual: ...
-def object_property(iri: IRI | str) -> ObjectProperty: ...
-def intersection(*xs: ClassExpression) -> ClassExpression: ...
-def some(prop: ObjectProperty, filler: ClassExpression) -> ObjectSomeValuesFrom: ...
-def has_value(prop: ObjectProperty, value: NamedIndividual) -> ObjectHasValue: ...
+from pyelk import Reasoner
+
+with Reasoner("large.ofn") as reasoner:
+    taxonomy = reasoner.classify()
 ```
 
-`intersection()` is a semantic convenience: zero returns `OWL_THING`, one returns its
-operand, and multiple returns `ObjectIntersectionOf`. Raw class constructors never perform
-those simplifications.
-
-## 4. Lexer
-
-The lexer is iterative and incremental. It accepts `str`, UTF-8 `bytes`, text/binary streams,
-and paths without reading the entire document into one string. A bounded lookahead buffer is
-allowed. Token objects contain kind, decoded value, byte offset, line, and column.
-
-It implements the pinned grammar's:
-
-- identifiers and all OWL Functional Syntax keywords;
-- full IRIs `<...>` and prefix names, including default prefix `:`;
-- `Prefix(name:=<iri>)` declarations;
-- quoted strings and the standard escapes used by OWL Functional Syntax;
-- language tags and datatype markers;
-- integers/nonnegative integers used by unsupported cardinality nodes;
-- whitespace and `#` comments outside IRIs/strings;
-- exact end-of-input and balanced-parenthesis errors.
-
-Invalid UTF-8, illegal escapes, unclosed strings/IRIs, unknown prefixes, and
-unexpected tokens raise `ParseError` with the first offending span. Parser tests compare
-category and position, not Java's English wording.
-
-## 5. Parser and document handling
+Shared in-process examples pass an existing snapshot:
 
 ```python
-def _parse_document(source: Source) -> ParsedDocument: ...
-def iter_axioms(source: Source) -> Iterator[Axiom]: ...
-def parse_class_expression(
-    text: str, *, prefixes: Mapping[str, IRI] | None = None
-) -> ClassExpression: ...
-def parse_axiom(text: str, *, prefixes: Mapping[str, IRI] | None = None) -> Axiom: ...
+snapshot = exact_om_run.owl_snapshot()
+with Reasoner(snapshot) as reasoner:  # same snapshot object; no parse
+    result = reasoner.is_consistent()
 ```
 
-`ParsedDocument` is a private acyclic hand-off containing the document fields; public
-`Ontology.parse` in `ontology.py` calls `_parse_document` and constructs the immutable
-document. Thus `parsing` imports only `owl`, while `ontology` imports `owl` and `parsing`.
-`iter_axioms` yields after a complete axiom and keeps at most the current object graph plus a
-small token buffer. `Ontology.parse` materialises the yielded tuple. The default parser does
-not start a worker thread; Python callers can place iteration on their own thread.
+## 10. Acceptance requirements
 
-Document rules:
-
-1. Prefix declarations apply to the remainder of the document; duplicate prefix names use
-   the last declaration, matching the parser fixture oracle.
-2. `Ontology(` may contain optional ontology/version IRIs, direct imports, ontology
-   annotations, and axioms.
-3. Import declarations are recorded but never opened.
-4. Axiom annotations are parsed recursively and retained.
-5. Unknown constructor keywords are syntax errors. Known-but-unsupported constructors
-   become generic nodes, not parse errors.
-6. An unsupported constructor nested in a supported axiom remains nested so indexing can
-   transactionally reject the containing axiom and record the correct feature/polarity.
-7. The parser accepts the 124 pinned ELK Functional Syntax ontology fixtures.
-
-## 6. Canonical printer
-
-```python
-def functional_syntax(obj: OWLObject | Ontology, *, canonical: bool = True) -> str: ...
-```
-
-Both modes produce valid UTF-8 Functional Syntax with escaped literals and full IRIs.
-
-- `canonical=False` preserves stored operand, axiom, annotation, and import order.
-- `canonical=True` uses full IRIs, sorts prefix-free axioms by structural key, sorts
-  semantically unordered operands while retaining multiplicity, preserves property-chain
-  order, and uses one space between tokens with two-space ontology indentation.
-- Canonical printing is idempotent: parse → canonical print → parse → canonical print is
-  byte-identical.
-- Canonical printing does not discard annotations or unsupported nodes.
-
-Canonical output is used as the Java-oracle input and source fingerprint. It is not required
-to match ELK's printer whitespace.
-
-## 7. Structural keys
-
-Every OWL value has an internal `structural_key(obj) -> bytes` defined in `owl/keys.py`.
-It is a flat, length-delimited canonical token encoding built with an explicit stack; nested
-Python tuples are not used as recursive comparison keys.
-
-- entities encode entity-kind and UTF-8 IRI;
-- literals encode the pinned ELK lexical/datatype key described in §2.1;
-- ordered constructors encode constructor tag and length-delimited child keys in order;
-- semantically unordered constructors/axioms encode constructor tag and sorted child keys
-  while retaining duplicates;
-- document keys append sorted annotation keys; logical indexing keys omit annotations;
-- a separate order-preserving field key backs public `__eq__`/`__hash__`.
-
-Keys and public hashes must not depend on Python's salted hash for ordering or compilation;
-`__hash__` may fold the flat field-key bytes with Python's process-local hash because hash
-values themselves are not serialised. Equality remains exact field equality and is
-collision-safe.
-
-## 8. Test requirements
-
-- Port the upstream implementation parser/printer tests and `owl2primer.owl` fixture with
-  attribution.
-- Round-trip every ELK `test_input/**/*.owl` file.
-- Property-test strings, Unicode IRIs/literals, prefix expansion, arbitrary nesting, and
-  chunk boundaries one byte before/inside/after every token type.
-- Assert streaming memory is `O(max-axiom-size + stored-output)`, not `O(file-size)` for
-  `iter_axioms`.
-- Test all unsupported constructors map to the exact feature name used by indexing.
-- Test malformed input never panics, loops, or allocates from an unbounded declared length.
+1. Identity tests show every re-exported OWL/core class is the same object as its
+   `pyowl_core` counterpart and no `pyelk.owl` wrapper class exists.
+2. Path, bytes, text/binary stream, document, snapshot, overlay, composite, and provider inputs all
+   produce the same compiled semantic result.
+3. A counting provider proves one `owl_snapshot()` call; parser instrumentation proves zero
+   parser calls for document/snapshot/overlay/composite/provider inputs.
+4. A million-axiom snapshot compiles without a second materialized OWL axiom collection;
+   an overlay changing O(k) axioms consumes O(k) core overlay memory before private ELK
+   compilation, and a source/target/bridge composite concatenates no component collection.
+5. Cyclic/multi-document imports are traversed once in deterministic closure order and
+   ignored/missing imports never receive a complete result.
+6. Fingerprint/cache property tests vary syntax, paths, prefix spelling, import order,
+   Python hash seed, and backend while preserving the correct semantic keys.
+7. Literal tests separate core structural/standards identity from private pinned-ELK keys,
+   including language-tag case and plain-literal regressions.
+8. Supported and unsupported core constructor coverage is exhaustive and tied to the ELK
+   feature manifest; no valid OWL construct is lost during parsing.
+9. Core 0.1 compatibility, wire-major rejection, optional-section skipping, corrupt-cache
+   rebuilding, stream ownership, overlay lifetime, and close behavior are tested.
+10. All tests run on CPython 3.10 and 3.12 without Java; Java is used only by an explicitly
+    selected development-oracle lane.

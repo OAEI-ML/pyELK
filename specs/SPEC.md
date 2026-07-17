@@ -10,6 +10,11 @@ The installable distribution is `pyelk-reasoner`; its Python import namespace is
 The distinct distribution name avoids the unrelated project already published as `pyelk`
 on PyPI without changing the public Python API.
 
+The canonical OWL structural layer is the separate distribution `pyowl-core` / import
+`pyowl_core`. pyELK 0.1.x requires `pyowl-core>=0.1,<0.2`, re-exports its OWL values by
+identity, and accepts its immutable `OntologyView` implementations without reparsing.
+pyELK owns only ELK-specific compilation, saturation, results, and reasoner lifecycle.
+
 This document is the project constitution. Detailed behaviour is normative in the linked
 subsystem specifications. The words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are used
 normatively.
@@ -42,7 +47,8 @@ in [`compatibility.md`](compatibility.md).
    boundary, pyELK and the pinned Java oracle produce equal canonical results, including
    directness, top/bottom nodes, inconsistency behaviour, fresh-entity behaviour, and
    potential-incompleteness reasons.
-2. **No Java dependency.** Installation, import, parsing, and reasoning work without a JRE,
+2. **No Java dependency.** Installation, import, shared-core parsing, and reasoning work
+   without a JRE,
    Maven, JVM bridge, subprocess, downloaded JAR, or network access. Java is permitted only
    in the opt-in fixture regeneration and differential-test tooling.
 3. **Always-working fallback.** `pip install pyelk-reasoner` and installation from an sdist
@@ -54,14 +60,19 @@ in [`compatibility.md`](compatibility.md).
    loops.
 5. **One public API.** Backend choice cannot change values, types, exceptions, completeness
    metadata, or deterministic ordering.
-6. **Parallel implementation.** Stable contracts, owned paths, dependency waves, and exact
+6. **Parse once, compile per reasoner.** Paths and streams are loaded by pyowl-core;
+   compatible documents, snapshots, overlays, composites, and `SnapshotProvider` objects are
+   consumed
+   without reparsing or copying the public structural model. ELK indexes remain private.
+7. **Parallel implementation.** Stable contracts, owned paths, dependency waves, and exact
    acceptance gates allow independent agents to implement work packages without editing
    the same files.
 
 ## 3. In scope
 
-- Immutable OWL object values and factories needed by ELK's native object model.
-- Streaming OWL 2 Functional-Style Syntax parsing and canonical printing.
+- Exact re-exports of pyowl-core OWL structural values and factories.
+- Standalone loading through pyowl-core plus zero-reparse view/provider input, including
+  source/target/bridge composites.
 - Annotation acceptance with no logical effect, as in ELK core.
 - Polarity-aware indexing and normalisation.
 - Object-property hierarchy and property-chain saturation.
@@ -77,14 +88,21 @@ in [`compatibility.md`](compatibility.md).
 
 ## 4. Explicit non-goals
 
-- Incremental addition/removal and incremental taxonomy repair.
+- Incremental ELK saturation/taxonomy repair. Immutable core overlays are accepted as new
+  inputs and may be compiled without copying their unchanged base.
 - Proof objects, tracing, explanations, justifications, or proof plug-in extension points.
-- OWL API, Protégé, ORE, Java-compatible class names, or a Java-style visitor surface.
+- A second OWL API/model/parser, Protégé, ORE, Java-compatible class names, or a Java-style
+  visitor surface.
 - A command-line application or server.
-- RDF/XML, Turtle, OWL/XML, Manchester Syntax, network imports, catalog resolution, or
-  ontology fetching in version 1. Functional Syntax and programmatic construction are the
-  core ingestion surfaces. Later format adapters MUST compile to the same public model.
+- Syntax parsing, RDF mapping, canonical OWL writing, resolver implementation, or import
+  acquisition inside pyELK. Any syntax/resolver supported by pyowl-core is usable through
+  the same snapshot contract; network access remains explicitly opt-in at the core resolver.
 - Complete OWL 2 DL reasoning or silently improving ELK's known incomplete cases.
+- An in-process cooperative timeout or interruption API. `ReasonerConfig` has no timeout
+  field and native saturation is not required to poll Python signals mid-stage. A caller
+  that must bound wall-clock time runs the reasoner in a separate, terminable process fed
+  by core wire input (`encode_snapshot`/`open_snapshot`) — the pattern OAEI-Bio-ML-eval's
+  timeout workers use. Values already returned remain valid.
 - Byte-for-byte reproduction of Java serialisation, log messages, hash iteration order,
   timing, thread scheduling, exception wording, or internal proof/conclusion identities.
 
@@ -120,13 +138,13 @@ pyELK/
 ├── rust/                            # native backend; one PyO3 module
 ├── src/pyelk/
 │   ├── __init__.py                  # small public export surface
-│   ├── api.py                       # Ontology and Reasoner facade
-│   ├── ontology.py                  # immutable document + parse/print entry points
+│   ├── api.py                       # Reasoner and standalone loading facade
+│   ├── core.py                      # pyowl-core version/types/re-export guard
+│   ├── inputs.py                    # coerce_snapshot/provider capture only
 │   ├── config.py                    # frozen ReasonerConfig
 │   ├── result.py                    # public nodes, taxonomies, ReasoningResult
 │   ├── exceptions.py
-│   ├── owl/                         # immutable OWL object model and factories
-│   ├── parsing/                     # Functional Syntax lexer/parser/printer
+│   ├── owl/__init__.py              # exact pyowl_core re-exports; no model classes
 │   ├── indexing/                    # polarity conversion + canonical compiled IR
 │   ├── reasoning/
 │   │   ├── contracts.py             # backend/session protocol; frozen first
@@ -161,11 +179,12 @@ conditional pure/native wheel build reliably. It MUST contain no package behavio
 ## 7. Import and ownership rules
 
 ```text
-owl
-├── parsing -> owl
-├── ontology -> owl, parsing
-├── indexing -> owl, ontology
-└── result -> owl, reasoning.contracts
+pyowl_core
+├── core -> pyowl_core
+├── owl re-exports -> pyowl_core
+├── inputs -> core, pyowl_core
+├── indexing -> core, pyowl_core, inputs
+└── result -> core, pyowl_core, reasoning.contracts
 
 reasoning.contracts -> indexing
 reasoning.{completeness,properties,conclusions,contexts,rules,saturation} ->
@@ -174,10 +193,11 @@ reasoning.{taxonomy,realization,queries} -> reasoning core, result, owl
 backends.python -> reasoning core
 backends.rust -> reasoning.contracts, _native
 backends dispatcher -> both backend adapters
-api -> parsing, indexing, backends, result, config
+api -> inputs, indexing, backends, result, config
 ```
 
-- `owl`, `parsing`, `indexing`, and public result values MUST NOT import a backend.
+- `core`, `owl`, `inputs`, `indexing`, and public result values MUST NOT import a backend.
+- pyELK MUST NOT implement or monkey-patch pyowl-core model/parser/resolver behavior.
 - No Python reasoning module may import `pyelk._native`.
 - Rust and Python consume the same frozen `CompiledOntology` and implement the same
   `BackendSession` protocol.
@@ -192,8 +212,9 @@ contract issue and applied by the owning or integration work package.
 ## 8. Pipeline
 
 ```text
-Functional Syntax / Python objects
-  -> immutable Ontology
+path / bytes / stream / core document / OntologyView / SnapshotProvider
+  -> pyowl_core.coerce_snapshot (identity preserving for shared inputs)
+  -> immutable OntologyView (snapshot, overlay, or composite)
   -> feature scan + polarity-aware axiom conversion
   -> deterministic CompiledOntology
   -> object-property closure
@@ -204,8 +225,10 @@ Functional Syntax / Python objects
 ```
 
 Stages are lazy at the facade: a consistency query need not build every taxonomy. Within a
-backend session, each stage is monotone and memoised. Because v1 has no incremental updates,
-an `Ontology` is snapshotted when a `Reasoner` is created and the session is immutable.
+backend session, each stage is monotone and memoised. `Reasoner` captures one exact immutable
+core view and its fingerprints. Because v1 has no incremental ELK engine, a new
+overlay may require a new private compiled IR/session; it never requires reparsing or copying
+the unchanged public base.
 
 ## 9. Backend policy
 
@@ -244,10 +267,15 @@ availabilities, version/ABI information, and any fallback or selection error. A 
 8. The Python wheel and sdist contain no Java binaries and make no network access.
 9. The pure-Python test suite runs in an environment with `PATH` containing neither Java,
    Cargo, nor a C compiler.
+10. Compatible core views cross the facade by identity; only necessary private
+    ELK indexes/IR may be newly allocated.
+11. Public OWL/entity/literal/axiom values are exact `pyowl_core` types. Pinned ELK quirks
+    exist only in compiler compatibility keys.
 
 ## 11. Coding and quality rules
 
 - Python 3.10+, `src/` layout, public type hints, `py.typed` marker.
+- Runtime dependency `pyowl-core>=0.1,<0.2`; no other general OWL model/parser dependency.
 - `ruff format`, `ruff check`, strict `mypy`, `pytest`, `hypothesis`, and `import-linter`.
 - Immutable slotted dataclasses for public OWL/result values; no module-level mutable
   reasoner state.
@@ -269,7 +297,7 @@ availabilities, version/ABI information, and any fallback or selection error. A 
 |---|---|
 | [`compatibility.md`](compatibility.md) | language boundary, partial support, completeness, operation parity |
 | [`contracts.md`](contracts.md) | public API, compiled IR, backend/session and result types |
-| [`parsing.md`](parsing.md) | OWL object values, Functional Syntax parser/printer |
+| [`parsing.md`](parsing.md) | pyowl-core inputs/views, adapters, ownership, versions, ELK compatibility keys |
 | [`indexing.md`](indexing.md) | polarity conversion, interning, deterministic normalised IR |
 | [`saturation.md`](saturation.md) | property closure, conclusions, rules, scheduling, consistency |
 | [`taxonomy-queries.md`](taxonomy-queries.md) | classification, realisation, directness, query semantics |

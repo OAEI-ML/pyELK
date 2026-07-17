@@ -18,7 +18,7 @@ counts, rule-registration metadata, and deterministic IDs.
 
 ## Depends on
 
-WP1 and WP3 (plus WP0 transitively).
+WP1, WP2, and WP3 (plus WP0 transitively).
 
 ## Owned paths
 
@@ -36,22 +36,28 @@ tests/data/manifests/registration.toml
 
 ## Forbidden paths
 
-WP0 `ir.py`/`codec.py` contracts, OWL/parser/completeness, reasoning engine/taxonomy/query,
+WP0 `ir.py`/`codec.py` contracts, pyowl-core/input/completeness, reasoning engine/taxonomy/query,
 backends, Rust, facade, build/oracle data.
 
 ## Deliverables
 
 1. Per-axiom transaction builder with complete rollback and strict/default modes.
 2. Positive/negative/dual expression visitors and exact feature increments.
-3. Structural interning and all simplifications/binarisation from `indexing.md`.
+3. Structural interning and all simplifications/binarisation from `indexing.md`, traversing
+   core views directly without a copied public axiom closure.
 4. Axiom conversion tables for class, disjointness/individual, property, range/reflexive,
    and partial cases.
 5. Occurrence-driven rule-registration manifest/data consumed later by both engines.
-6. Deterministic freeze/rewrite/sort into WP0 records and source fingerprint.
+6. Deterministic freeze/rewrite/sort into WP0 records and source fingerprint derived from
+   core logical/signature fingerprints and schema versions without serializing OWL text/RDF;
+   structural/import provenance stays in facade capture metadata.
 7. Query-expression and entailment `CompiledQuery` builders, including exact local feature
    counts, complete fresh-entity enumeration, and transactional `encoded=None` results for
    unindexable queries.
 8. Validation, golden conversion rows, and property tests.
+9. Private `ElkCompatibilityKey` derivation that preserves pinned-ELK behavior while
+   leaving core literal identity/source spelling untouched; source-map and canonical-fallback
+   modes are diagnostic and cache-keyed.
 
 ## Acceptance criteria
 
@@ -66,4 +72,6 @@ backends, Rust, facade, build/oracle data.
    and multiple hash seeds.
 5. Random compiled IR passes WP0 validation; compile → encode → decode preserves records.
 6. Ignored-only entities/rules never appear; annotations never change logical rows/fingerprint.
-7. No reasoning rule is executed in indexing and no forbidden path changed.
+7. View/provider inputs prove zero reparsing; equal effective views/fingerprints give
+   deterministic IR; million-axiom compilation has no duplicate public model collection.
+8. No reasoning rule is executed in indexing and no forbidden path changed.

@@ -144,7 +144,9 @@ Violations raise `BackendProtocolError`.
 
 For a named class/property already in a taxonomy:
 
-- `equivalent_*` returns its node;
+- `equivalent_*` returns its node (`equivalent_classes` wraps it in a
+  one-element tuple; only an unindexed complex query yields an empty tuple —
+  see `contracts.md` §4);
 - `sub*(direct=True)` returns immediate incoming sub nodes;
 - `super*(direct=True)` returns immediate outgoing super nodes;
 - `direct=False` returns strict transitive closure and excludes the entity's own node;
@@ -244,8 +246,8 @@ Zero/one/n-ary corner behaviour is oracle-tested where the pinned converter defi
 rather than delegated to Python truthiness. A zero-member `EquivalentClasses` or
 `SameIndividual` is accepted as an ontology-model edge value but is outside the entailment
 query boundary: the facade raises `ValueError` before backend execution. This avoids
-reproducing the pinned Java converter's unchecked empty-list access; parsed Functional
-Syntax can never construct either malformed query.
+reproducing the pinned Java converter's unchecked empty-list access; conforming pyowl-core
+parsers/builders cannot construct either malformed query.
 Unsupported entailment axiom types have `value=False` plus their `QUERY_*` issue in ignore
 mode. Query incompleteness is the union of ontology issues relevant to entailment and issues
 caused by the query itself.

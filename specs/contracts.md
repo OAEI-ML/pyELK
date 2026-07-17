@@ -9,7 +9,7 @@ integration decision and matching spec update.
 `pyelk.__init__` exports only:
 
 ```python
-from pyelk.api import Ontology, Reasoner
+from pyelk.api import Reasoner, load_snapshot
 from pyelk.config import ReasonerConfig
 from pyelk.result import (
     CompletenessIssue,
@@ -19,46 +19,63 @@ from pyelk.result import (
     ReasoningResult,
     Taxonomy,
 )
-from pyelk.owl import *  # explicit __all__, described in parsing.md
+from pyelk.owl import *  # exact pyowl_core re-exports; explicit __all__
+from pyowl_core import (
+    API_VERSION,
+    Fingerprint,
+    ImportResolver,
+    LoadOptions,
+    OntologyDelta,
+    OntologyDocument,
+    OntologyOverlay,
+    OntologySnapshot,
+    OntologyComposite,
+    OntologyView,
+    SnapshotProvider,
+)
 from pyelk.backends import backend_report
 ```
 
 Private compiled/native types are never re-exported.
 
-## 2. `Ontology`
+Every re-exported OWL structural type is the exact `pyowl_core` class object. pyELK MUST NOT
+publish a wrapper ontology/model hierarchy. Core input exceptions may be re-exported by
+identity; wrapping and losing source/import diagnostics is forbidden.
+
+## 2. Ontology input and captured view
 
 ```python
+def load_snapshot(
+    source: DocumentInput,
+    *,
+    options: LoadOptions | None = None,
+    resolver: ImportResolver | None = None,
+) -> OntologySnapshot: ...
+
 @dataclass(frozen=True, slots=True)
-class Ontology:
-    axioms: tuple[Axiom, ...] = ()
-    ontology_iri: IRI | None = None
-    version_iri: IRI | None = None
-    imports: tuple[IRI, ...] = ()
-    annotations: tuple[Annotation, ...] = ()
-
-    @classmethod
-    def parse(
-        cls,
-        source: str | bytes | PathLike[str] | TextIO | BinaryIO,
-        *,
-        format: Literal["functional"] = "functional",
-    ) -> Ontology: ...
-
-    def functional_syntax(self, *, canonical: bool = True) -> str: ...
-    def with_axioms(self, *axioms: Axiom) -> Ontology: ...
+class CapturedOntology:
+    view: OntologyView
+    structural_fingerprint: Fingerprint
+    logical_fingerprint: Fingerprint
+    signature_fingerprint: Fingerprint
+    core_package_version: str
+    core_api_version: tuple[int, int]
+    core_model_schema_version: int
+    core_wire_format_version: tuple[int, int]
+    core_adapter_protocol_version: int
 ```
 
-`str` is interpreted as Functional Syntax text when it contains a newline or begins with
-`Prefix(` / `Ontology(` after whitespace; otherwise a string is a path. Callers can avoid
-heuristics with an open stream or `Path`.
-
-`Ontology` preserves parsed order and duplicates for round trips. Compilation treats logical
-axioms as an ontology set after feature scanning. `with_axioms` returns a new value.
-
-Imports are metadata only. The parser never resolves or fetches them. Passing an ontology
-with nonempty `imports` to `Reasoner` raises `UnresolvedImportError` unless
-`ReasonerConfig(ignore_imports=True)`; ignored imports add a completeness issue. A caller
-that loads an import closure combines its axioms explicitly.
+`load_snapshot` delegates exactly to `pyowl_core.load_snapshot` for standalone acquisition
+and returns a concrete snapshot. Like the core function, it accepts
+acquisition/document input only (`pyowl_core.DocumentInput`); an existing
+view or provider is passed to `Reasoner`, which coerces it by identity —
+materializing a view into a snapshot to satisfy this convenience signature
+would violate the zero-copy contract, so `load_snapshot` rejects such input
+exactly as core does. `Reasoner` uses
+`pyowl_core.coerce_snapshot`. Compatible views are retained by identity and
+providers are called once. `CapturedOntology` is pyELK metadata, not a second ontology: it
+holds one strong reference and copies only small version/fingerprint strings. Full input,
+import, ownership, overlay, and compatibility rules are normative in `parsing.md`.
 
 ## 3. Configuration
 
@@ -69,7 +86,7 @@ class ReasonerConfig:
     workers: int = 0
     allow_fresh_entities: bool = True
     unsupported: Literal["ignore", "error"] = "ignore"
-    ignore_imports: bool = False
+    allow_incomplete_imports: bool = False
 ```
 
 - `workers=0` means logical CPU count for Rust and one worker for Python.
@@ -82,13 +99,22 @@ class ReasonerConfig:
 
 ```python
 class Reasoner:
-    def __init__(self, ontology: Ontology, config: ReasonerConfig | None = None): ...
+    def __init__(
+        self,
+        ontology: OntologyInput,
+        config: ReasonerConfig | None = None,
+        *,
+        load_options: LoadOptions | None = None,
+        resolver: ImportResolver | None = None,
+    ): ...
     def close(self) -> None: ...
     def __enter__(self) -> Reasoner: ...
     def __exit__(self, *exc_info: object) -> None: ...
 
     @property
     def backend(self) -> BackendInfo: ...
+    @property
+    def ontology(self) -> OntologyView: ...
 
     def is_consistent(self) -> ReasoningResult[bool]: ...
     def is_inconsistent(self) -> ReasoningResult[bool]: ...
@@ -132,7 +158,16 @@ class Reasoner:
 ```
 
 All operations after `close()` raise `ReasonerClosedError`. `close()` is idempotent. No
-method mutates the source ontology. Taxonomy/realization stages are cached per session.
+method mutates the captured core view. Taxonomy/realization stages are cached per
+session. `ontology` is the exact captured core object and remains caller-shareable.
+
+The equivalence return shapes are deliberately asymmetric. `equivalent_classes`
+returns a tuple that holds at most one node: mutually equivalent named classes
+always collapse into a single taxonomy node, and the tuple form encodes ELK's
+unindexed-query fallback — a complex expression with no named equivalent yields
+an empty tuple (`taxonomy-queries.md` §7). `equivalent_object_properties` takes
+a named property, which always has a node (a fresh property gets a singleton
+node), so it returns that node directly. Neither method ever returns two nodes.
 
 One `Reasoner` is safe to call from multiple Python threads, matching the synchronized ELK
 core surface. A facade-owned reentrant session lock serializes stage/query/diagnostic calls
@@ -213,12 +248,15 @@ by canonical structural key. `complete == (not reasons)` is asserted in `__post_
 
 ## 6. Public exception categories
 
+Input parsing, import resolution, malformed core snapshots, and core resource limits raise
+the corresponding `pyowl_core` exception classes, re-exported by identity when exposed from
+`pyelk`. pyELK does not catch and rebuild them. Its own exception hierarchy begins only at
+the adapter/compiler/reasoner boundary:
+
 ```text
 PyElkError
-├── ParseError(source, line, column, token, detail)
 ├── UnsupportedFeatureError(feature, axiom)
 ├── UnsupportedQueryError(feature, query)
-├── UnresolvedImportError(imports)
 ├── FreshEntityError(entities)
 ├── IncompleteReasoningError(reasons)
 ├── BackendUnavailableError(requested, reason)
@@ -341,14 +379,17 @@ IDs are `u32`; `0xffffffff` is reserved and never assigned. Entity IDs are order
 over `(tag, payload, argument IDs)`. A cyclic expression graph is invalid at the public model
 layer. Property chains and every axiom table are deduplicated and lexicographically sorted.
 The frozen ELK feature-count vector has exactly 79 positions in the upstream `Feature.java`
-order; WP3 replaces this numeric guard with the checked-in named manifest without changing
+order (verified against the pinned commit on 2026-07-17: 49 ontology features plus 30
+`QUERY_*` features; the nested `Feature.Polarity` enum is not part of the vector); WP3
+replaces this numeric guard with the checked-in named manifest without changing
 the codec width.
 
 `ExpressionRecord.payload` is empty for every v1 tag except `DATA_HAS_VALUE`. For that tag,
-it is the nonempty, flat, length-delimited literal structural-key bytes defined by WP1. The
-key includes ELK's exact stored lexical form and datatype IRI (including the `rdf:PlainLiteral`
-mapping for plain/language literals). Datatype identity therefore affects structural
-interning even though neither backend performs datatype reasoning.
+it is the nonempty, flat, length-delimited private `ElkCompatibilityKey` defined by
+WP4 and `parsing.md` §7. It includes ELK's exact historical stored lexical form and datatype
+IRI where required by the pinned oracle, without changing the source-preserving,
+standards-canonical public `pyowl_core.Literal`. Datatype identity therefore affects ELK
+structural interning even though neither backend performs datatype reasoning.
 
 Predefined entities are always present:
 
@@ -361,6 +402,19 @@ owl:bottomObjectProperty
 
 The IR does not contain Python hashes, object addresses, source line numbers, proof
 provenance, or backend-specific storage.
+
+`source_fingerprint` is BLAKE2b-256 over a domain tag plus the schema and 32-byte digest of
+the captured core `logical_fingerprint` and `signature_fingerprint`,
+`MODEL_SCHEMA_VERSION`, `WIRE_FORMAT_VERSION`, `ADAPTER_PROTOCOL_VERSION`, pyELK compiler schema, pinned ELK
+compatibility identifier, and semantic compiler options. It is computed from core metadata;
+pyELK never reserializes axioms to derive it. Overlay revisions with identical effective
+closure/signature may reuse compiled IR. `structural_fingerprint` and the resolution manifest
+remain on `CapturedOntology`; differing annotation/import-policy provenance may reuse semantic
+IR but MUST NOT reuse facade completeness/provenance metadata.
+
+When private pinned-ELK literal keys consume optional `SourceMap` language-tag spelling, the
+domain hash additionally includes a deterministic compatibility-spelling digest and the
+fallback/source mode. Core logical identity remains unchanged.
 
 ### 7.1 Binary encoding
 
@@ -406,6 +460,11 @@ class BackendInfo:
     implementation_version: str
     ir_major: int
     ir_minor: int
+    core_package_version: str
+    core_api_version: tuple[int, int]
+    core_model_schema_version: int
+    core_wire_format_version: tuple[int, int]
+    core_adapter_protocol_version: int
     requested_workers: int
     effective_workers: int
     native_available: bool
