@@ -104,7 +104,6 @@ type = "forbidden"
 source_modules = [
   "pyelk.core",
   "pyelk.owl",
-  "pyelk.parsing",
   "pyelk.indexing",
 ]
 forbidden_modules = [
