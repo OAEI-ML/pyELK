@@ -5,6 +5,12 @@ resolver, canonical OWL writer, or general-purpose ontology index. Those respons
 belong to the Java-free distribution `pyowl-core` and import package `pyowl_core`.
 pyELK 0.1.x requires `pyowl-core>=0.1,<0.2` and Python 3.10 or later.
 
+The release integration baseline is pyOWLCore commit
+`6df155e3ef83588352dbfd11bc4b15bdc0fa9c4e`, including canonical parser normalization for
+duplicate-derived singleton intersections/unions and self-disjoint class lists. This is the
+minimum source baseline used by the 124-input frozen parity gate; published dependency
+resolution remains the compatible `>=0.1,<0.2` package range.
+
 This document is the normative boundary between the shared structural layer and pyELK's
 private ELK compiler. The OWL 2 Structural Specification remains the language authority;
 the pinned ELK 0.6.0 implementation remains the reasoner-behaviour oracle.
@@ -68,6 +74,7 @@ class Reasoner:
         ontology: OntologyInput,
         config: ReasonerConfig | None = None,
         *,
+        document_iri: IRI | str | None = None,
         load_options: LoadOptions | None = None,
         resolver: ImportResolver | None = None,
     ) -> None: ...
@@ -82,6 +89,9 @@ view to satisfy the concrete snapshot return type. Shared callers pass a view to
 selection, byte decoding, parse limits,
 document IRIs, resolver behavior, import policy, syntax support, and source ownership are
 defined only by `pyowl_core.LoadOptions` and the core specification.
+
+`document_iri` is forwarded unchanged to core. It is required for caller-owned text and
+binary streams, and core rejects it for an already identified document, view, or provider.
 
 A plain `str` is always a filesystem path, never inline ontology text or a URL. Inline text
 uses an explicit `TextIO` plus core-required format/document IRI; URL acquisition belongs to

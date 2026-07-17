@@ -72,6 +72,7 @@ class Reasoner:
         ontology: owl.OntologyInput,
         config: ReasonerConfig | None = None,
         *,
+        document_iri: owl.IRI | str | None = None,
         load_options: owl.LoadOptions | None = None,
         resolver: owl.ImportResolver | None = None,
     ) -> None:
@@ -89,6 +90,7 @@ class Reasoner:
         self._closed = False
         capture = capture_input(
             ontology,
+            document_iri=document_iri,
             options=load_options,
             resolver=resolver,
         )

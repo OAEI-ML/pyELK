@@ -9,6 +9,7 @@ from typing import Any, Literal, cast
 
 from pyelk.backends.python import IMPLEMENTATION_VERSION, PythonBackendFactory
 from pyelk.config import ReasonerConfig
+from pyelk.core import current_core_versions
 from pyelk.exceptions import BackendUnavailableError, InternalReasonerError
 from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
 from pyelk.indexing.ir import CompiledOntology
@@ -84,7 +85,7 @@ def backend_report() -> BackendReport:
     raw_backend = os.environ.get("PYELK_BACKEND", "auto")
     raw_pure = os.environ.get("PYELK_PURE_PYTHON", "0")
     if raw_backend not in _BACKEND_VALUES:
-        return BackendReport(
+        return _backend_report(
             requested=raw_backend,
             selected=None,
             python=python,
@@ -92,7 +93,7 @@ def backend_report() -> BackendReport:
             selection_error="PYELK_BACKEND must be 'auto', 'python', or 'rust'",
         )
     if raw_pure not in _PURE_VALUES:
-        return BackendReport(
+        return _backend_report(
             requested=raw_backend,
             selected=None,
             python=python,
@@ -102,7 +103,7 @@ def backend_report() -> BackendReport:
     if raw_pure == "1":
         rust = _unprobed_rust("native probing disabled by PYELK_PURE_PYTHON=1")
         if raw_backend == "rust":
-            return BackendReport(
+            return _backend_report(
                 requested=raw_backend,
                 selected=None,
                 python=python,
@@ -111,7 +112,7 @@ def backend_report() -> BackendReport:
                     "PYELK_PURE_PYTHON=1 conflicts with an explicit rust backend request"
                 ),
             )
-        return BackendReport(
+        return _backend_report(
             requested=raw_backend,
             selected="python",
             python=python,
@@ -129,12 +130,35 @@ def backend_report() -> BackendReport:
         selection_error = None if selected is not None else probe.availability.reason
     else:
         selected = "rust" if probe.module is not None else "python"
-    return BackendReport(
+    return _backend_report(
         requested=raw_backend,
         selected=selected,
         python=python,
         rust=probe.availability,
         selection_error=selection_error,
+    )
+
+
+def _backend_report(
+    *,
+    requested: str,
+    selected: Literal["python", "rust"] | None,
+    python: BackendAvailability,
+    rust: BackendAvailability,
+    selection_error: str | None,
+) -> BackendReport:
+    versions = current_core_versions()
+    return BackendReport(
+        requested=requested,
+        selected=selected,
+        python=python,
+        rust=rust,
+        selection_error=selection_error,
+        core_package_version=versions.package_version,
+        core_api_version=versions.api_version,
+        core_model_schema_version=versions.model_schema_version,
+        core_wire_format_version=versions.wire_format_version,
+        core_adapter_protocol_version=versions.adapter_protocol_version,
     )
 
 

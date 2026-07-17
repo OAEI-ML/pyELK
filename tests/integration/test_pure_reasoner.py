@@ -20,20 +20,7 @@ _OPTIONS = owl.LoadOptions(
     imports=owl.ImportPolicy.IGNORE,
     backend=owl.BackendPreference.PYTHON,
 )
-_CLASS_CASES = tuple(
-    path.stem
-    for path in sorted((_EXPECTED / "classification").glob("*.json"))
-    if path.stem
-    not in {
-        # These pinned Java resources contain duplicate set positions rejected by the
-        # shared canonical OWL model. Their normalized algorithm cases remain covered by
-        # the WP8/WP9 frozen-IR suites; every core-representable fixture crosses this facade.
-        "ConjunctionsComplex",
-        "DisjointSelf",
-        "DuplicateConjuncts",
-        "DuplicateDisjuncts",
-    }
-)
+_CLASS_CASES = tuple(path.stem for path in sorted((_EXPECTED / "classification").glob("*.json")))
 _PROPERTY_CASES = tuple(
     path.stem for path in sorted((_EXPECTED / "classification" / "object_property").glob("*.json"))
 )
@@ -97,37 +84,6 @@ def _issues(values: tuple[CompletenessIssue, ...]) -> list[dict[str, object]]:
 
 
 def _query_snapshot(name: str) -> owl.OntologySnapshot:
-    if name in {"DuplicateConjuncts", "DuplicateDisjuncts"}:
-        return owl.load_snapshot(
-            b"Prefix(:=<http://example.org/>) Ontology(SubClassOf(:A :B))",
-            options=_OPTIONS,
-        )
-    if name == "ConjunctionsComplex":
-        pairs = (
-            ("B", "C", "BC"),
-            ("B", "D", "BD"),
-            ("C", "B", "CB"),
-            ("C", "D", "CD"),
-            ("D", "C", "DC"),
-            ("D", "B", "DB"),
-        )
-        triples = ("BCD", "BDC", "CBD", "CDB", "DBC", "DCB")
-        body = " ".join(
-            (
-                "SubClassOf(:A :B)",
-                "SubClassOf(:A :C)",
-                "SubClassOf(:A :D)",
-                "SubClassOf(:B :BB)",
-                "SubClassOf(:C :CC)",
-                "SubClassOf(:D :DD)",
-                *(f"SubClassOf(ObjectIntersectionOf(:{a} :{b}) :{c})" for a, b, c in pairs),
-                *(f"SubClassOf(ObjectIntersectionOf(:B :C :D) :{target})" for target in triples),
-            )
-        )
-        return owl.load_snapshot(
-            f"Prefix(:=<http://example.org/>) Ontology({body})".encode(),
-            options=_OPTIONS,
-        )
     return _snapshot(_UPSTREAM / "query" / "class" / f"{name}.owl")
 
 

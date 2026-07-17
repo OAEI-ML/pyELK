@@ -104,6 +104,7 @@ class Reasoner:
         ontology: OntologyInput,
         config: ReasonerConfig | None = None,
         *,
+        document_iri: IRI | str | None = None,
         load_options: LoadOptions | None = None,
         resolver: ImportResolver | None = None,
     ): ...
@@ -487,6 +488,11 @@ class BackendReport:
     python: BackendAvailability
     rust: BackendAvailability
     selection_error: str | None
+    core_package_version: str
+    core_api_version: tuple[int, int]
+    core_model_schema_version: int
+    core_wire_format_version: tuple[int, int]
+    core_adapter_protocol_version: int
 
 def backend_report() -> BackendReport: ...
 

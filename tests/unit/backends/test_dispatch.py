@@ -4,6 +4,7 @@ import importlib
 from types import SimpleNamespace
 from typing import Any
 
+import pyowl_core
 import pytest
 
 from pyelk.backends import backend_report, create_backend_session
@@ -124,6 +125,11 @@ def test_backend_report_covers_valid_invalid_and_unprobed_states(
     assert report.python.available is True
     assert report.rust.available is True
     assert report.rust.abi == "abi3-py310"
+    assert report.core_package_version == pyowl_core.__version__
+    assert report.core_api_version == pyowl_core.API_VERSION
+    assert report.core_model_schema_version == pyowl_core.MODEL_SCHEMA_VERSION
+    assert report.core_wire_format_version == pyowl_core.WIRE_FORMAT_VERSION
+    assert report.core_adapter_protocol_version == pyowl_core.ADAPTER_PROTOCOL_VERSION
 
     monkeypatch.setenv("PYELK_PURE_PYTHON", "1")
     pure = backend_report()

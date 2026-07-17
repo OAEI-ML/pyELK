@@ -147,6 +147,11 @@ class BackendReport:
     python: BackendAvailability
     rust: BackendAvailability
     selection_error: str | None
+    core_package_version: str
+    core_api_version: tuple[int, int]
+    core_model_schema_version: int
+    core_wire_format_version: tuple[int, int]
+    core_adapter_protocol_version: int
 
     def __post_init__(self) -> None:
         if not isinstance(self.requested, str):
@@ -163,6 +168,23 @@ class BackendReport:
             raise ValueError("backend report availability entries are mislabeled")
         if self.selection_error is not None and not isinstance(self.selection_error, str):
             raise ValueError("backend report selection_error must be text or None")
+        if not isinstance(self.core_package_version, str) or not self.core_package_version:
+            raise ValueError("backend report core package version must be nonempty text")
+        for name in ("core_api_version", "core_wire_format_version"):
+            value = getattr(self, name)
+            if (
+                not isinstance(value, tuple)
+                or len(value) != 2
+                or not all(
+                    isinstance(item, int) and not isinstance(item, bool) and item >= 0
+                    for item in value
+                )
+            ):
+                raise TypeError(f"backend report {name} must be a pair of nonnegative integers")
+        for name in ("core_model_schema_version", "core_adapter_protocol_version"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"backend report {name} must be a positive integer")
 
 
 class QueryKind(IntEnum):

@@ -30,42 +30,11 @@ _OPTIONS = owl.LoadOptions(
 
 
 def _compiled_case(name: str) -> CompiledOntology:
-    if name != "ConjunctionsComplex":
-        return compile_ontology(owl.load_snapshot(_UPSTREAM / f"{name}.owl", options=_OPTIONS))
-    pair_rows = (
-        ("B", "C", "BC"),
-        ("B", "D", "BD"),
-        ("C", "B", "CB"),
-        ("C", "D", "CD"),
-        ("D", "C", "DC"),
-        ("D", "B", "DB"),
-    )
-    triples = ("BCD", "BDC", "CBD", "CDB", "DBC", "DCB")
-    body = " ".join(
-        (
-            "SubClassOf(:A :B)",
-            "SubClassOf(:A :C)",
-            "SubClassOf(:A :D)",
-            "SubClassOf(:B :BB)",
-            "SubClassOf(:C :CC)",
-            "SubClassOf(:D :DD)",
-            *(f"SubClassOf(ObjectIntersectionOf(:{a} :{b}) :{c})" for a, b, c in pair_rows),
-            *(f"SubClassOf(ObjectIntersectionOf(:B :C :D) :{target})" for target in triples),
-        )
-    )
-    source = f"Prefix(:=<http://example.org/>) Ontology({body})".encode()
-    return compile_ontology(owl.load_snapshot(source, options=_OPTIONS))
+    return compile_ontology(owl.load_snapshot(_UPSTREAM / f"{name}.owl", options=_OPTIONS))
 
 
 def _parse_expression(name: str, text: str) -> owl.ClassExpression:
-    # pyowl-core's canonical model intentionally rejects duplicate-set operands that the
-    # historical ELK fixtures accepted positionally.  Their OWL semantics reduce exactly
-    # to the corresponding named class.
-    if name == "DuplicateConjuncts":
-        iri = "http://example.org/A" if "<http://example.org/A>" in text else "http://example.org/B"
-        return owl.Class(owl.IRI(iri))
-    if name == "DisjointClasses" and text.count("<http://example.org/A>") == 2:
-        return owl.Class(owl.IRI("http://example.org/A"))
+    del name
     snapshot = owl.load_snapshot(
         f"Ontology(SubClassOf(<urn:query-root> {text}))".encode(),
         options=_OPTIONS,
@@ -105,34 +74,42 @@ def test_all_26_frozen_class_query_families(name: str) -> None:
     taxonomy = class_taxonomy(session)
     realized = realization(session, taxonomy)
     engine = ClassQueryEngine(session, taxonomy, realized)
-    queries = json.loads((_EXPECTED / f"{name}.json").read_text())["result"]["value"][
-        "queries"
-    ]
+    queries = json.loads((_EXPECTED / f"{name}.json").read_text())["result"]["value"]["queries"]
     for expected in queries:
         expression = _parse_expression(name, expected["expression"])
         query = compile_query_expression(expression, compiled)
         equivalent = engine.query(query.encoded, QueryKind.EQUIVALENT_CLASSES)
         equivalent_nodes = _result_iris(equivalent.nodes, compiled, query.fresh_entities)
         actual_equivalent = equivalent_nodes[0] if equivalent_nodes else []
-        assert engine.query(query.encoded, QueryKind.SATISFIABLE).boolean is expected[
-            "satisfiable"
-        ]["value"]
+        assert (
+            engine.query(query.encoded, QueryKind.SATISFIABLE).boolean
+            is expected["satisfiable"]["value"]
+        )
         assert actual_equivalent == expected["equivalent_classes"]["value"]
-        assert _result_iris(
-            engine.query(query.encoded, QueryKind.SUBCLASSES, True).nodes,
-            compiled,
-            query.fresh_entities,
-        ) == expected["direct_subclasses"]["value"]
-        assert _result_iris(
-            engine.query(query.encoded, QueryKind.SUPERCLASSES, True).nodes,
-            compiled,
-            query.fresh_entities,
-        ) == expected["direct_superclasses"]["value"]
-        assert _result_iris(
-            engine.query(query.encoded, QueryKind.INSTANCES, True).nodes,
-            compiled,
-            query.fresh_entities,
-        ) == expected["direct_instances"]["value"]
+        assert (
+            _result_iris(
+                engine.query(query.encoded, QueryKind.SUBCLASSES, True).nodes,
+                compiled,
+                query.fresh_entities,
+            )
+            == expected["direct_subclasses"]["value"]
+        )
+        assert (
+            _result_iris(
+                engine.query(query.encoded, QueryKind.SUPERCLASSES, True).nodes,
+                compiled,
+                query.fresh_entities,
+            )
+            == expected["direct_superclasses"]["value"]
+        )
+        assert (
+            _result_iris(
+                engine.query(query.encoded, QueryKind.INSTANCES, True).nodes,
+                compiled,
+                query.fresh_entities,
+            )
+            == expected["direct_instances"]["value"]
+        )
 
 
 def test_fresh_class_and_unindexed_fallbacks_are_exact() -> None:
