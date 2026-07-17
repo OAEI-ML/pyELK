@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/feature/QUERY_ANNOTATION_ASSERTION_AXIOM>
+  AnnotationAssertion(rdfs:label :A "x")
+)

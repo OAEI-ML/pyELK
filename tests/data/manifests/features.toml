@@ -1,0 +1,1225 @@
+schema = "pyelk.elk-feature-manifest/1"
+source_repository = "https://github.com/liveontologies/elk-reasoner"
+source_tag = "v0.6.0"
+source_commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+source_tree = "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
+source_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/completeness/Feature.java"
+feature_java_sha256 = "3c4ace394a3f02fdd033b0d3f22b42893fcb22e90827964cf17445d005639ba9"
+feature_count = 79
+ontology_feature_count = 49
+query_feature_count = 30
+
+[[features]]
+index = 0
+name = "ANONYMOUS_INDIVIDUAL"
+constructor = "AnonymousIndividual"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/ANONYMOUS_INDIVIDUAL.ofn"
+fixture_sha256 = "dc5f70fa32178e290086c1dea2cfe2b49118b962e3e1b1dc4234a2ac49070773"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 1
+name = "ASYMMETRIC_OBJECT_PROPERTY"
+constructor = "AsymmetricObjectProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/ASYMMETRIC_OBJECT_PROPERTY.ofn"
+fixture_sha256 = "8fe805011551119389d916e7b1147d8951f9ddca65910ad59cc6c98e24fd7b31"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 2
+name = "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+constructor = "owl:bottomObjectProperty"
+polarity = "POSITIVE"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/BOTTOM_OBJECT_PROPERTY_POSITIVE.ofn"
+fixture_sha256 = "0378abca4f55d885acf6c1da42ffb33e72bef97a77ef5bec371aadb2c413e1bf"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 3
+name = "DATA_ALL_VALUES_FROM"
+constructor = "DataAllValuesFrom"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_ALL_VALUES_FROM.ofn"
+fixture_sha256 = "35457ca5636a5fa1c2821fa3e5831ce334e0f2cb29f5daca1c15b42ebee11736"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 4
+name = "DATA_EXACT_CARDINALITY"
+constructor = "DataExactCardinality"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_EXACT_CARDINALITY.ofn"
+fixture_sha256 = "76476a36e45ed799f08a4dba8b14571f54478e592fcd2a3e90d5ce79e228f156"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 5
+name = "DATA_HAS_VALUE"
+constructor = "DataHasValue"
+polarity = "ANY"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_HAS_VALUE.ofn"
+fixture_sha256 = "1686a8275dd6cc481c8db47ca06d31d54353552e746168e00bd866b288092d9d"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 6
+name = "DATA_MAX_CARDINALITY"
+constructor = "DataMaxCardinality"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_MAX_CARDINALITY.ofn"
+fixture_sha256 = "891dffe9b19fb6cb4af58de0a48785775222628a0563eb57fa129d88f7ed00ed"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 7
+name = "DATA_MIN_CARDINALITY"
+constructor = "DataMinCardinality"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_MIN_CARDINALITY.ofn"
+fixture_sha256 = "8953b756af8c21807a40e722997f1e2b98f00d0357ad633f016e6b125978f2c9"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 8
+name = "DATA_PROPERTY"
+constructor = "DataProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_PROPERTY.ofn"
+fixture_sha256 = "ff88b62505da879e5ccede23596abbf61c6164d60efd33a9ff5dc1abbdc1df3a"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 9
+name = "DATA_PROPERTY_ASSERTION"
+constructor = "DataPropertyAssertion"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_PROPERTY_ASSERTION.ofn"
+fixture_sha256 = "3776e92e5211b06eb77e5fdcb46ff659834a694c3821eaca183661c28c34b1f8"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 10
+name = "DATA_PROPERTY_DOMAIN"
+constructor = "DataPropertyDomain"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_PROPERTY_DOMAIN.ofn"
+fixture_sha256 = "5437875240b33a12fea3cf03742ad88c33eba632353156c265e0d09d62c0ee9b"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 11
+name = "DATA_PROPERTY_RANGE"
+constructor = "DataPropertyRange"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_PROPERTY_RANGE.ofn"
+fixture_sha256 = "9cce2c0fa2b055fb13630e1f41236cbaeef63ae87a2f53d7941de2d762002cbd"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 12
+name = "DATA_SOME_VALUES_FROM"
+constructor = "DataSomeValuesFrom"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATA_SOME_VALUES_FROM.ofn"
+fixture_sha256 = "f55b45cc6ae616a53f4ef751ecac2f28aada14f93088850b00a45952617d4e16"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 13
+name = "DATATYPE"
+constructor = "Datatype"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATATYPE.ofn"
+fixture_sha256 = "1fb2f7b9a546a0a7b939588b2d6eef009992eb2b2aca5ba129b7d01216ae3c45"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 14
+name = "DATATYPE_DEFINITION"
+constructor = "DatatypeDefinition"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DATATYPE_DEFINITION.ofn"
+fixture_sha256 = "597f1bf30a05e19fffe6d7e0b445af8ba438aa154dd2ab11bc41f4106642891a"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 15
+name = "DIFFERENT_INDIVIDUALS"
+constructor = "DifferentIndividuals"
+polarity = "ANY"
+scope = "ontology"
+index_action = "complete"
+affected_tasks = []
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DIFFERENT_INDIVIDUALS.ofn"
+fixture_sha256 = "cce3afcfe7d8e65b181f8b80c487a18243aeae7aa4324dec2e4a0099f3bc25a8"
+test = "tests/unit/reasoning/test_completeness.py::test_unaffected_single_features_do_not_trigger_general_monitor"
+expected_count = 1
+expected_issue = false
+
+[[features]]
+index = 16
+name = "DISJOINT_CLASSES"
+constructor = "DisjointClasses"
+polarity = "ANY"
+scope = "ontology"
+index_action = "complete"
+affected_tasks = ["object_property_taxonomy"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DISJOINT_CLASSES.ofn"
+fixture_sha256 = "88cddf212f61c65543075944a16ae575718d85f87904d71a4059f4cd2bbd7499"
+test = "tests/unit/reasoning/test_completeness.py::test_object_property_special_single_feature_is_task_local"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 17
+name = "DISJOINT_DATA_PROPERTIES"
+constructor = "DisjointDataProperties"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DISJOINT_DATA_PROPERTIES.ofn"
+fixture_sha256 = "d4aefad4dec516a61e93edebcf3812eb8aef37e4dfde4ddc57dba83a0ae52b73"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 18
+name = "DISJOINT_OBJECT_PROPERTIES"
+constructor = "DisjointObjectProperties"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DISJOINT_OBJECT_PROPERTIES.ofn"
+fixture_sha256 = "9c969554be689ae5c443ed6724313acd1e202281ea43c93b9010dc2b50a9a559"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 19
+name = "DISJOINT_UNION"
+constructor = "DisjointUnion"
+polarity = "ANY"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/DISJOINT_UNION.ofn"
+fixture_sha256 = "a0765e6ca3196f244c3fe4ee19ce8a2463c04543be75023627f633147e1df648"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 20
+name = "EQUIVALENT_DATA_PROPERTIES"
+constructor = "EquivalentDataProperties"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/EQUIVALENT_DATA_PROPERTIES.ofn"
+fixture_sha256 = "1b6a26e00ac402af135b6f886e7fd1530b814568b00ba5070cbeae31f3902969"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 21
+name = "FUNCTIONAL_DATA_PROPERTY"
+constructor = "FunctionalDataProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/FUNCTIONAL_DATA_PROPERTY.ofn"
+fixture_sha256 = "82c861b1be32409b9e54a711e6e3d5554ed902933a18c03ac7a1fda00b8b5b8a"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 22
+name = "FUNCTIONAL_OBJECT_PROPERTY"
+constructor = "FunctionalObjectProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/FUNCTIONAL_OBJECT_PROPERTY.ofn"
+fixture_sha256 = "8adde2ab27bd13830a4e497593c564c25b62483d49756f549fe97e7f1b55f105"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 23
+name = "HAS_KEY"
+constructor = "HasKey"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/HAS_KEY.ofn"
+fixture_sha256 = "9275d70d2e89e1241d1722b78f6d2a814fca03640433ca9a169aca115a8a6f12"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 24
+name = "INVERSE_FUNCTIONAL_OBJECT_PROPERTY"
+constructor = "InverseFunctionalObjectProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/INVERSE_FUNCTIONAL_OBJECT_PROPERTY.ofn"
+fixture_sha256 = "92f7b92a39e1df080e7a51772674f83eeed7790c91feed0d95cd10898c6e7925"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 25
+name = "INVERSE_OBJECT_PROPERTIES"
+constructor = "InverseObjectProperties"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/INVERSE_OBJECT_PROPERTIES.ofn"
+fixture_sha256 = "c1089d79591d156fe422c5c2fbb0dd38460aeae05f178101bce9394bac116b59"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 26
+name = "IRREFLEXIVE_OBJECT_PROPERTY"
+constructor = "IrreflexiveObjectProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/IRREFLEXIVE_OBJECT_PROPERTY.ofn"
+fixture_sha256 = "184faabf79677a68473fe8cebccdfdffad8a6c573f748c0835dba3fd1668478c"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 27
+name = "NEGATIVE_DATA_PROPERTY_ASSERTION"
+constructor = "NegativeDataPropertyAssertion"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/NEGATIVE_DATA_PROPERTY_ASSERTION.ofn"
+fixture_sha256 = "ae48245c6fd3e20f2ad096f291cb6d7f9d406811971ebc26bbbadf32f0abe58e"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 28
+name = "NEGATIVE_OBJECT_PROPERTY_ASSERTION"
+constructor = "NegativeObjectPropertyAssertion"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/NEGATIVE_OBJECT_PROPERTY_ASSERTION.ofn"
+fixture_sha256 = "39aec47aee616dfabea7796b0871d9bc73be71d3c2dacfb713db75355cbb044f"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 29
+name = "OBJECT_ALL_VALUES_FROM"
+constructor = "ObjectAllValuesFrom"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_ALL_VALUES_FROM.ofn"
+fixture_sha256 = "5d6e91b0fda24968643eac5c262c360185a55f2406bda83a0dce40e050cc8aac"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 30
+name = "OBJECT_COMPLEMENT_OF_NEGATIVE"
+constructor = "ObjectComplementOf"
+polarity = "NEGATIVE"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_COMPLEMENT_OF_NEGATIVE.ofn"
+fixture_sha256 = "d431a817a4e7176422d0a06d3079e049c8fabbf800a94723ae008dff5998374b"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 31
+name = "OBJECT_COMPLEMENT_OF_POSITIVE"
+constructor = "ObjectComplementOf"
+polarity = "POSITIVE"
+scope = "ontology"
+index_action = "complete"
+affected_tasks = ["object_property_taxonomy"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_COMPLEMENT_OF_POSITIVE.ofn"
+fixture_sha256 = "81120dbad680bc178bb5b73f109517d8f5f0ac0b64ca3c99f57a422aea4b2c66"
+test = "tests/unit/reasoning/test_completeness.py::test_object_property_special_single_feature_is_task_local"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 32
+name = "OBJECT_EXACT_CARDINALITY"
+constructor = "ObjectExactCardinality"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_EXACT_CARDINALITY.ofn"
+fixture_sha256 = "f556b23f6e92b299247bb95514d7760ecbe0abf7349bb94879e657b5ade98c7f"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 33
+name = "OBJECT_HAS_SELF_NEGATIVE"
+constructor = "ObjectHasSelf"
+polarity = "NEGATIVE"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_HAS_SELF_NEGATIVE.ofn"
+fixture_sha256 = "2ace6ee1ac1f34fc496b2d45e542836b49c245ec7c61053333ca85dbdc8a509c"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 34
+name = "OBJECT_HAS_VALUE_POSITIVE"
+constructor = "ObjectHasValue"
+polarity = "POSITIVE"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = ["all_tasks:OBJECT_PROPERTY_RANGE"]
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_HAS_VALUE_POSITIVE.ofn"
+fixture_sha256 = "91f11b59c8f5e1802433cfb0bfa8b749dbfdc1849542aa1f507d2ff91829afaa"
+test = "tests/unit/reasoning/test_completeness.py::test_unaffected_single_features_do_not_trigger_general_monitor"
+expected_count = 1
+expected_issue = false
+
+[[features]]
+index = 35
+name = "OBJECT_INVERSE_OF"
+constructor = "ObjectInverseOf"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_INVERSE_OF.ofn"
+fixture_sha256 = "f168aa90f644fe4023c11aefb62ba9b267921c1325c4382247b6e78a777815b9"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 36
+name = "OBJECT_MAX_CARDINALITY"
+constructor = "ObjectMaxCardinality"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_MAX_CARDINALITY.ofn"
+fixture_sha256 = "325f17a690ac906e801a769f5b0d0aa71e279f610edbd88ae11ffeeef0ff4d9b"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 37
+name = "OBJECT_MIN_CARDINALITY"
+constructor = "ObjectMinCardinality"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_MIN_CARDINALITY.ofn"
+fixture_sha256 = "7fddec220eccb405941b306b8e26a3929535cbec5a940cd67b7473d0426eea96"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 38
+name = "OBJECT_ONE_OF"
+constructor = "ObjectOneOf"
+polarity = "ANY"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_ONE_OF.ofn"
+fixture_sha256 = "863f4209c0bf76bcb08c0b5407327300a3e31cf96455fd581d620977162cd9ba"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 39
+name = "OBJECT_PROPERTY_ASSERTION"
+constructor = "ObjectPropertyAssertion"
+polarity = "ANY"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = ["all_tasks:OBJECT_PROPERTY_RANGE"]
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_PROPERTY_ASSERTION.ofn"
+fixture_sha256 = "fdfdf32d3fff4319c76dc0f4716be135c389b2463260846c85aa16192fc053a7"
+test = "tests/unit/reasoning/test_completeness.py::test_unaffected_single_features_do_not_trigger_general_monitor"
+expected_count = 1
+expected_issue = false
+
+[[features]]
+index = 40
+name = "OBJECT_PROPERTY_CHAIN"
+constructor = "ObjectPropertyChain"
+polarity = "ANY"
+scope = "ontology"
+index_action = "complete"
+affected_tasks = ["object_property_taxonomy"]
+conditions = ["object_property_taxonomy:REFLEXIVE_OBJECT_PROPERTY"]
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_PROPERTY_CHAIN.ofn"
+fixture_sha256 = "aa59393efca9ba070223a7b854e012000ec6befbd55af1f4f2d158eb08aff785"
+test = "tests/unit/reasoning/test_completeness.py::test_unaffected_single_features_do_not_trigger_general_monitor"
+expected_count = 1
+expected_issue = false
+
+[[features]]
+index = 41
+name = "OBJECT_PROPERTY_RANGE"
+constructor = "ObjectPropertyRange"
+polarity = "ANY"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = ["all_tasks:OBJECT_PROPERTY_ASSERTION", "all_tasks:OBJECT_HAS_VALUE_POSITIVE"]
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_PROPERTY_RANGE.ofn"
+fixture_sha256 = "e020af4135cf1591db93c6506fc1821f741d47d6ecf61632a19fadaf4350fa94"
+test = "tests/unit/reasoning/test_completeness.py::test_unaffected_single_features_do_not_trigger_general_monitor"
+expected_count = 1
+expected_issue = false
+
+[[features]]
+index = 42
+name = "OBJECT_UNION_OF_POSITIVE"
+constructor = "ObjectUnionOf"
+polarity = "POSITIVE"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OBJECT_UNION_OF_POSITIVE.ofn"
+fixture_sha256 = "27d566920b690ee1fdfd07b90fcee149b1a1102855b77fc03f3a57366f7c80a5"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 43
+name = "OWL_NOTHING_POSITIVE"
+constructor = "owl:Nothing"
+polarity = "POSITIVE"
+scope = "ontology"
+index_action = "complete"
+affected_tasks = ["object_property_taxonomy"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/OWL_NOTHING_POSITIVE.ofn"
+fixture_sha256 = "ac1fd0916ffad731e820ad85c85e091317d64321feb15809bdb10e7bcec2d5f8"
+test = "tests/unit/reasoning/test_completeness.py::test_object_property_special_single_feature_is_task_local"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 44
+name = "REFLEXIVE_OBJECT_PROPERTY"
+constructor = "ReflexiveObjectProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["object_property_taxonomy"]
+conditions = ["object_property_taxonomy:OBJECT_PROPERTY_CHAIN"]
+fixture = "tests/data/elk-v0.6.0/features/ontology/REFLEXIVE_OBJECT_PROPERTY.ofn"
+fixture_sha256 = "a5f0aad4beea6193c03614ac8ec96aaa476bb6d498c5c5d2fe03bb3d3349c092"
+test = "tests/unit/reasoning/test_completeness.py::test_unaffected_single_features_do_not_trigger_general_monitor"
+expected_count = 1
+expected_issue = false
+
+[[features]]
+index = 45
+name = "SUB_DATA_PROPERTY_OF"
+constructor = "SubDataPropertyOf"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/SUB_DATA_PROPERTY_OF.ofn"
+fixture_sha256 = "b9beff10c25d2a8a48e67e3aac97268cda42a3f8938ec873f3bd64290efa1fbf"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 46
+name = "SWRL_RULE"
+constructor = "SWRLRule"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/SWRL_RULE.ofn"
+fixture_sha256 = "c5669866cc3d7ab0b2ae96cd1d3cdc82e36811175af4a4fbde271ce844eac253"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 47
+name = "SYMMETRIC_OBJECT_PROPERTY"
+constructor = "SymmetricObjectProperty"
+polarity = "ANY"
+scope = "ontology"
+index_action = "ignore"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/SYMMETRIC_OBJECT_PROPERTY.ofn"
+fixture_sha256 = "1b68515e2371edb9ba47c1ff95c8e6408615e23a74ca639b65f6dbe87cbed019"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 48
+name = "TOP_OBJECT_PROPERTY_NEGATIVE"
+constructor = "owl:topObjectProperty"
+polarity = "NEGATIVE"
+scope = "ontology"
+index_action = "partial"
+affected_tasks = ["consistency", "class_taxonomy", "object_property_taxonomy", "realization", "class_expression_query", "entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/ontology/TOP_OBJECT_PROPERTY_NEGATIVE.ofn"
+fixture_sha256 = "6e90f0ae7571beb8a0901255fa5bae147f74f5bb2980d1ca3e9cd627ac0b1276"
+test = "tests/unit/reasoning/test_completeness.py::test_every_general_single_feature_has_positive_and_negative_case"
+expected_count = 1
+expected_issue = true
+
+[[features]]
+index = 49
+name = "QUERY_ANNOTATION_ASSERTION_AXIOM"
+constructor = "AnnotationAssertionAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_ANNOTATION_ASSERTION_AXIOM.ofn"
+fixture_sha256 = "eb3ab7b5ae0e287927aca88004c6fdbdb04f5f5ec38810072719f9dc69d43d4b"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 50
+name = "QUERY_ANNOTATION_PROPERTY_DOMAIN_AXIOM"
+constructor = "AnnotationPropertyDomainAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_ANNOTATION_PROPERTY_DOMAIN_AXIOM.ofn"
+fixture_sha256 = "2863c8204a830d5dc1cb4ae0fc5fbea8eb85408853599601cfe3a9d71c627dcc"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 51
+name = "QUERY_ANNOTATION_PROPERTY_RANGE_AXIOM"
+constructor = "AnnotationPropertyRangeAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_ANNOTATION_PROPERTY_RANGE_AXIOM.ofn"
+fixture_sha256 = "9fbddd86ae3ee453b957dc3b7dcf5b5dfb671257b3016ed06bd9e158fcdc1e93"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 52
+name = "QUERY_SUB_ANNOTATION_PROPERTY_OF_AXIOM"
+constructor = "SubAnnotationPropertyOfAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_SUB_ANNOTATION_PROPERTY_OF_AXIOM.ofn"
+fixture_sha256 = "f6f14384bb3de3f3937b43085db5d84145b648cb83f39c2af0eead276ccc0022"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 53
+name = "QUERY_DATA_PROPERTY_ASSERTION_AXIOM"
+constructor = "DataPropertyAssertionAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DATA_PROPERTY_ASSERTION_AXIOM.ofn"
+fixture_sha256 = "d3280621e472fa9da67282097157f4d5228557bcd22d2666dc26e3ae0be06566"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 54
+name = "QUERY_NEGATIVE_DATA_PROPERTY_ASSERTION_AXIOM"
+constructor = "NegativeDataPropertyAssertionAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_NEGATIVE_DATA_PROPERTY_ASSERTION_AXIOM.ofn"
+fixture_sha256 = "53c1c5d7884d2fc71d2e5f605b024f8e50f11cd79332f3aee07823464cfbf7ae"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 55
+name = "QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM"
+constructor = "NegativeObjectPropertyAssertionAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM.ofn"
+fixture_sha256 = "dd3ca8c3d140d177a52d698d02fda281ecc7265ed7ab30b6d5a8daf79f624f2c"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 56
+name = "QUERY_DISJOINT_UNION_AXIOM"
+constructor = "DisjointUnionAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DISJOINT_UNION_AXIOM.ofn"
+fixture_sha256 = "e91f05cb9a8cb2aa87df2e70574590885262c75e3b0140f834c4b5fd5a4e068f"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 57
+name = "QUERY_DATA_PROPERTY_DOMAIN_AXIOM"
+constructor = "DataPropertyDomainAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DATA_PROPERTY_DOMAIN_AXIOM.ofn"
+fixture_sha256 = "cd028cc2db8f5dc3a0fac5baeffa55aaa1b629122d3405a597a75a36fc7db983"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 58
+name = "QUERY_DATA_PROPERTY_RANGE_AXIOM"
+constructor = "DataPropertyRangeAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DATA_PROPERTY_RANGE_AXIOM.ofn"
+fixture_sha256 = "459468b9be8e1a1bcf26dcd5228e27c7afaec975631e74916b642e6b67848236"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 59
+name = "QUERY_DISJOINT_DATA_PROPERTIES_AXIOM"
+constructor = "DisjointDataPropertiesAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DISJOINT_DATA_PROPERTIES_AXIOM.ofn"
+fixture_sha256 = "b0ef610f068c14acde99edf03bb0f5a0ddf628107daee29afcaa48562b725dd9"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 60
+name = "QUERY_EQUIVALENT_DATA_PROPERTIES_AXIOM"
+constructor = "EquivalentDataPropertiesAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_EQUIVALENT_DATA_PROPERTIES_AXIOM.ofn"
+fixture_sha256 = "7543c11f7945dfb8ce826fb22b921adc1f05f3228fb4fce69ccf19e3c2d57eb6"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 61
+name = "QUERY_FUNCTIONAL_DATA_PROPERTY_AXIOM"
+constructor = "FunctionalDataPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_FUNCTIONAL_DATA_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "54804c1c89bf1441c57e20aa448a21749635915999efac7420563dab5ee88a81"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 62
+name = "QUERY_SUB_DATA_PROPERTY_OF_AXIOM"
+constructor = "SubDataPropertyOfAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_SUB_DATA_PROPERTY_OF_AXIOM.ofn"
+fixture_sha256 = "a3d31887a64c0f75d255f1f3685ae2636f41c3edd32433aea9433b502f538a22"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 63
+name = "QUERY_DATATYPE_DEFINITION_AXIOM"
+constructor = "DatatypeDefinitionAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DATATYPE_DEFINITION_AXIOM.ofn"
+fixture_sha256 = "f422e0002c16093d4484325b4e0dc027cfc6b9fd4d57ff3645cc3dd2662bffe4"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 64
+name = "QUERY_DECLARATION_AXIOM"
+constructor = "DeclarationAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DECLARATION_AXIOM.ofn"
+fixture_sha256 = "3feaa60ddb7bd4a8de90ac6a6b875af4114d296d5c67d7bbdb199f7945e2ec0d"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 65
+name = "QUERY_HAS_KEY_AXIOM"
+constructor = "HasKeyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_HAS_KEY_AXIOM.ofn"
+fixture_sha256 = "42b7d82105d445b59e0ec85e76e0c4e1ef69abee20b597fd848fae98bbf3f92b"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 66
+name = "QUERY_ASYMMETRIC_OBJECT_PROPERTY_AXIOM"
+constructor = "AsymmetricObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_ASYMMETRIC_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "622922b21caf945a474566934a793ae07d464ca02d348b6cf0b08185b6576504"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 67
+name = "QUERY_DISJOINT_OBJECT_PROPERTIES_AXIOM"
+constructor = "DisjointObjectPropertiesAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_DISJOINT_OBJECT_PROPERTIES_AXIOM.ofn"
+fixture_sha256 = "82c951d22a22b47581f6cd012805f0c6017c5db814a48bf72609813b8c5edd61"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 68
+name = "QUERY_EQUIVALENT_OBJECT_PROPERTIES_AXIOM"
+constructor = "EquivalentObjectPropertiesAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_EQUIVALENT_OBJECT_PROPERTIES_AXIOM.ofn"
+fixture_sha256 = "2d0703bb33e0e8fa2f41e9fad5597f962b49290b5946af992a621ded92e52708"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 69
+name = "QUERY_FUNCTIONAL_OBJECT_PROPERTY_AXIOM"
+constructor = "FunctionalObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_FUNCTIONAL_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "ace38d031e448283dfdff323d0351c3936cb06d2b3e919fc8ac3136ab03b39ba"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 70
+name = "QUERY_INVERSE_FUNCTIONAL_OBJECT_PROPERTY_AXIOM"
+constructor = "InverseFunctionalObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_INVERSE_FUNCTIONAL_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "0e6395c4dea108b1cf6751861ad57f5b0ad456c4036fbbdf05e57c969da6db53"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 71
+name = "QUERY_INVERSE_OBJECT_PROPERTIES_AXIOM"
+constructor = "InverseObjectPropertiesAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_INVERSE_OBJECT_PROPERTIES_AXIOM.ofn"
+fixture_sha256 = "b47167743c6bdec240242cd01578e4873ad4b96d6851575d61b3c85fbb46b138"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 72
+name = "QUERY_IRREFLEXIVE_OBJECT_PROPERTY_AXIOM"
+constructor = "IrreflexiveObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_IRREFLEXIVE_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "c51df466a2a7665a9a6d2398a8a89d32ab8eac3e838f74ff71b5c3ee56ba79f4"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 73
+name = "QUERY_OBJECT_PROPERTY_RANGE_AXIOM"
+constructor = "ObjectPropertyRangeAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_OBJECT_PROPERTY_RANGE_AXIOM.ofn"
+fixture_sha256 = "42d339cf763b9ca8897980eb04c628cc883bc579fb075facaec5efa77e62b28a"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 74
+name = "QUERY_REFLEXIVE_OBJECT_PROPERTY_AXIOM"
+constructor = "ReflexiveObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_REFLEXIVE_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "5337c2ce4e3202d2c1d7188119d12923f2806c9c042547b1c99deffcb656170f"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 75
+name = "QUERY_SUB_OBJECT_PROPERTY_OF_AXIOM"
+constructor = "SubObjectPropertyOfAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_SUB_OBJECT_PROPERTY_OF_AXIOM.ofn"
+fixture_sha256 = "81562fb2a23155a0fd208613774238e487f773ff7318dacb66ce62768bc82c99"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 76
+name = "QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM"
+constructor = "SymmetricObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "c2686d29592f152025859e0bc8dbf16e269a41764bee30c49ceceefbfc25fd4e"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 77
+name = "QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM"
+constructor = "TransitiveObjectPropertyAxiom"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM.ofn"
+fixture_sha256 = "d926f09db2161ca7847fe1303a75cdf945f11670d01beeb268949bfaf348a27f"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false
+
+[[features]]
+index = 78
+name = "QUERY_SWRL_RULE"
+constructor = "SWRLRule"
+polarity = "ANY"
+scope = "query"
+index_action = "ignore"
+affected_tasks = ["entailment_query"]
+conditions = []
+fixture = "tests/data/elk-v0.6.0/features/query/QUERY_SWRL_RULE.ofn"
+fixture_sha256 = "abd8b124182478705c9a1e300de8298b3993c1022501fcdd6c56bd80045f13b9"
+test = "tests/unit/reasoning/test_completeness.py::test_every_unsupported_query_feature_is_reported"
+expected_count = 1
+expected_issue = true
+expected_value = false

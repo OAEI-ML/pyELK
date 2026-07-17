@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib
+import sys
 from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -18,6 +23,8 @@ from pyelk.reasoning.completeness import (
     issues_for,
 )
 from pyelk.reasoning.contracts import PolicyFeature, ReasoningTask
+
+tomllib: Any = importlib.import_module("tomllib" if sys.version_info >= (3, 11) else "tomli")
 
 _PINNED_FEATURE_NAMES = (
     "ANONYMOUS_INDIVIDUAL",
@@ -144,6 +151,9 @@ _GENERAL_NAMES = {
     "TOP_OBJECT_PROPERTY_NEGATIVE",
 }
 
+_ROOT = Path(__file__).resolve().parents[3]
+_FEATURE_MANIFEST = _ROOT / "tests" / "data" / "manifests" / "features.toml"
+
 
 def _counts(*features: Feature) -> tuple[int, ...]:
     values = [0] * FEATURE_VECTOR_LENGTH
@@ -167,6 +177,40 @@ def test_feature_enum_exact_java_order_and_metadata() -> None:
     assert Feature.OWL_NOTHING_POSITIVE.polarity == "POSITIVE"
     assert Feature.QUERY_SWRL_RULE.constructor == "SWRLRule"
     assert all(feature.polarity == "ANY" for feature in QUERY_INCOMPLETENESS_FEATURES)
+
+
+def test_feature_manifest_covers_every_enum_fixture_and_test_pointer() -> None:
+    with _FEATURE_MANIFEST.open("rb") as handle:
+        payload = tomllib.load(handle)
+    entries = payload["features"]
+
+    assert payload["schema"] == "pyelk.elk-feature-manifest/1"
+    assert payload["source_commit"] == "b8ac5ce83db0704a7359d96aa382891e2f547863"
+    assert payload["source_tree"] == "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
+    assert payload["feature_count"] == FEATURE_VECTOR_LENGTH
+    assert payload["ontology_feature_count"] == 49
+    assert payload["query_feature_count"] == 30
+    assert len(entries) == FEATURE_VECTOR_LENGTH
+
+    for feature, entry in zip(Feature, entries, strict=True):
+        assert entry["index"] == int(feature)
+        assert entry["name"] == feature.name
+        assert entry["constructor"] == feature.constructor
+        assert entry["polarity"] == feature.polarity
+        assert entry["expected_count"] == 1
+        assert entry["scope"] == ("query" if feature.name.startswith("QUERY_") else "ontology")
+        assert entry["index_action"] in {"complete", "partial", "ignore", "nonlogical"}
+        assert set(entry["affected_tasks"]) <= {task.value for task in ReasoningTask}
+        assert all(":" in condition for condition in entry["conditions"])
+
+        fixture = _ROOT / entry["fixture"]
+        assert fixture.is_file()
+        assert hashlib.sha256(fixture.read_bytes()).hexdigest() == entry["fixture_sha256"]
+        test_path, test_name = entry["test"].split("::", 1)
+        test_source = (_ROOT / test_path).read_text(encoding="utf-8")
+        assert f"def {test_name}(" in test_source
+        if feature.name.startswith("QUERY_"):
+            assert entry["expected_value"] is False
 
 
 @pytest.mark.parametrize("feature", GENERAL_INCOMPLETENESS_FEATURES)
