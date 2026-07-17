@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:OBJECT_PROPERTY_RANGE",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "OBJECT_PROPERTY_RANGE": 1
+    },
+    "constructor": "ObjectPropertyRange",
+    "expected_count": 1,
+    "expected_issue": false,
+    "index": 41,
+    "name": "OBJECT_PROPERTY_RANGE",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/OBJECT_PROPERTY_RANGE.ofn",
+    "fixture_sha256": "e020af4135cf1591db93c6506fc1821f741d47d6ecf61632a19fadaf4350fa94"
+  }
+}

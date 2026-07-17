@@ -1,0 +1,55 @@
+{
+  "case_id": "realization/Inconsistent",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "realization",
+  "operation": "realization",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "direct_types": [
+        [
+          0,
+          0
+        ]
+      ],
+      "instance_nodes": [
+        [
+          "http://example.org/a"
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://www.w3.org/2002/07/owl#Nothing",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "realization/Inconsistent.owl",
+    "ontology_sha256": "0808385af7f26b677f1f0cdacfa3ab5be18da39ffe9cd2d38c305f4593edabda",
+    "upstream_goldens": [
+      {
+        "path": "realization/Inconsistent.instancetaxonomy",
+        "sha256": "a79bd029c54114d880e74227c3ee7bbe511fbe0fc3479aaa08a76990f22a676f"
+      }
+    ]
+  }
+}

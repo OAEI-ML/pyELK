@@ -1,0 +1,58 @@
+{
+  "case_id": "classification/DisjointSelf",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 2,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/C",
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/DisjointSelf.owl",
+    "ontology_sha256": "9372946fbcd40a36889c14f87bab827348d435c731f4413ac2ccc1cae525ca8f",
+    "upstream_goldens": [
+      {
+        "path": "classification/DisjointSelf.taxonomy",
+        "sha256": "631c771631c02015b756c1afe2ab7f9c6fe4b2694b248a1382d99c2345f6b7fb"
+      }
+    ]
+  }
+}

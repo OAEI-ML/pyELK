@@ -1,0 +1,35 @@
+{
+  "case_id": "feature:DISJOINT_UNION",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "DISJOINT_UNION": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "constructor": "DisjointUnion",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 19,
+    "name": "DISJOINT_UNION",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/DISJOINT_UNION.ofn",
+    "fixture_sha256": "a0765e6ca3196f244c3fe4ee19ce8a2463c04543be75023627f633147e1df648"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "case_id": "classification/InconsistentNegation",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_COMPLEMENT_OF_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://www.w3.org/2002/07/owl#Nothing",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/InconsistentNegation.owl",
+    "ontology_sha256": "465dd0ebfb80a9fbf24838ce139c1c63dc8eb899cbeb604b38991054469461c7",
+    "upstream_goldens": [
+      {
+        "path": "classification/InconsistentNegation.taxonomy",
+        "sha256": "2597518541f2178386dd0d7891006253d67659eecdc5095664876f77c2516cb1"
+      }
+    ]
+  }
+}

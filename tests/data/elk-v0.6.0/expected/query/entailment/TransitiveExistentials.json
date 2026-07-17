@@ -1,0 +1,136 @@
+{
+  "case_id": "query/entailment/TransitiveExistentials",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "TransitiveObjectPropertyAxiom"
+        ],
+        "features": [
+          "QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "EquivalentClasses(ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/B>) ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/C>) ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/D>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/E>) ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/D>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/A>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/D>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/F>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/B> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/B>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/D> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/A>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/D> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/E>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/F> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/E>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "TransitiveObjectProperty(<http://example.org/T>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "TransitiveObjectPropertyAxiom"
+              ],
+              "features": [
+                "QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM": 1
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/TransitiveExistentials.owl",
+    "ontology_sha256": "46185513f0f23940677d88b547093d35c0309d3d87acdbb3d013d1e5d2862db6",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/TransitiveExistentials.entailed",
+        "sha256": "aff932f649bddd78ed71d1ffc9c808a3250b49a39e03c91a06f019a12de3f057"
+      },
+      {
+        "path": "query/entailment/TransitiveExistentials.notentailed",
+        "sha256": "9e4cd7ddcffe680b134ced931a03ab2fd3b08688ad0e8c6266cc02cd321a582d"
+      }
+    ]
+  }
+}

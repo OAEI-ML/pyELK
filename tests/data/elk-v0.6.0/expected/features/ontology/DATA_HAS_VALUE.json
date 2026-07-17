@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:DATA_HAS_VALUE",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "DATA_HAS_VALUE": 1
+    },
+    "constructor": "DataHasValue",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 5,
+    "name": "DATA_HAS_VALUE",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/DATA_HAS_VALUE.ofn",
+    "fixture_sha256": "1686a8275dd6cc481c8db47ca06d31d54353552e746168e00bd866b288092d9d"
+  }
+}

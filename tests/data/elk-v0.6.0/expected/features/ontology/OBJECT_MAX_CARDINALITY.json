@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:OBJECT_MAX_CARDINALITY",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "OBJECT_MAX_CARDINALITY": 1
+    },
+    "constructor": "ObjectMaxCardinality",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 36,
+    "name": "OBJECT_MAX_CARDINALITY",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/OBJECT_MAX_CARDINALITY.ofn",
+    "fixture_sha256": "325f17a690ac906e801a769f5b0d0aa71e279f610edbd88ae11ffeeef0ff4d9b"
+  }
+}

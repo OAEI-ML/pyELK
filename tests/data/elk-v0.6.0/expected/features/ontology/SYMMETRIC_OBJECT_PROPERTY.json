@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:SYMMETRIC_OBJECT_PROPERTY",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "SYMMETRIC_OBJECT_PROPERTY": 1
+    },
+    "constructor": "SymmetricObjectProperty",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 47,
+    "name": "SYMMETRIC_OBJECT_PROPERTY",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/SYMMETRIC_OBJECT_PROPERTY.ofn",
+    "fixture_sha256": "1b68515e2371edb9ba47c1ff95c8e6408615e23a74ca639b65f6dbe87cbed019"
+  }
+}

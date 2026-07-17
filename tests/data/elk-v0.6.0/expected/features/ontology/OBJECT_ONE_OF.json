@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:OBJECT_ONE_OF",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "OBJECT_ONE_OF": 1
+    },
+    "constructor": "ObjectOneOf",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 38,
+    "name": "OBJECT_ONE_OF",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/OBJECT_ONE_OF.ofn",
+    "fixture_sha256": "863f4209c0bf76bcb08c0b5407327300a3e31cf96455fd581d620977162cd9ba"
+  }
+}

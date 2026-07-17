@@ -1,0 +1,105 @@
+{
+  "case_id": "query/entailment/AssertionRanges",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 1,
+      "OBJECT_PROPERTY_ASSERTION": 1,
+      "OBJECT_PROPERTY_RANGE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectPropertyRange",
+          "ObjectHasValue"
+        ],
+        "features": [
+          "OBJECT_PROPERTY_RANGE",
+          "OBJECT_HAS_VALUE_POSITIVE"
+        ],
+        "polarities": [
+          "ANY",
+          "POSITIVE"
+        ],
+        "task": "entailment_query"
+      },
+      {
+        "constructors": [
+          "ObjectPropertyRange",
+          "ObjectPropertyAssertion"
+        ],
+        "features": [
+          "OBJECT_PROPERTY_RANGE",
+          "OBJECT_PROPERTY_ASSERTION"
+        ],
+        "polarities": [
+          "ANY",
+          "ANY"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ClassAssertion(<http://example.org/A> <http://example.org/b>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectPropertyRange",
+                "ObjectHasValue"
+              ],
+              "features": [
+                "OBJECT_PROPERTY_RANGE",
+                "OBJECT_HAS_VALUE_POSITIVE"
+              ],
+              "polarities": [
+                "ANY",
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "ObjectPropertyRange",
+                "ObjectPropertyAssertion"
+              ],
+              "features": [
+                "OBJECT_PROPERTY_RANGE",
+                "OBJECT_PROPERTY_ASSERTION"
+              ],
+              "polarities": [
+                "ANY",
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/AssertionRanges.owl",
+    "ontology_sha256": "de2e3e62047593d87f7d483f4f4de0ed62d18b08198b56f605d8802ff3451fb9",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/AssertionRanges.entailed",
+        "sha256": "9d81f1b872ce77aa54845007256a2fb72f901c722edcf289c90bf5cd62027590"
+      }
+    ]
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "case_id": "classification/endocarditis",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 12,
+      "direct_edges": [
+        [
+          0,
+          13
+        ],
+        [
+          1,
+          13
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          2,
+          8
+        ],
+        [
+          3,
+          11
+        ],
+        [
+          4,
+          13
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          8,
+          13
+        ],
+        [
+          9,
+          6
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          10,
+          11
+        ],
+        [
+          11,
+          13
+        ],
+        [
+          12,
+          2
+        ],
+        [
+          12,
+          3
+        ],
+        [
+          12,
+          4
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          12,
+          9
+        ],
+        [
+          12,
+          10
+        ]
+      ],
+      "nodes": [
+        [
+          "http://www.test.com/schema#BodyValve"
+        ],
+        [
+          "http://www.test.com/schema#Disease"
+        ],
+        [
+          "http://www.test.com/schema#Endocarditis"
+        ],
+        [
+          "http://www.test.com/schema#Endocardium"
+        ],
+        [
+          "http://www.test.com/schema#Heart"
+        ],
+        [
+          "http://www.test.com/schema#HeartValve"
+        ],
+        [
+          "http://www.test.com/schema#Heartdisease"
+        ],
+        [
+          "http://www.test.com/schema#Inflammation"
+        ],
+        [
+          "http://www.test.com/schema#IsStateNeedsTreatment"
+        ],
+        [
+          "http://www.test.com/schema#Pericarditis"
+        ],
+        [
+          "http://www.test.com/schema#Pericardium"
+        ],
+        [
+          "http://www.test.com/schema#Tissue"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 13
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/endocarditis.owl",
+    "ontology_sha256": "b51c3ff4757aef25a39ed2c6c1605504e0586b982c7dac9c3c9d5ef34e29823a",
+    "upstream_goldens": [
+      {
+        "path": "classification/endocarditis.taxonomy",
+        "sha256": "a4403784214fdeacf068fa28bf27bd29f47110bbb2a13e3d0bcc8bef18ff4324"
+      }
+    ]
+  }
+}

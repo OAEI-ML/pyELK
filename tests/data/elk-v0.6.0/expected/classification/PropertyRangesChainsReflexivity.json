@@ -1,0 +1,98 @@
+{
+  "case_id": "classification/PropertyRangesChainsReflexivity",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 2,
+      "OBJECT_PROPERTY_RANGE": 2,
+      "REFLEXIVE_OBJECT_PROPERTY": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 6,
+      "direct_edges": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          6,
+          4
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://example.org/RH"
+        ],
+        [
+          "http://example.org/RS",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ]
+      ],
+      "top": 5
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/PropertyRangesChainsReflexivity.owl",
+    "ontology_sha256": "8a2692dd70c0c88a9fb0dbaee53f96d89cc4689c2a341a03288a7dc221340ef2",
+    "upstream_goldens": [
+      {
+        "path": "classification/PropertyRangesChainsReflexivity.taxonomy",
+        "sha256": "8621a317b069bec29e18c31d16fb36595576b4d56a1753e2adaddb72fed3fce4"
+      }
+    ]
+  }
+}

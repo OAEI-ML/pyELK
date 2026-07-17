@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:NEGATIVE_OBJECT_PROPERTY_ASSERTION",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "NEGATIVE_OBJECT_PROPERTY_ASSERTION": 1
+    },
+    "constructor": "NegativeObjectPropertyAssertion",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 28,
+    "name": "NEGATIVE_OBJECT_PROPERTY_ASSERTION",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/NEGATIVE_OBJECT_PROPERTY_ASSERTION.ofn",
+    "fixture_sha256": "39aec47aee616dfabea7796b0871d9bc73be71d3c2dacfb713db75355cbb044f"
+  }
+}

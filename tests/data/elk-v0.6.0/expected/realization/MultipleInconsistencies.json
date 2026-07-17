@@ -1,0 +1,59 @@
+{
+  "case_id": "realization/MultipleInconsistencies",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "realization",
+  "operation": "realization",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "direct_types": [
+        [
+          0,
+          0
+        ]
+      ],
+      "instance_nodes": [
+        [
+          "http://example.org/a",
+          "http://example.org/b",
+          "http://example.org/c",
+          "http://example.org/d"
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://example.org/C",
+          "http://example.org/D",
+          "http://www.w3.org/2002/07/owl#Nothing",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "realization/MultipleInconsistencies.owl",
+    "ontology_sha256": "640a02c5606c25a0f6b440c211b653acc26dd110ae018e3b603c4a60e1a78d69",
+    "upstream_goldens": [
+      {
+        "path": "realization/MultipleInconsistencies.instancetaxonomy",
+        "sha256": "cce26e541780284ae2da1e4475d3d5e13d70ec72e65c2cb762805915dadbf540"
+      }
+    ]
+  }
+}

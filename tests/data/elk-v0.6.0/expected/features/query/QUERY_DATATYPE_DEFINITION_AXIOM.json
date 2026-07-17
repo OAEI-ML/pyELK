@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:QUERY_DATATYPE_DEFINITION_AXIOM",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "QUERY_DATATYPE_DEFINITION_AXIOM": 1
+    },
+    "constructor": "DatatypeDefinitionAxiom",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 63,
+    "name": "QUERY_DATATYPE_DEFINITION_AXIOM",
+    "polarity": "ANY",
+    "scope": "query"
+  },
+  "operation": "query_feature_counts",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "value": {
+      "query_axiom_count": 1
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/query/QUERY_DATATYPE_DEFINITION_AXIOM.ofn",
+    "fixture_sha256": "f422e0002c16093d4484325b4e0dc027cfc6b9fd4d57ff3645cc3dd2662bffe4"
+  }
+}

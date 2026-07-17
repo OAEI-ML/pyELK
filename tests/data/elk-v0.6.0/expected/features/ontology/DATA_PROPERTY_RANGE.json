@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:DATA_PROPERTY_RANGE",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "DATA_PROPERTY_RANGE": 1
+    },
+    "constructor": "DataPropertyRange",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 11,
+    "name": "DATA_PROPERTY_RANGE",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/DATA_PROPERTY_RANGE.ofn",
+    "fixture_sha256": "9cce2c0fa2b055fb13630e1f41236cbaeef63ae87a2f53d7941de2d762002cbd"
+  }
+}

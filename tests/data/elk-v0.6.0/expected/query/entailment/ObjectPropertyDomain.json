@@ -1,0 +1,57 @@
+{
+  "case_id": "query/entailment/ObjectPropertyDomain",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ObjectPropertyDomain(<http://example.org/R> <http://example.org/B>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ObjectPropertyDomain(<http://example.org/R> <http://example.org/D>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ObjectPropertyDomain(<http://example.org/R> ObjectSomeValuesFrom(<http://example.org/S> <http://example.org/F>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/ObjectPropertyDomain.owl",
+    "ontology_sha256": "52ec2148c8dd056de266b3c6da1dcc6c87b8b7728ea6a78a2ebbd542ded6ef61",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/ObjectPropertyDomain.entailed",
+        "sha256": "7cb24e7423d4190c51b668295fffbb3e8758b7639ce57d81cb697d9b52ddd5b4"
+      },
+      {
+        "path": "query/entailment/ObjectPropertyDomain.notentailed",
+        "sha256": "f9a0fc77f992b2f34e8b0398ea414c03a7626239a43f73adbf7eacac6e33b563"
+      }
+    ]
+  }
+}

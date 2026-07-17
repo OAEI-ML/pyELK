@@ -1,0 +1,56 @@
+{
+  "case_id": "classification/Negation",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_COMPLEMENT_OF_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/Negation.owl",
+    "ontology_sha256": "a10888ca51a899011e5cf5a131e22b881680cee7230be4aae44c8b0f0ae9ca5f",
+    "upstream_goldens": [
+      {
+        "path": "classification/Negation.taxonomy",
+        "sha256": "4dc9438618ea190353542fcc98dfc923c39ecb56179f6be046dbb855dc6c8785"
+      }
+    ]
+  }
+}

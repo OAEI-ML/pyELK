@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:FUNCTIONAL_DATA_PROPERTY",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "FUNCTIONAL_DATA_PROPERTY": 1
+    },
+    "constructor": "FunctionalDataProperty",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 21,
+    "name": "FUNCTIONAL_DATA_PROPERTY",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/FUNCTIONAL_DATA_PROPERTY.ofn",
+    "fixture_sha256": "82c861b1be32409b9e54a711e6e3d5554ed902933a18c03ac7a1fda00b8b5b8a"
+  }
+}

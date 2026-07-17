@@ -1,0 +1,159 @@
+{
+  "case_id": "query/entailment/InconsistentInstances",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectOneOf"
+        ],
+        "features": [
+          "OBJECT_ONE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ClassAssertion(<http://example.org/D> <http://example.org/a>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "DifferentIndividuals(<http://example.org/a> <http://example.org/b> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 6
+          }
+        },
+        {
+          "axiom": "DisjointClasses(<http://example.org/A> <http://example.org/B> <http://example.org/C>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(<http://example.org/B> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>) <http://example.org/E>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ObjectPropertyAssertion(<http://example.org/R> <http://example.org/a> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1
+          }
+        },
+        {
+          "axiom": "ObjectPropertyDomain(<http://example.org/R> <http://example.org/D>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SameIndividual(<http://example.org/a> <http://example.org/b> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 6
+          }
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/B> <http://example.org/A>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://www.w3.org/2002/07/owl#Thing> <http://www.w3.org/2002/07/owl#Nothing>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/InconsistentInstances.owl",
+    "ontology_sha256": "87c7db68e4c401b59bc694b72896be52d867c10e04a48ea2506548357a334f23",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/InconsistentInstances.entailed",
+        "sha256": "035249ea2530b63033111f4413ef894b61923272a47a250f74f7bcdfefda64a7"
+      },
+      {
+        "path": "query/entailment/InconsistentInstances.notentailed",
+        "sha256": "f5566d8cede641db706b46297131092a1be8fc7465eb0a764c9bd10cd231f3e0"
+      }
+    ]
+  }
+}

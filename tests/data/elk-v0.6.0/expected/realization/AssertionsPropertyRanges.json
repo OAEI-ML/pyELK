@@ -1,0 +1,106 @@
+{
+  "case_id": "realization/AssertionsPropertyRanges",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "realization",
+  "operation": "realization",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 1,
+      "OBJECT_PROPERTY_ASSERTION": 1,
+      "OBJECT_PROPERTY_RANGE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectPropertyRange",
+          "ObjectHasValue"
+        ],
+        "features": [
+          "OBJECT_PROPERTY_RANGE",
+          "OBJECT_HAS_VALUE_POSITIVE"
+        ],
+        "polarities": [
+          "ANY",
+          "POSITIVE"
+        ],
+        "task": "realization"
+      },
+      {
+        "constructors": [
+          "ObjectPropertyRange",
+          "ObjectPropertyAssertion"
+        ],
+        "features": [
+          "OBJECT_PROPERTY_RANGE",
+          "OBJECT_PROPERTY_ASSERTION"
+        ],
+        "polarities": [
+          "ANY",
+          "ANY"
+        ],
+        "task": "realization"
+      }
+    ],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "direct_types": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "instance_nodes": [
+        [
+          "http://example.org/a"
+        ],
+        [
+          "http://example.org/b"
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "realization/AssertionsPropertyRanges.owl",
+    "ontology_sha256": "7ce12dc416be31a411a7094ebe8951a54fddffe62b45c8681954d12791164384",
+    "upstream_goldens": [
+      {
+        "path": "realization/AssertionsPropertyRanges.instancetaxonomy",
+        "sha256": "c188000478e6b8ef6a48976fcfa1ccbe68a30dfb79192e180fc841248d8cabc8"
+      }
+    ]
+  }
+}

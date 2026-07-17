@@ -1,0 +1,7 @@
+pyELK adds Java-free canonical JSON expectations, feature fixtures, provenance, and
+verification reports beside the unmodified ELK resources. Those additions are licensed
+under pyELK's Apache-2.0 licence. No upstream ELK resource was edited.
+
+The development-only generator uses ELK 0.6.0 and its original test loaders through pinned
+Maven artifacts. Neither those artifacts nor any generated Java class/JAR are committed or
+distributed with pyELK.

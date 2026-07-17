@@ -1,0 +1,106 @@
+{
+  "case_id": "classification/PropertyChains",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 3
+    },
+    "issues": [],
+    "value": {
+      "bottom": 6,
+      "direct_edges": [
+        [
+          0,
+          5
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          3,
+          7
+        ],
+        [
+          4,
+          7
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          6,
+          4
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://example.org/E"
+        ],
+        [
+          "http://example.org/X"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 7
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/PropertyChains.owl",
+    "ontology_sha256": "773793708f00ed48f1e28f28a4f4b5a2c9e0153e5c6d9dbeae6c33f31328c9f6",
+    "upstream_goldens": [
+      {
+        "path": "classification/PropertyChains.taxonomy",
+        "sha256": "23d0ff0ef9865e7994cb3ab37757721d469425b7c4dd54e7efdaea95507aa89c"
+      }
+    ]
+  }
+}

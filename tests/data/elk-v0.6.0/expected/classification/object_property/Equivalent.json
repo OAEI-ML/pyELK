@@ -1,0 +1,55 @@
+{
+  "case_id": "classification/object_property/Equivalent",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/Equivalent.owl",
+    "ontology_sha256": "105e68178a510330ba882e15f8ccf4aeb2371c1796d2ba900fe738cc6b4b9d7d",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/Equivalent.propertytaxonomy",
+        "sha256": "4f13789671de847108d45d03f39e2733f7e77a864e50ded7949d882482a0e2a3"
+      }
+    ]
+  }
+}

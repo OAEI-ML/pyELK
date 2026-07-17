@@ -1,0 +1,67 @@
+{
+  "case_id": "query/class/PropertyRangesHierarchy",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_RANGE": 2
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/A"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/E"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectSomeValuesFrom(<http://example.org/S> ObjectIntersectionOf(<http://example.org/B> <http://example.org/C> <http://example.org/D>))",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/PropertyRangesHierarchy.owl",
+    "ontology_sha256": "49dd203a8e7618f35014e69d48eb80ec23905a793c2240f16e74f25ef3f0c307",
+    "upstream_goldens": [
+      {
+        "path": "query/class/PropertyRangesHierarchy.classquery",
+        "sha256": "de82336f157f3c233a3adc76fdd5b00fc6e8a6f7b3c140a05900c79a961d6e97"
+      }
+    ]
+  }
+}

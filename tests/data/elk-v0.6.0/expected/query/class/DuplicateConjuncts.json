@@ -1,0 +1,102 @@
+{
+  "case_id": "query/class/DuplicateConjuncts",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/B"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://example.org/A"
+            ]
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/A> ObjectIntersectionOf(<http://example.org/A> <http://example.org/A>) ObjectIntersectionOf(<http://example.org/A> <http://example.org/A> <http://example.org/A>))",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        },
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/A"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://example.org/B"
+            ]
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/B> ObjectIntersectionOf(<http://example.org/B> ObjectIntersectionOf(<http://example.org/B> <http://example.org/B> <http://example.org/B>) <http://example.org/B>))",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/DuplicateConjuncts.owl",
+    "ontology_sha256": "e30f052a04ed0bdbb9ae8c0d17cf1c57d4f71bb365779f8d2d8a208bece897f7",
+    "upstream_goldens": [
+      {
+        "path": "query/class/DuplicateConjuncts.classquery",
+        "sha256": "5495cf8c661dd07c5c09d7b5ec576ba4cdc5435816b1481cce8845347c1969ee"
+      }
+    ]
+  }
+}

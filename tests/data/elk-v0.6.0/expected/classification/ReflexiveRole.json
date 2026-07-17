@@ -1,0 +1,139 @@
+{
+  "case_id": "classification/ReflexiveRole",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 5,
+      "REFLEXIVE_OBJECT_PROPERTY": 2
+    },
+    "issues": [],
+    "value": {
+      "bottom": 10,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          11
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          11
+        ],
+        [
+          5,
+          11
+        ],
+        [
+          6,
+          11
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          8,
+          11
+        ],
+        [
+          9,
+          11
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          10,
+          2
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          10,
+          4
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          10,
+          8
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/C1"
+        ],
+        [
+          "http://example.org/C2"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://example.org/F"
+        ],
+        [
+          "http://example.org/K"
+        ],
+        [
+          "http://example.org/K1"
+        ],
+        [
+          "http://example.org/L"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 11
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/ReflexiveRole.owl",
+    "ontology_sha256": "5647d34f64c3cdcc0afb7ca66e209abba4fc48a8120cae5ef9b6c69eaec79a41",
+    "upstream_goldens": [
+      {
+        "path": "classification/ReflexiveRole.taxonomy",
+        "sha256": "18e10e211591b11c7881823b5208b5b4b5b569415490878a434d2126608fe31c"
+      }
+    ]
+  }
+}

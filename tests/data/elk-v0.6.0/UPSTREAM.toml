@@ -1,0 +1,19 @@
+schema = "pyelk.frozen-upstream-provenance/1"
+repository = "https://github.com/liveontologies/elk-reasoner"
+release = "0.6.0"
+tag = "v0.6.0"
+commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+tree = "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
+source_path = "elk-reasoner/src/test/resources/test_input"
+license = "Apache-2.0"
+license_file = "LICENSE.txt"
+license_sha256 = "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+copied_on = "2026-07-17"
+files_unmodified = true
+copied_file_count = 262
+ontology_input_count = 124
+golden_output_count = 138
+
+[modifications]
+upstream = "None. Every file under upstream/ is byte-for-byte hash verified."
+pyelk = "Canonical expected JSON, manifests, reports, fixtures, and notices are separate additions."

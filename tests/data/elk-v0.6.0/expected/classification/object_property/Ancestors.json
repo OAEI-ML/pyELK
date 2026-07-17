@@ -1,0 +1,78 @@
+{
+  "case_id": "classification/object_property/Ancestors",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 4,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ]
+      ],
+      "top": 5
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/Ancestors.owl",
+    "ontology_sha256": "805c7bef366f575fb1a64bceac0835b83a3744f2f9a799379e9338af80d60949",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/Ancestors.propertytaxonomy",
+        "sha256": "98ad8ece92c1ed5924d17616e50b2fe66bd4205bce738cf022fc045b48a58a88"
+      }
+    ]
+  }
+}

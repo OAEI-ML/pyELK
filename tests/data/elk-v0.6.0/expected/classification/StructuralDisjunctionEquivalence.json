@@ -1,0 +1,87 @@
+{
+  "case_id": "classification/StructuralDisjunctionEquivalence",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_UNION_OF_POSITIVE": 2
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectUnionOf"
+        ],
+        "features": [
+          "OBJECT_UNION_OF_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 3,
+      "direct_edges": [
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/X"
+        ],
+        [
+          "http://example.org/Y"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 4
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/StructuralDisjunctionEquivalence.owl",
+    "ontology_sha256": "1b7f4eddff123ed0d96aacd1d2ec6efb9408fde76752dfec7fa2c7a662041d54",
+    "upstream_goldens": [
+      {
+        "path": "classification/StructuralDisjunctionEquivalence.taxonomy",
+        "sha256": "596c7e5271082fed49c01482b8ea3e8fac8efefb8ae248b3633699f491e218f5"
+      }
+    ]
+  }
+}

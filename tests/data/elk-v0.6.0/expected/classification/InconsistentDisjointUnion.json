@@ -1,0 +1,46 @@
+{
+  "case_id": "classification/InconsistentDisjointUnion",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_UNION": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://example.org/C",
+          "http://example.org/D",
+          "http://example.org/E",
+          "http://www.w3.org/2002/07/owl#Nothing",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/InconsistentDisjointUnion.owl",
+    "ontology_sha256": "c870a9e3426c6bcfb0e0c7e1668ae15e04c69a470930641378658616cbf46281",
+    "upstream_goldens": [
+      {
+        "path": "classification/InconsistentDisjointUnion.taxonomy",
+        "sha256": "bb1d512ca256c1087d8d629c729a0f34eef348152fedbe5c264a4b5d7a9266d9"
+      }
+    ]
+  }
+}

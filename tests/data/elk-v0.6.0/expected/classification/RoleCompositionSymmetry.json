@@ -1,0 +1,48 @@
+{
+  "case_id": "classification/RoleCompositionSymmetry",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 6
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [
+        [
+          0,
+          1
+        ]
+      ],
+      "nodes": [
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 1
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/RoleCompositionSymmetry.owl",
+    "ontology_sha256": "a84a4d7024eed790cca4ff058a47ab03a56e9b9d5a5760b40e1c0f446006d80d",
+    "upstream_goldens": [
+      {
+        "path": "classification/RoleCompositionSymmetry.taxonomy",
+        "sha256": "fdb5b85ca6de99a54333d69d225c901f57d98b801e8ba3a6cc2c3ba87651d909"
+      }
+    ]
+  }
+}

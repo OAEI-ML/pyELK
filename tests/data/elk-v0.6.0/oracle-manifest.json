@@ -1,0 +1,1050 @@
+{
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "files": [
+    {
+      "bytes": 1474,
+      "path": "classification/Ancestors.json",
+      "sha256": "981030278b40335446b07b12cb2db6758c22ca51ea0eabfb09f21ad58d883665"
+    },
+    {
+      "bytes": 1115,
+      "path": "classification/AssertionDisjoint.json",
+      "sha256": "2104b19e5c32f98b74f67e38b3fc3649bbf8cc6207634255762794275d76c807"
+    },
+    {
+      "bytes": 1158,
+      "path": "classification/Bottom.json",
+      "sha256": "57953aaf7552ccb4b75709d768e535affd00cdb8000f1515bdd310f8ce2e1f1e"
+    },
+    {
+      "bytes": 1863,
+      "path": "classification/BottomObjectProperty.json",
+      "sha256": "beb16a6b9d1be436dc6dadb9ab06d5fd008379aeceff7826528f529b5ce387aa"
+    },
+    {
+      "bytes": 1489,
+      "path": "classification/CompositionReflexivity.json",
+      "sha256": "6cdc0dc279ef522ef2bb29ca4c92836950cf71402abea49f6fd4b3a25b37230d"
+    },
+    {
+      "bytes": 1802,
+      "path": "classification/CompositionReflexivityComplex.json",
+      "sha256": "10fc0d500e17c6cf18e3b69385ddac41a0f099ddb26c3f1ff7404dc18a552bff"
+    },
+    {
+      "bytes": 1677,
+      "path": "classification/Conjunctions.json",
+      "sha256": "272c2eb46e007fbe4a29c3547daa69a56bf287361c0b7c54c7e0204c14266e34"
+    },
+    {
+      "bytes": 3659,
+      "path": "classification/ConjunctionsComplex.json",
+      "sha256": "d56e3cdaaccc698ce1ee633c82793968a822813e7b94af0af9b79e037e98f58b"
+    },
+    {
+      "bytes": 1284,
+      "path": "classification/Cycle.json",
+      "sha256": "84fdc09c978ab7bf5d6514efb89d48ddc84142674265ec46d4781765d97988c9"
+    },
+    {
+      "bytes": 1721,
+      "path": "classification/Declarations.json",
+      "sha256": "14f5baf36483b3d87d3bb733137bda67c059aa80033ec8c69e509cf6267ba478"
+    },
+    {
+      "bytes": 1533,
+      "path": "classification/DeclarationsEquivalences.json",
+      "sha256": "bf97709ca8e7ad8be298e33b143a83cd6ce1d6d6fb690fc5cedb2facef77728e"
+    },
+    {
+      "bytes": 1226,
+      "path": "classification/Disjoint.json",
+      "sha256": "f1cb340febff86858478c4ce649ea97e71c98860ac301652440c8328bd2be4f2"
+    },
+    {
+      "bytes": 1271,
+      "path": "classification/DisjointSelf.json",
+      "sha256": "4a20a96b0f1c7df74a4c99a043d577722c7bbb5459e7442a66e4699d720cb35c"
+    },
+    {
+      "bytes": 1435,
+      "path": "classification/DisjointUnion.json",
+      "sha256": "a46ac684cd9dadc7b5b388c8fbcf9e6fb1ab8a6f0537eea08712728122d3ad86"
+    },
+    {
+      "bytes": 1383,
+      "path": "classification/Disjunctions.json",
+      "sha256": "ee539b1fc347a232accfd807106e4412f210afd7867c122ad6749d8811366fec"
+    },
+    {
+      "bytes": 1255,
+      "path": "classification/DuplicateConjuncts.json",
+      "sha256": "70f7c966740c8f2d54b5ba8ea4279f9653d1cc86551f9f54f48fd8f977db334d"
+    },
+    {
+      "bytes": 1255,
+      "path": "classification/DuplicateDisjuncts.json",
+      "sha256": "c4a323babbd146eb7635e6f2f1d09240b9899b8a735237a32e02ea2fd9099985"
+    },
+    {
+      "bytes": 1220,
+      "path": "classification/EquivalentClasses.json",
+      "sha256": "0ce94609118a6a4dfc41e622aeea8f002f64bcbd5db1abecfaf77ed381e565b6"
+    },
+    {
+      "bytes": 1407,
+      "path": "classification/EquivalentProperties.json",
+      "sha256": "802fb71a687eb8d27dffccd957e04026a3f9bd7613dae67f5607cf68545d59e0"
+    },
+    {
+      "bytes": 1563,
+      "path": "classification/Existentials.json",
+      "sha256": "155ae3940a0299582de23a333ed5b446236a796f85aaae190af75170da56d9dd"
+    },
+    {
+      "bytes": 1104,
+      "path": "classification/Inconsistent.json",
+      "sha256": "012e1f16fc53cb5d144e4e9f483a08f028380c7a447b6f46445a028e74135fae"
+    },
+    {
+      "bytes": 1105,
+      "path": "classification/InconsistentDifferentSameIndividual.json",
+      "sha256": "4e6902e36ce65dbd4efa8b0864f96e4421f04702ad2d0d8b2498c91cef0dad42"
+    },
+    {
+      "bytes": 1192,
+      "path": "classification/InconsistentDisjoint.json",
+      "sha256": "a4b09e432af206e639f36976380e1034ce7d3d0e7ec3a7fbff5339641bf92f43"
+    },
+    {
+      "bytes": 1205,
+      "path": "classification/InconsistentDisjointUnion.json",
+      "sha256": "f235af168d726cbbd08f47c522a9d064e011d5a1e11c68b85ccee8eed67c1819"
+    },
+    {
+      "bytes": 1084,
+      "path": "classification/InconsistentManyDifferentSameIndividual.json",
+      "sha256": "949e91c28227f42aea7f6f71e0174be82469823ea56136c033d4b159dda92210"
+    },
+    {
+      "bytes": 1069,
+      "path": "classification/InconsistentNegation.json",
+      "sha256": "6367841d0f8e699548c72d2b54ec8be39967545eef45d980ed1c5fd5afc16acd"
+    },
+    {
+      "bytes": 1372,
+      "path": "classification/MultipleDefinitions.json",
+      "sha256": "f17bf3d46a18d0d677c28a476d377ac2b96f8fd8a225b6ec91568d448f33e2ae"
+    },
+    {
+      "bytes": 1205,
+      "path": "classification/Negation.json",
+      "sha256": "12e173baf27befe95f8a93e55ba8c4f2a433084a626cfd2a3a36891e0164bb29"
+    },
+    {
+      "bytes": 1338,
+      "path": "classification/NegationExistential.json",
+      "sha256": "8d1baafa036f8d4199a861b6fe581e575812108514608920d2a67ba638ed40ad"
+    },
+    {
+      "bytes": 1802,
+      "path": "classification/OneOf.json",
+      "sha256": "86daae8c4658c609917f305fcbc577637549148d3cb04da2f8db219574d9383a"
+    },
+    {
+      "bytes": 1865,
+      "path": "classification/PropertyChains.json",
+      "sha256": "814bef7bf73a117a71d0528d09cb32f55171a33e20ed5ae15bac3d0e21601291"
+    },
+    {
+      "bytes": 1481,
+      "path": "classification/PropertyChainsWithInverses.json",
+      "sha256": "0de6a2c9859bd51ee944f3897a91af1fd2d8913dc5ba4111463bcd595c859295"
+    },
+    {
+      "bytes": 1398,
+      "path": "classification/PropertyHierarchy.json",
+      "sha256": "f2f6b2d120e273dcba4c34d77898f154668355a26fbaf54148fd85f32e6699f0"
+    },
+    {
+      "bytes": 1719,
+      "path": "classification/PropertyRanges.json",
+      "sha256": "17525984ee85dfe5b37c82dcd63aeff6c0f24a273dd6e2edabe789f2952cb628"
+    },
+    {
+      "bytes": 2212,
+      "path": "classification/PropertyRangesChains.json",
+      "sha256": "a8ac8aa3cd22963ff896873daa139359725fdd792bdcdc752136632a02963f88"
+    },
+    {
+      "bytes": 1878,
+      "path": "classification/PropertyRangesChainsReflexivity.json",
+      "sha256": "28c0b16030fc0976a99d1df07a773d6a0f0f029167ab668f1d9bfe23d272d756"
+    },
+    {
+      "bytes": 1718,
+      "path": "classification/PropertyRangesDisjointness.json",
+      "sha256": "9662c1b705e1643efd970973c0002ff0d972a5bd7bc19f826101f5e8e32c9a03"
+    },
+    {
+      "bytes": 1746,
+      "path": "classification/PropertyRangesHierarchy.json",
+      "sha256": "123b43c1edb24192dde398baabd93c68ad5090bdfec3fb0386694046c2a6937d"
+    },
+    {
+      "bytes": 1579,
+      "path": "classification/PropertyRangesInconsistency.json",
+      "sha256": "90efb39337b4a323761d1dc79334c494877346f26ecf0306768638c6e7e6882c"
+    },
+    {
+      "bytes": 1427,
+      "path": "classification/PropertyRangesNegation.json",
+      "sha256": "8440430b1722b939c0c68cbd993e4883d4113ebbb834ba2075b960cd2d045f63"
+    },
+    {
+      "bytes": 1420,
+      "path": "classification/PropertyRangesReflexivity.json",
+      "sha256": "0b260ef7758fd5c925970c86a214fb1bfffa573f4eac236cf3a5a58c709a3343"
+    },
+    {
+      "bytes": 1811,
+      "path": "classification/PropertyRangesReflexivityComplex.json",
+      "sha256": "8a5d5ac31b6905a179bab8b132c87894de6e3a5e0f7dba4210efeafb913db97b"
+    },
+    {
+      "bytes": 1407,
+      "path": "classification/ReflexiveExistential.json",
+      "sha256": "cc09ab2adf2db7805fdf0efa41deb3827f9745d0c3e3753573fbe4575f6bac6f"
+    },
+    {
+      "bytes": 1149,
+      "path": "classification/ReflexivePropertyDomains.json",
+      "sha256": "e0092e988696956a1c53bab4c38a91deaa16bcf58f272ecf247842be6b168e34"
+    },
+    {
+      "bytes": 1180,
+      "path": "classification/ReflexivePropertyRanges.json",
+      "sha256": "ec5f955802f4ed9236ebdb3458f4f950708ca3d2657ed04ef51717a4852bda54"
+    },
+    {
+      "bytes": 2363,
+      "path": "classification/ReflexiveRole.json",
+      "sha256": "2e01837297d08660c7e1434f9f0df4e589a43536cbed1baa27cc62f6ed541200"
+    },
+    {
+      "bytes": 1108,
+      "path": "classification/RoleCompositionSymmetry.json",
+      "sha256": "54f0ff7b1624a928891afefb16485322f9d694cb46856647802887269c083b74"
+    },
+    {
+      "bytes": 1219,
+      "path": "classification/SameIndividual.json",
+      "sha256": "b5f9dd796c77448675e451bf8d84e1ead2d0e7cb633bd4de7e69f76b6b92c0b6"
+    },
+    {
+      "bytes": 1493,
+      "path": "classification/StructuralDataHasValueEquivalence.json",
+      "sha256": "6609a70f8fe8927c08e3a40ff4d067ef5d15f446af5c686d52359f32d8c0d59c"
+    },
+    {
+      "bytes": 1553,
+      "path": "classification/StructuralDataHasValueInclusion.json",
+      "sha256": "14025edf3ff3d0d423d2a692d560679f448344aa569866711d8a4452bdd6327b"
+    },
+    {
+      "bytes": 1762,
+      "path": "classification/StructuralDisjunctionEquivalence.json",
+      "sha256": "16b8b38de6f756e23919ae1de06e46e291d0f8a08bd7330ff04dabc28091444c"
+    },
+    {
+      "bytes": 1868,
+      "path": "classification/StructuralDisjunctionInclusion.json",
+      "sha256": "7d82d0952bbfd0ccb5b96a167b62b89b4f29cc9e088bfd4404cbc79b7c1e9af6"
+    },
+    {
+      "bytes": 1504,
+      "path": "classification/StructuralHasSelfEquivalence.json",
+      "sha256": "863a6c29a8eb721048c2228d628bc723d9a1375698ba1d838946d0d0ff690692"
+    },
+    {
+      "bytes": 1564,
+      "path": "classification/StructuralHasSelfInclusion.json",
+      "sha256": "2179a1510275bee656ea6d178732cb8b2da28cf3c11edc11e2436accf54ab1b9"
+    },
+    {
+      "bytes": 1710,
+      "path": "classification/StructuralNegationEquivalence.json",
+      "sha256": "9669f8a19414870cb8a09303994ead4cd93ca40ef6dca7cdbb03f51a1d0ec822"
+    },
+    {
+      "bytes": 1770,
+      "path": "classification/StructuralNegationInclusion.json",
+      "sha256": "b8d871a6bfcb119907e4730d321dbfb2582460b78f67a6c218066f7cfa59cf35"
+    },
+    {
+      "bytes": 1244,
+      "path": "classification/Top.json",
+      "sha256": "7609eeaa2bd9c614c6e516961ecbcd1b296a4e42ab2a9d52058b8b648ae60e94"
+    },
+    {
+      "bytes": 1111,
+      "path": "classification/TopEquivalence.json",
+      "sha256": "aab82ddd90cc505e96f7e030531efe7d5c0c65435ba2676b02e9a26cd03251ce"
+    },
+    {
+      "bytes": 2104,
+      "path": "classification/TopObjectProperty.json",
+      "sha256": "711a4790e212bb598f815bc44830b5df91a0dcd1b1daf4cb3e48fb759e52f1b6"
+    },
+    {
+      "bytes": 1240,
+      "path": "classification/TopSubclasses.json",
+      "sha256": "c722e961b978f90950d39835958dd3e9ca802fea7c143d67a1b3e96db1504ebb"
+    },
+    {
+      "bytes": 1439,
+      "path": "classification/TransitiveProperty.json",
+      "sha256": "d01aa27674d9c381dbfd4893018261939a95d7a4e6a63ed4b63663e9b5ba4dec"
+    },
+    {
+      "bytes": 1892,
+      "path": "classification/TransitivePropertyChain.json",
+      "sha256": "75c6c9f0307a48b62b1231f4bffd7257ef4abaeeec21956ac9b0982275799d46"
+    },
+    {
+      "bytes": 1734,
+      "path": "classification/TransitivityByChain.json",
+      "sha256": "b3352786aa7cc64600df4aebefc696aca440d033234992f103a58dcd139d9245"
+    },
+    {
+      "bytes": 2873,
+      "path": "classification/endocarditis.json",
+      "sha256": "54d3868e10955c3d12f5dd24b324e9ac1fcff70a01b6dbdec0fc83385b07c8cd"
+    },
+    {
+      "bytes": 3050,
+      "path": "classification/forest.json",
+      "sha256": "ecf7b4e010e351e52f19b0639729f8c723fa9057ceacc844e42bad8c339408fc"
+    },
+    {
+      "bytes": 2402,
+      "path": "classification/kangaroo.json",
+      "sha256": "7c17dbe5c7fed108bae641a5b12c18e94363a683e991c06036db4fcd66704b84"
+    },
+    {
+      "bytes": 1575,
+      "path": "classification/object_property/Ancestors.json",
+      "sha256": "a0516b74abec9b9032656242bfae88833c2052e5a878139b150f819d196db736"
+    },
+    {
+      "bytes": 1608,
+      "path": "classification/object_property/Bottom.json",
+      "sha256": "e880f190a96d527e2ed7c980e677fc818b54c859cddf6a3631c0fffdd6c5316e"
+    },
+    {
+      "bytes": 1969,
+      "path": "classification/object_property/ChainWithReflexive.json",
+      "sha256": "3d763a9e50b2dc9815065f4b23469f63a2a5b89fe6fe448f272c826b21fa3bb0"
+    },
+    {
+      "bytes": 1385,
+      "path": "classification/object_property/Cycle.json",
+      "sha256": "32482ee0a22220b886f9ad178655ec9a269832016e7f430ff7956bb4b52acc80"
+    },
+    {
+      "bytes": 1300,
+      "path": "classification/object_property/Equivalent.json",
+      "sha256": "8f446110533d85f55203c56589f818cddfa5c5cb22c79e974015600c8d7f5e10"
+    },
+    {
+      "bytes": 1257,
+      "path": "classification/object_property/Inconsistent.json",
+      "sha256": "2869acabab1631c79aa0627031fbb4e09807cdffe5d4c23255c110abdca21739"
+    },
+    {
+      "bytes": 1865,
+      "path": "classification/object_property/InconsistentPropertyByDisjointClasses.json",
+      "sha256": "c48580395f0ca1c24304e681b59873db70ef57fb3aafa73e35cadec58511bb04"
+    },
+    {
+      "bytes": 1632,
+      "path": "classification/object_property/InconsistentPropertyByObjectComplementOf.json",
+      "sha256": "69ca156409cb02b9b834f548cbe78bf8b55f3eab8e23a8d325904f3de294f2fe"
+    },
+    {
+      "bytes": 1583,
+      "path": "classification/object_property/InconsistentPropertyByOwlNothing.json",
+      "sha256": "f767b246ff34a48dfe5d02313737b3d0538d892d52686e2e67435c1075f95741"
+    },
+    {
+      "bytes": 1656,
+      "path": "classification/object_property/Top.json",
+      "sha256": "34972b958ec573f0cc489c85e272a3b1397ffdf8fbd74f256ffbd6688660b461"
+    },
+    {
+      "bytes": 1350,
+      "path": "classification/object_property/TopSubproperties.json",
+      "sha256": "949afaa48ae0556d6fb2c1e97618d3101013c49c42c589c66d3c484046e51da3"
+    },
+    {
+      "bytes": 833,
+      "path": "features/ontology/ANONYMOUS_INDIVIDUAL.json",
+      "sha256": "1decfd85ef818be607822f67b9835894ebefe5899fecda0df508a6471c15ff69"
+    },
+    {
+      "bytes": 862,
+      "path": "features/ontology/ASYMMETRIC_OBJECT_PROPERTY.json",
+      "sha256": "8041fefb6f4a3ecc272a2c862c247fefc5d6b23449a53aa70eaa30ed69070e72"
+    },
+    {
+      "bytes": 887,
+      "path": "features/ontology/BOTTOM_OBJECT_PROPERTY_POSITIVE.json",
+      "sha256": "8f41f194491b60c2083be72281f22510280a0199525c29109ac5df782fb9675e"
+    },
+    {
+      "bytes": 775,
+      "path": "features/ontology/DATATYPE.json",
+      "sha256": "d2225b0b38eadfd133e9b2806ee503ef2382b215fd17dd4a32a562122b69c925"
+    },
+    {
+      "bytes": 829,
+      "path": "features/ontology/DATATYPE_DEFINITION.json",
+      "sha256": "76f2932b3180db06197f90425ca62f60944d12c77138c92a61e645bab51a3bad"
+    },
+    {
+      "bytes": 831,
+      "path": "features/ontology/DATA_ALL_VALUES_FROM.json",
+      "sha256": "dafaf0acd33cf4297a7fed430701e8e42bc5577f338d79723133da1f609442c2"
+    },
+    {
+      "bytes": 842,
+      "path": "features/ontology/DATA_EXACT_CARDINALITY.json",
+      "sha256": "d17bd693c46e44b67ab1f92f2901fde69d76de9a4c97be7182e3ce9b99c77588"
+    },
+    {
+      "bytes": 802,
+      "path": "features/ontology/DATA_HAS_VALUE.json",
+      "sha256": "f047cf5caf4ed67cd0ee68fd431936d73213b24a2210bb6de13e6614e55ff024"
+    },
+    {
+      "bytes": 832,
+      "path": "features/ontology/DATA_MAX_CARDINALITY.json",
+      "sha256": "8a2c806ffd06b26998c3f57caf0bbdbb0da5529ee91dd48665de8e0d2f45fd96"
+    },
+    {
+      "bytes": 832,
+      "path": "features/ontology/DATA_MIN_CARDINALITY.json",
+      "sha256": "70d87128664c2e213713e7ddba1621ba0010781e5764ae202dbb2929f9e72356"
+    },
+    {
+      "bytes": 798,
+      "path": "features/ontology/DATA_PROPERTY.json",
+      "sha256": "ff892f766ea8ca9abfd874bd7ab9dec2817513de67bb493f6d8685561a4cbb2a"
+    },
+    {
+      "bytes": 847,
+      "path": "features/ontology/DATA_PROPERTY_ASSERTION.json",
+      "sha256": "15f22c0a39fb0b15454c404df54f9de7eda04ab1c45dc8798aa9ae2332c30c09"
+    },
+    {
+      "bytes": 833,
+      "path": "features/ontology/DATA_PROPERTY_DOMAIN.json",
+      "sha256": "95291ef2cada85c4bb2c5da22e202c9d302946bf6e87b501ff51cea2146358e4"
+    },
+    {
+      "bytes": 828,
+      "path": "features/ontology/DATA_PROPERTY_RANGE.json",
+      "sha256": "c06d7652a72b716357593b6538f5dfd98135f5abd310937fb09a930cd68a3169"
+    },
+    {
+      "bytes": 837,
+      "path": "features/ontology/DATA_SOME_VALUES_FROM.json",
+      "sha256": "19ccd03175ab8f399aa326830ee4c8e6e13e3171317f5bb51ca993f5d31421ba"
+    },
+    {
+      "bytes": 873,
+      "path": "features/ontology/DIFFERENT_INDIVIDUALS.json",
+      "sha256": "f9fdf4bfb3ae18882c4ea8383353582d5555f3380ab4801fa6139c613d52dd79"
+    },
+    {
+      "bytes": 847,
+      "path": "features/ontology/DISJOINT_CLASSES.json",
+      "sha256": "0c0c355046d69599bd4be98a972372c5a7b7d5d5f118952711023a0b8fd0a04b"
+    },
+    {
+      "bytes": 853,
+      "path": "features/ontology/DISJOINT_DATA_PROPERTIES.json",
+      "sha256": "52d471b5f5b48544613bc77f349400e3f16eb944a2ee32afd5f2a33e3a1f054d"
+    },
+    {
+      "bytes": 863,
+      "path": "features/ontology/DISJOINT_OBJECT_PROPERTIES.json",
+      "sha256": "05734fc68d7b3a5372b012e132799cf44ac128914137b55ea38fb4d8a8fd6409"
+    },
+    {
+      "bytes": 837,
+      "path": "features/ontology/DISJOINT_UNION.json",
+      "sha256": "d66ac357fee870fb7b61eef8c7f9b9156ef8e9aedc2421ec8b805bc617fe2f54"
+    },
+    {
+      "bytes": 863,
+      "path": "features/ontology/EQUIVALENT_DATA_PROPERTIES.json",
+      "sha256": "e6aaeed15bb492e8b1a26de056a8fa81c63f3016390360ee58ccc2eab177967a"
+    },
+    {
+      "bytes": 853,
+      "path": "features/ontology/FUNCTIONAL_DATA_PROPERTY.json",
+      "sha256": "a8284dd4b2601b06b16ae0d9997019873d95c787b014c0c18dd9c058c2309b80"
+    },
+    {
+      "bytes": 863,
+      "path": "features/ontology/FUNCTIONAL_OBJECT_PROPERTY.json",
+      "sha256": "9b731c59943038865d32e529260ca4918293be6e4f86ba4d3c6bfef936d87eb2"
+    },
+    {
+      "bytes": 769,
+      "path": "features/ontology/HAS_KEY.json",
+      "sha256": "0ed8f496d4937264d03b5dcc3925dcea8ceef451e642bf9e7583a401aacbf52d"
+    },
+    {
+      "bytes": 902,
+      "path": "features/ontology/INVERSE_FUNCTIONAL_OBJECT_PROPERTY.json",
+      "sha256": "8309ee4f76f00b2bae3bf87d5ce20069bcb3e7b460a741a7a3a8d52e0a22216e"
+    },
+    {
+      "bytes": 858,
+      "path": "features/ontology/INVERSE_OBJECT_PROPERTIES.json",
+      "sha256": "6082293910594ea83004067e7031b9e091f31e41457c0f5ee0c3118d12d68513"
+    },
+    {
+      "bytes": 868,
+      "path": "features/ontology/IRREFLEXIVE_OBJECT_PROPERTY.json",
+      "sha256": "ff1fad50449846dc12c375a61d7b3f10b8040000cac808b0ce7103838ae243cb"
+    },
+    {
+      "bytes": 892,
+      "path": "features/ontology/NEGATIVE_DATA_PROPERTY_ASSERTION.json",
+      "sha256": "8bca42db638dda355fac1439c0e850dd6c445dd03035f33e8e95ef0becdce5f8"
+    },
+    {
+      "bytes": 902,
+      "path": "features/ontology/NEGATIVE_OBJECT_PROPERTY_ASSERTION.json",
+      "sha256": "5a808494987fc30948e6bca5824bfedb9e7ac68c27dafbcca104d8eaca38affe"
+    },
+    {
+      "bytes": 842,
+      "path": "features/ontology/OBJECT_ALL_VALUES_FROM.json",
+      "sha256": "7d19e18ab7d8b3997a7b5686d6b4ba2fe10f095d7b5981afa0ace635bb6eef7b"
+    },
+    {
+      "bytes": 874,
+      "path": "features/ontology/OBJECT_COMPLEMENT_OF_NEGATIVE.json",
+      "sha256": "167835415bd2c2f3f0f92766bebc3fd1dcbc664aa340ef8f47a684e9f2a05381"
+    },
+    {
+      "bytes": 874,
+      "path": "features/ontology/OBJECT_COMPLEMENT_OF_POSITIVE.json",
+      "sha256": "2f7efa049910c3135d70a4e7a5900420e7ade819e487e3633e0798afacb29718"
+    },
+    {
+      "bytes": 853,
+      "path": "features/ontology/OBJECT_EXACT_CARDINALITY.json",
+      "sha256": "ae415362d5a9bebb8f88a1df99b20121f0f23a354f8e301a10c46fee2c5246b9"
+    },
+    {
+      "bytes": 849,
+      "path": "features/ontology/OBJECT_HAS_SELF_NEGATIVE.json",
+      "sha256": "ba4a89f98a7d0730346ecbcea5579cfe191ef7f0305df467574921a77998f1e5"
+    },
+    {
+      "bytes": 855,
+      "path": "features/ontology/OBJECT_HAS_VALUE_POSITIVE.json",
+      "sha256": "d757f250983be0f5215ba765e5b41371321f879038794c7610df03a018447d43"
+    },
+    {
+      "bytes": 818,
+      "path": "features/ontology/OBJECT_INVERSE_OF.json",
+      "sha256": "7ac75b5b88f17bfe170ea6a77500aae55ea6b48f6eb9704259104ecd1867eedb"
+    },
+    {
+      "bytes": 843,
+      "path": "features/ontology/OBJECT_MAX_CARDINALITY.json",
+      "sha256": "0cf891ce5a86e932c8b010d39ef39e499d04f1613e0ebcee1df8d43a3361f605"
+    },
+    {
+      "bytes": 843,
+      "path": "features/ontology/OBJECT_MIN_CARDINALITY.json",
+      "sha256": "ece150da3695a164fc6ffd53d13d0c0d6d439b74a4d028d128c74e4671fc64c9"
+    },
+    {
+      "bytes": 798,
+      "path": "features/ontology/OBJECT_ONE_OF.json",
+      "sha256": "4916debb0ecf7dbf0859d31d9e1aa4d3baebb3e362da4872c3d6138463479754"
+    },
+    {
+      "bytes": 897,
+      "path": "features/ontology/OBJECT_PROPERTY_ASSERTION.json",
+      "sha256": "864aa02d733d766c108c8e4781ad23df065fdb510ac9b0b8023f38cd43c9e1e1"
+    },
+    {
+      "bytes": 839,
+      "path": "features/ontology/OBJECT_PROPERTY_CHAIN.json",
+      "sha256": "20023a2ff23cddaddd523ae5d5d72ecedb7cd2ddba8e7176b09633274574910a"
+    },
+    {
+      "bytes": 839,
+      "path": "features/ontology/OBJECT_PROPERTY_RANGE.json",
+      "sha256": "e554ccab2d48e3cc8d9b24eef1aa43ac7a5d1c867ca660ce931afd84f5a6f9d3"
+    },
+    {
+      "bytes": 849,
+      "path": "features/ontology/OBJECT_UNION_OF_POSITIVE.json",
+      "sha256": "ef87501250b1bef8a101086d008c31e23ad82d2c1faf1842cd356af8125d73c1"
+    },
+    {
+      "bytes": 831,
+      "path": "features/ontology/OWL_NOTHING_POSITIVE.json",
+      "sha256": "87b814e6c02326c27852f7fbad797c479c0ea54cc99c2a1434884f5706515fb8"
+    },
+    {
+      "bytes": 859,
+      "path": "features/ontology/REFLEXIVE_OBJECT_PROPERTY.json",
+      "sha256": "012b38eb8d0f232f4f547295830804c2e251e3357c3cd52cee18adf03105d4e4"
+    },
+    {
+      "bytes": 832,
+      "path": "features/ontology/SUB_DATA_PROPERTY_OF.json",
+      "sha256": "be176a153ab122dfc6fd23c191a9aff985883159784f8f098b1499f0ebf1af29"
+    },
+    {
+      "bytes": 779,
+      "path": "features/ontology/SWRL_RULE.json",
+      "sha256": "5d207aaa73ffdde1533289a52cca6dd8713188bd17c2d075d38ab218671e29bc"
+    },
+    {
+      "bytes": 858,
+      "path": "features/ontology/SYMMETRIC_OBJECT_PROPERTY.json",
+      "sha256": "05aa13ee1d1a1594866b4239ff07bcbaada1191637af448ad8ea150aa79aefce"
+    },
+    {
+      "bytes": 873,
+      "path": "features/ontology/TOP_OBJECT_PROPERTY_NEGATIVE.json",
+      "sha256": "c057af2cd1a2aefe383aa03a6a05f2bfd6a570588b84bcff4b542470a8bec1fa"
+    },
+    {
+      "bytes": 891,
+      "path": "features/query/QUERY_ANNOTATION_ASSERTION_AXIOM.json",
+      "sha256": "77f827b8c9197a9da960abe1a3ef3615ff817bb07f22093af43b3ebe6268e9f8"
+    },
+    {
+      "bytes": 920,
+      "path": "features/query/QUERY_ANNOTATION_PROPERTY_DOMAIN_AXIOM.json",
+      "sha256": "fc36e81b9f03d58ad9095b7cd21a498b2836c60fb8f38a20aa64426bfcac57dc"
+    },
+    {
+      "bytes": 915,
+      "path": "features/query/QUERY_ANNOTATION_PROPERTY_RANGE_AXIOM.json",
+      "sha256": "1b773331e6806c7c2349c44c3c35d9e41a9d750f27d023f47c454854e28a780a"
+    },
+    {
+      "bytes": 920,
+      "path": "features/query/QUERY_ASYMMETRIC_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "9bd7c7011a7707c0575e743fc809e1821d0a63545e56cf815088a294fd958834"
+    },
+    {
+      "bytes": 886,
+      "path": "features/query/QUERY_DATATYPE_DEFINITION_AXIOM.json",
+      "sha256": "93ba7e7b5040cb8c742fbc18d6ebd09fd1ca43777b7b56c49071a7a7d371c459"
+    },
+    {
+      "bytes": 905,
+      "path": "features/query/QUERY_DATA_PROPERTY_ASSERTION_AXIOM.json",
+      "sha256": "07d65e38fc8824d4235e759454fd72951776407807fa5ab68ecfb3fd373abc4c"
+    },
+    {
+      "bytes": 890,
+      "path": "features/query/QUERY_DATA_PROPERTY_DOMAIN_AXIOM.json",
+      "sha256": "08ddc3f78ebfa18cc1321de5f93cb912c0bdd71c7cd095511f3d14e1ff92be91"
+    },
+    {
+      "bytes": 885,
+      "path": "features/query/QUERY_DATA_PROPERTY_RANGE_AXIOM.json",
+      "sha256": "96cf0f4f915c9155e8c0f7d0e7b9fb4ceb455dc2f7c4b3fb668b66056d385da6"
+    },
+    {
+      "bytes": 847,
+      "path": "features/query/QUERY_DECLARATION_AXIOM.json",
+      "sha256": "9b21d79dee3521721ffc109b8d5b1bbb279d839e36acc6cc18e1b473d7494058"
+    },
+    {
+      "bytes": 910,
+      "path": "features/query/QUERY_DISJOINT_DATA_PROPERTIES_AXIOM.json",
+      "sha256": "a6328b1e05f8915b4c0a9ba8ab946e6e1d1f0a369b893181255c236b7e9863c9"
+    },
+    {
+      "bytes": 920,
+      "path": "features/query/QUERY_DISJOINT_OBJECT_PROPERTIES_AXIOM.json",
+      "sha256": "6ffbfdfe61d0eb85ad610c87aaee625d8d8b8d57c1dc6be671980d84c3825929"
+    },
+    {
+      "bytes": 861,
+      "path": "features/query/QUERY_DISJOINT_UNION_AXIOM.json",
+      "sha256": "8be18b1e2b2bf9175c0c0afff214c3c5f319881d6cfa1c55dfdaf9025eff9907"
+    },
+    {
+      "bytes": 920,
+      "path": "features/query/QUERY_EQUIVALENT_DATA_PROPERTIES_AXIOM.json",
+      "sha256": "6fc98801f7f7e9191fc63f2ffffc1fc6cef561852fc585ae1d9f7bf4aa552797"
+    },
+    {
+      "bytes": 930,
+      "path": "features/query/QUERY_EQUIVALENT_OBJECT_PROPERTIES_AXIOM.json",
+      "sha256": "7887eec738c06da9e719d40d7de7dfc50d0a19786d04a023e9dce507977458b6"
+    },
+    {
+      "bytes": 910,
+      "path": "features/query/QUERY_FUNCTIONAL_DATA_PROPERTY_AXIOM.json",
+      "sha256": "3f7780ebf436937d01247e7e3d0077779aaa1d2377e422e739ba0d1c988aa214"
+    },
+    {
+      "bytes": 920,
+      "path": "features/query/QUERY_FUNCTIONAL_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "3d145b3c9ff7b3f0f3ad1ba6eb163dfeef5b4ad5895ea0b9c0e52a5967ff279e"
+    },
+    {
+      "bytes": 826,
+      "path": "features/query/QUERY_HAS_KEY_AXIOM.json",
+      "sha256": "8c86822915338945f013891588979885fabd687abddef4eb2ac2f86dfd7285a1"
+    },
+    {
+      "bytes": 959,
+      "path": "features/query/QUERY_INVERSE_FUNCTIONAL_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "35a6d73103eb4a1b74bb94e0f3e03079f704fd374e498d21f5ccf9f9bb8f6ddf"
+    },
+    {
+      "bytes": 915,
+      "path": "features/query/QUERY_INVERSE_OBJECT_PROPERTIES_AXIOM.json",
+      "sha256": "d1ec70d5431a282c90f6d31508fd1fc2d55f8ee8c95aedc3e9db0e39210511ae"
+    },
+    {
+      "bytes": 925,
+      "path": "features/query/QUERY_IRREFLEXIVE_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "56025a754dfb009a92a9f2a7c8362796e1bbaa09e10f96e936f6295c9a12e292"
+    },
+    {
+      "bytes": 949,
+      "path": "features/query/QUERY_NEGATIVE_DATA_PROPERTY_ASSERTION_AXIOM.json",
+      "sha256": "476942e25d2492d342f271eb257799f2e21d4b43432c48dbc10d962358d12988"
+    },
+    {
+      "bytes": 959,
+      "path": "features/query/QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM.json",
+      "sha256": "5652194ceb10205761932f49aa2a23d0225f1023a66c0a883f797a4b057fbdea"
+    },
+    {
+      "bytes": 895,
+      "path": "features/query/QUERY_OBJECT_PROPERTY_RANGE_AXIOM.json",
+      "sha256": "837b3312c86d373b446cc3cc122df06376f77bb3bffc8245a73b0e9780106180"
+    },
+    {
+      "bytes": 915,
+      "path": "features/query/QUERY_REFLEXIVE_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "e213e77569614ba509d49ba9ee4061283dc764e5c8ce4b80cc424ba68655d79d"
+    },
+    {
+      "bytes": 919,
+      "path": "features/query/QUERY_SUB_ANNOTATION_PROPERTY_OF_AXIOM.json",
+      "sha256": "665605bb0ac85e148e65ce1745b0e54f1f327c1290b99b16ea7203f6ff0010e0"
+    },
+    {
+      "bytes": 889,
+      "path": "features/query/QUERY_SUB_DATA_PROPERTY_OF_AXIOM.json",
+      "sha256": "946b60accbd2711e12724b97ff07603cd5dbd37c28a336b1263a17fc00aedba4"
+    },
+    {
+      "bytes": 899,
+      "path": "features/query/QUERY_SUB_OBJECT_PROPERTY_OF_AXIOM.json",
+      "sha256": "83129e3f51a0b29e5988e813ddd3ad07ee427f1958dc6262a56302cb1cc22a5e"
+    },
+    {
+      "bytes": 807,
+      "path": "features/query/QUERY_SWRL_RULE.json",
+      "sha256": "6e024e198df4c7b4e5cbd3db6d51af58993eb4165f68a2dc0a9b73dafce73a1a"
+    },
+    {
+      "bytes": 915,
+      "path": "features/query/QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "a1eb7268b5cb2775156f31d8aeb67d222cc2ccd43668ed8f33e501e530d016bc"
+    },
+    {
+      "bytes": 920,
+      "path": "features/query/QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM.json",
+      "sha256": "6774fce057825a2715123fd5e52911f76257d6fd2b21ac2873bb951526f4e1f7"
+    },
+    {
+      "bytes": 2770,
+      "path": "query/class/AssertionsExistentials.json",
+      "sha256": "527bdc1e2a2e1367078c27ba38609bcea500c45e8dfa7dc21dec18c166cdd789"
+    },
+    {
+      "bytes": 1857,
+      "path": "query/class/BasicABox.json",
+      "sha256": "dd0123a41272cbcb5ed19b92e1191f159d59dacfd64442db430a7bdf7db16c2d"
+    },
+    {
+      "bytes": 1685,
+      "path": "query/class/Bottom.json",
+      "sha256": "0d765b462d4b7404f1336c2befdff2664e2f9404c58cf6837cfe1ef78782945d"
+    },
+    {
+      "bytes": 3576,
+      "path": "query/class/Conjunctions.json",
+      "sha256": "1029218f929ebdda3adc2d03d90fbf07b69dab4f99d579fc62feeadee87dc236"
+    },
+    {
+      "bytes": 3843,
+      "path": "query/class/ConjunctionsComplex.json",
+      "sha256": "d89ea41118e9dae1dd698bf6e43cf98f776550608ce4cc6691685463083375d9"
+    },
+    {
+      "bytes": 4779,
+      "path": "query/class/DisjointClasses.json",
+      "sha256": "8b7947bc7b70d585b35691a144a5820a03e1ebf25822efcb4a8dd983b754db8f"
+    },
+    {
+      "bytes": 2325,
+      "path": "query/class/Disjunctions.json",
+      "sha256": "05b03a5c1a2937c94ccae66064438925a0ff962788efe25838e4a03a2323b09d"
+    },
+    {
+      "bytes": 1716,
+      "path": "query/class/Domain.json",
+      "sha256": "dd795e0a355afb2ad7a62f87e9e5b1ebea138b0a5ad990f33a548015c8f29d58"
+    },
+    {
+      "bytes": 2865,
+      "path": "query/class/DuplicateConjuncts.json",
+      "sha256": "4a302bf0263d1ec3c41878a6f3f0b3882664c9260b50d1b7b2f6e107b85f9f4e"
+    },
+    {
+      "bytes": 1720,
+      "path": "query/class/Equivalent.json",
+      "sha256": "b0cdbfbac3fbe3f43425fc8e1d9e09cec6818a04dcdab6b5bb21022b8150d6d1"
+    },
+    {
+      "bytes": 1700,
+      "path": "query/class/Existentials0.json",
+      "sha256": "c0c233d0e84abda6b608f5b75ff666045217dd8c42cd779186f1d40c8e20ca38"
+    },
+    {
+      "bytes": 1674,
+      "path": "query/class/Existentials1.json",
+      "sha256": "c98e64c6b4e29b670ce4332ad3dc16fa8b3d058152b4089ac04bd1fe5bec6f93"
+    },
+    {
+      "bytes": 1766,
+      "path": "query/class/HasValue.json",
+      "sha256": "9143cd35a71850119feaf7ce9b56389e7811b5466b88e74816ba7fc1b75acf39"
+    },
+    {
+      "bytes": 1755,
+      "path": "query/class/Inconsistent.json",
+      "sha256": "85e0510581a200f25982178564461351267b587763d0fb932b9e8e5475524cda"
+    },
+    {
+      "bytes": 1979,
+      "path": "query/class/InconsistentInstances.json",
+      "sha256": "ea167c722cdce6a1af0beb10add8ddbb551cf3a848ec5dd7a8b4579465954356"
+    },
+    {
+      "bytes": 1800,
+      "path": "query/class/IndirectInstances.json",
+      "sha256": "a2378438169c84bf20f7fa3785eff619a98fb8bc2a40f552f5dab29005bf357f"
+    },
+    {
+      "bytes": 2905,
+      "path": "query/class/OneOf.json",
+      "sha256": "846cc8c7c04947fbfb7f486aa6d4168322bf7d0d08b1a580712c884d58d8ae02"
+    },
+    {
+      "bytes": 1745,
+      "path": "query/class/PropertyRangesHierarchy.json",
+      "sha256": "a5e514d3a7e2d9ef78767884a3e304a420049b2ba12578175a3a33b60087eff1"
+    },
+    {
+      "bytes": 1685,
+      "path": "query/class/Top.json",
+      "sha256": "5b4a240c7099622d9a943784030bd11c52ffe1526c142d1b525740454f917e9a"
+    },
+    {
+      "bytes": 1677,
+      "path": "query/class/TransitiveProperty.json",
+      "sha256": "7fe074ef314defdcab7f5a763fc933ff0877fb8b16865868e7cbba160fa8b3fc"
+    },
+    {
+      "bytes": 1908,
+      "path": "query/class/TransitivePropertyChain.json",
+      "sha256": "068c3bc3b91d76b90a85a51944984712b1477f85f3d0a3e0b7b818fc8b8507b2"
+    },
+    {
+      "bytes": 2353,
+      "path": "query/class/UnsupportedQueryIndexing.json",
+      "sha256": "fec7cc2b03bc6722e3fde076a504a363dc6ec1fdd871e6057d83be5fab88f545"
+    },
+    {
+      "bytes": 1858,
+      "path": "query/class/endocarditis.json",
+      "sha256": "e0946b8901531f136fcab26a112908d5e4dada3b12a98bd94f327a9e57f8bc6f"
+    },
+    {
+      "bytes": 1976,
+      "path": "query/class/forest.json",
+      "sha256": "2392cafdff6d66e9f8e41cad1935a1f48266564e84e051c068310da75a43cbf4"
+    },
+    {
+      "bytes": 1821,
+      "path": "query/class/kangaroo0.json",
+      "sha256": "8a4e24e46d6f9b7feee68b68353bc249cf7e3a865b01aa8ffe938db14c07876e"
+    },
+    {
+      "bytes": 2068,
+      "path": "query/class/kangaroo1.json",
+      "sha256": "763e54f5c16bf5caaa7faea26f609c0ec1859407ff2948edea27fd2e43af47fd"
+    },
+    {
+      "bytes": 2634,
+      "path": "query/entailment/AssertionRanges.json",
+      "sha256": "8ef397f2dbc4cd6476575f9bd8c2435d68140aaaab1e41fc095d8a06e344a6fd"
+    },
+    {
+      "bytes": 2542,
+      "path": "query/entailment/ClassAssertion.json",
+      "sha256": "61e4c9f945a182587723aefd662ddb3a20c0007d377fb48e2586835b499ae06f"
+    },
+    {
+      "bytes": 3050,
+      "path": "query/entailment/DifferentIndividuals.json",
+      "sha256": "e8e7cf2322640310ff14fd7de2792bf12b006afd4244e6cc75c3eb18ed3251c6"
+    },
+    {
+      "bytes": 2556,
+      "path": "query/entailment/DisjointClasses.json",
+      "sha256": "f3268d80450a222db7953ddec0b9085a1ed9fa024497ffeaf0645b6a56c0ed20"
+    },
+    {
+      "bytes": 5751,
+      "path": "query/entailment/EmptyOntology.json",
+      "sha256": "0732a1c41e375165c6284286cba26e62d5fac820b8d509c08e36f0395af02c8b"
+    },
+    {
+      "bytes": 2534,
+      "path": "query/entailment/EquivalentClasses.json",
+      "sha256": "1f66e6869355a53975a3ef24cb96d8cd20bdf8b6661b1c9b522bfc02e484b539"
+    },
+    {
+      "bytes": 2650,
+      "path": "query/entailment/HasValueRanges.json",
+      "sha256": "af1b9c845099a5f1a2dac32609cbaa7f0dc505c08531a6a35458630cce0dc25b"
+    },
+    {
+      "bytes": 4471,
+      "path": "query/entailment/Inconsistent.json",
+      "sha256": "315bb59fad9e10b9a734cc172e52327453850ac8f31c98a23ed63bc9fc272f0e"
+    },
+    {
+      "bytes": 4507,
+      "path": "query/entailment/InconsistentInstances.json",
+      "sha256": "c1ff52c1c8bdeffc2603c6b01cea7e74ed24a971856b6e332ff2420e7ddb28ef"
+    },
+    {
+      "bytes": 11045,
+      "path": "query/entailment/InconsistentProperties.json",
+      "sha256": "ee0e876ac9274f9dd916b8b0fddfdadf26b8fccf84b07516e87b8dda47ec3700"
+    },
+    {
+      "bytes": 3705,
+      "path": "query/entailment/ObjectPropertyAssertion.json",
+      "sha256": "d2a8d077e5fa3e82e9c22035a8b3c4d4183cda1ba592d51bf280a16f97e23aa8"
+    },
+    {
+      "bytes": 1685,
+      "path": "query/entailment/ObjectPropertyDomain.json",
+      "sha256": "1cf272c5e7c078d0b2f6c2932cdc9adfb032a4b8e859a68a6e9b9aeaf216a9a6"
+    },
+    {
+      "bytes": 1611,
+      "path": "query/entailment/RedundantComposition.json",
+      "sha256": "fcd2add1fc2f4518ee08a4abe33bc7aa5c63728f12e5454b8fbf9553b1faf00b"
+    },
+    {
+      "bytes": 3587,
+      "path": "query/entailment/SameIndividual.json",
+      "sha256": "7d5e9b05aa854a79021cfc197691b14090ab998bb7cf47c2c1eed6f70ad9d1d0"
+    },
+    {
+      "bytes": 3107,
+      "path": "query/entailment/SubClassOf.json",
+      "sha256": "5b24ae60c0ca38d390fcedce330db02f5e2306618b71e3b5a25e95996cd1d953"
+    },
+    {
+      "bytes": 4399,
+      "path": "query/entailment/TransitiveExistentials.json",
+      "sha256": "cc797a4b00a8aeb962f6e37b99c3fb768aa382f1136ad640644590c6625bfde5"
+    },
+    {
+      "bytes": 2030,
+      "path": "realization/AssertionsExistentials.json",
+      "sha256": "97269a226f1235d7c44e87b687f77ede8d7dc1b6449f17a8d7552969e058c4a6"
+    },
+    {
+      "bytes": 2195,
+      "path": "realization/AssertionsPropertyRanges.json",
+      "sha256": "b38a75c8f63a3588ddbca38194b6351065ae7e3c61e114b6b3aa7a3e480285e2"
+    },
+    {
+      "bytes": 2033,
+      "path": "realization/BasicABox.json",
+      "sha256": "42f3d32ef50814a36d8acb4acb0b3bd4d0d1666762621fbcdb5cbf7fa11d7793"
+    },
+    {
+      "bytes": 1252,
+      "path": "realization/Inconsistent.json",
+      "sha256": "70fd917b44cdfeaa6e222368b299628e423d665391539db27b4551467168b757"
+    },
+    {
+      "bytes": 1426,
+      "path": "realization/MultipleInconsistencies.json",
+      "sha256": "de152eff2adc6d23edb52c91644074c556671c20567136043b89db41e4083f4a"
+    }
+  ],
+  "generated_by": "tools/oracle.py regenerate",
+  "oracle_source_sha256": "bd85a561ff6798b87e82ca0a178170e9e1d4cf00cddd40d5625dac080d2c2016",
+  "schema": "pyelk.elk-oracle-manifest/1",
+  "source": {
+    "commit": "b8ac5ce83db0704a7359d96aa382891e2f547863",
+    "elk_version": "0.6.0",
+    "owlapi_version": "5.1.20",
+    "repository": "https://github.com/liveontologies/elk-reasoner",
+    "tag": "v0.6.0",
+    "tree": "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
+  },
+  "summary": {
+    "case_files": 124,
+    "expected_tree_sha256": "2277721af5107f07043d2a3175487b18552ac78208ae8e8aed3253b80018c475",
+    "feature_files": 79,
+    "files": 203,
+    "upstream_goldens_checked": 138
+  },
+  "toolchain": {
+    "java_archive_sha256": "03632d1fbf139ab3719a9f4b47dc206251449b87557143c822336dbf8c06560f",
+    "java_executable_sha256": "d460b16235f81cc00a18e45e32e0d700500cc2cf21b7f26580fd1266360fb8b8",
+    "java_runtime": "Eclipse Temurin 17.0.19+10",
+    "maven_executable_sha256": "235e67d7e6b46c491f01d9a441b14b39a1fc05353d69fb529c874475bcbdaf37",
+    "maven_runtime": "Apache Maven 3.9.16"
+  }
+}

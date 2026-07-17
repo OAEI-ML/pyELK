@@ -1,0 +1,114 @@
+{
+  "case_id": "classification/TopObjectProperty",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1,
+      "TOP_OBJECT_PROPERTY_NEGATIVE": 3
+    },
+    "issues": [
+      {
+        "constructors": [
+          "owl:topObjectProperty"
+        ],
+        "features": [
+          "TOP_OBJECT_PROPERTY_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 4,
+      "direct_edges": [
+        [
+          0,
+          6
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          6
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://example.org/E",
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://example.org/F"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 6
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/TopObjectProperty.owl",
+    "ontology_sha256": "2c7144851c6616aa4a0b27298f5b55a49cbcfd8f9f076982c7cfa3ab2909dfc5",
+    "upstream_goldens": [
+      {
+        "path": "classification/TopObjectProperty.taxonomy",
+        "sha256": "31d97f6e8b7bc71fac4b09f5b04e6c7b2317cfa69b127ad76321a21e6904f45a"
+      }
+    ]
+  }
+}

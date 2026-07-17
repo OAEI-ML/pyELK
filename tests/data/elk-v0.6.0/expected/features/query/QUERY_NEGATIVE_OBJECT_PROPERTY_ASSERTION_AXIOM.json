@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM": 1
+    },
+    "constructor": "NegativeObjectPropertyAssertionAxiom",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 55,
+    "name": "QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM",
+    "polarity": "ANY",
+    "scope": "query"
+  },
+  "operation": "query_feature_counts",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "value": {
+      "query_axiom_count": 1
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/query/QUERY_NEGATIVE_OBJECT_PROPERTY_ASSERTION_AXIOM.ofn",
+    "fixture_sha256": "dd3ca8c3d140d177a52d698d02fda281ecc7265ed7ab30b6d5a8daf79f624f2c"
+  }
+}

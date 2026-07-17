@@ -1,0 +1,235 @@
+{
+  "case_id": "classification/ConjunctionsComplex",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 19,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          9
+        ],
+        [
+          0,
+          11
+        ],
+        [
+          0,
+          12
+        ],
+        [
+          0,
+          13
+        ],
+        [
+          0,
+          14
+        ],
+        [
+          0,
+          15
+        ],
+        [
+          0,
+          16
+        ],
+        [
+          0,
+          17
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          20
+        ],
+        [
+          3,
+          20
+        ],
+        [
+          4,
+          20
+        ],
+        [
+          5,
+          20
+        ],
+        [
+          6,
+          20
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          8,
+          20
+        ],
+        [
+          9,
+          20
+        ],
+        [
+          10,
+          20
+        ],
+        [
+          11,
+          20
+        ],
+        [
+          12,
+          20
+        ],
+        [
+          13,
+          18
+        ],
+        [
+          14,
+          20
+        ],
+        [
+          15,
+          20
+        ],
+        [
+          16,
+          20
+        ],
+        [
+          17,
+          20
+        ],
+        [
+          18,
+          20
+        ],
+        [
+          19,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/BB"
+        ],
+        [
+          "http://example.org/BC"
+        ],
+        [
+          "http://example.org/BCD"
+        ],
+        [
+          "http://example.org/BD"
+        ],
+        [
+          "http://example.org/BDC"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/CB"
+        ],
+        [
+          "http://example.org/CBD"
+        ],
+        [
+          "http://example.org/CC"
+        ],
+        [
+          "http://example.org/CD"
+        ],
+        [
+          "http://example.org/CDB"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://example.org/DB"
+        ],
+        [
+          "http://example.org/DBC"
+        ],
+        [
+          "http://example.org/DC"
+        ],
+        [
+          "http://example.org/DCB"
+        ],
+        [
+          "http://example.org/DD"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 20
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/ConjunctionsComplex.owl",
+    "ontology_sha256": "e699c296d4f10ffdfcfffe7ce5197d26f6c16c1ac3c47c5cd2cbff475fe05d75",
+    "upstream_goldens": [
+      {
+        "path": "classification/ConjunctionsComplex.taxonomy",
+        "sha256": "00bc721b665931de78f287a0643d2df5941847737aec601013fc6e7080249b22"
+      }
+    ]
+  }
+}

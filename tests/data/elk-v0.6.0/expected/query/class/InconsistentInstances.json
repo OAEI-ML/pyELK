@@ -1,0 +1,73 @@
+{
+  "case_id": "query/class/InconsistentInstances",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/a",
+                "http://example.org/b",
+                "http://example.org/c",
+                "http://example.org/d"
+              ]
+            ]
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": []
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": []
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://example.org/A",
+              "http://example.org/B",
+              "http://example.org/C",
+              "http://example.org/D",
+              "http://www.w3.org/2002/07/owl#Nothing",
+              "http://www.w3.org/2002/07/owl#Thing"
+            ]
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/A> <http://example.org/B>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": false
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/InconsistentInstances.owl",
+    "ontology_sha256": "640a02c5606c25a0f6b440c211b653acc26dd110ae018e3b603c4a60e1a78d69",
+    "upstream_goldens": [
+      {
+        "path": "query/class/InconsistentInstances.classquery",
+        "sha256": "3ba15d0babcfa147bbef01961d3dc2c96d8c23a9d69167b90f03041cd82f7cd3"
+      }
+    ]
+  }
+}

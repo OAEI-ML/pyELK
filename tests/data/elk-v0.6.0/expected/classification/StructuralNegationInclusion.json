@@ -1,0 +1,87 @@
+{
+  "case_id": "classification/StructuralNegationInclusion",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_COMPLEMENT_OF_NEGATIVE": 1,
+      "OBJECT_COMPLEMENT_OF_POSITIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectComplementOf"
+        ],
+        "features": [
+          "OBJECT_COMPLEMENT_OF_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 3,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 4
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/StructuralNegationInclusion.owl",
+    "ontology_sha256": "549488dd9cbcb0a1107e541f1b419f8274b0a4106bc1957885808f60ba1fcae0",
+    "upstream_goldens": [
+      {
+        "path": "classification/StructuralNegationInclusion.taxonomy",
+        "sha256": "a2266c4c141065e7291b93819f76f9eb889b915a26fdcca8256d6d84966bb1cb"
+      }
+    ]
+  }
+}

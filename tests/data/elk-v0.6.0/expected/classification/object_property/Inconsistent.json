@@ -1,0 +1,45 @@
+{
+  "case_id": "classification/object_property/Inconsistent",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "BOTTOM_OBJECT_PROPERTY_POSITIVE": 1,
+      "TOP_OBJECT_PROPERTY_NEGATIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://example.org/C",
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty",
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/Inconsistent.owl",
+    "ontology_sha256": "7eb95fa2f34c6e38517bf6f32bc04536539e6a9dc4da7533291f8008a5e4313d",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/Inconsistent.propertytaxonomy",
+        "sha256": "26ce2ab3e53ad74618f1b937fab6d959406801afb52820743b231929e554bb0f"
+      }
+    ]
+  }
+}

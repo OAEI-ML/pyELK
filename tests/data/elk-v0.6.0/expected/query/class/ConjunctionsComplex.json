@@ -1,0 +1,152 @@
+{
+  "case_id": "query/class/ConjunctionsComplex",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/A"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/B"
+              ],
+              [
+                "http://example.org/BC"
+              ],
+              [
+                "http://example.org/BCD"
+              ],
+              [
+                "http://example.org/BD"
+              ],
+              [
+                "http://example.org/BDC"
+              ],
+              [
+                "http://example.org/C"
+              ],
+              [
+                "http://example.org/CB"
+              ],
+              [
+                "http://example.org/CBD"
+              ],
+              [
+                "http://example.org/CD"
+              ],
+              [
+                "http://example.org/CDB"
+              ],
+              [
+                "http://example.org/D"
+              ],
+              [
+                "http://example.org/DB"
+              ],
+              [
+                "http://example.org/DBC"
+              ],
+              [
+                "http://example.org/DC"
+              ],
+              [
+                "http://example.org/DCB"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/B> <http://example.org/C> <http://example.org/D>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        },
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/B"
+              ],
+              [
+                "http://example.org/BC"
+              ],
+              [
+                "http://example.org/C"
+              ],
+              [
+                "http://example.org/CB"
+              ],
+              [
+                "http://example.org/E"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/B> <http://example.org/C> <http://example.org/E>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/ConjunctionsComplex.owl",
+    "ontology_sha256": "e699c296d4f10ffdfcfffe7ce5197d26f6c16c1ac3c47c5cd2cbff475fe05d75",
+    "upstream_goldens": [
+      {
+        "path": "query/class/ConjunctionsComplex.classquery",
+        "sha256": "d298c68cb7725d575f52fca7ac5c45041e7081ca2c5b7e04c868a84fe66e723e"
+      }
+    ]
+  }
+}

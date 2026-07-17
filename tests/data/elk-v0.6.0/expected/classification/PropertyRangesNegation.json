@@ -1,0 +1,68 @@
+{
+  "case_id": "classification/PropertyRangesNegation",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_COMPLEMENT_OF_POSITIVE": 1,
+      "OBJECT_PROPERTY_RANGE": 2
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 3
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/PropertyRangesNegation.owl",
+    "ontology_sha256": "7701b42c88828bad0033fb5efc25b4f6aaa4d356d86ae1f2e595591d616cc852",
+    "upstream_goldens": [
+      {
+        "path": "classification/PropertyRangesNegation.taxonomy",
+        "sha256": "2ed25d753dfdf58182dd149b3d5ed738d776608f2cef92b6c870b18a6599efce"
+      }
+    ]
+  }
+}

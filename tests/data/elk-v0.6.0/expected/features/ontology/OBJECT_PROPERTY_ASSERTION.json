@@ -1,0 +1,35 @@
+{
+  "case_id": "feature:OBJECT_PROPERTY_ASSERTION",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "OBJECT_HAS_VALUE_POSITIVE": 1,
+      "OBJECT_PROPERTY_ASSERTION": 1
+    },
+    "constructor": "ObjectPropertyAssertion",
+    "expected_count": 1,
+    "expected_issue": false,
+    "index": 39,
+    "name": "OBJECT_PROPERTY_ASSERTION",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/OBJECT_PROPERTY_ASSERTION.ofn",
+    "fixture_sha256": "fdfdf32d3fff4319c76dc0f4716be135c389b2463260846c85aa16192fc053a7"
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "case_id": "query/class/OneOf",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_ONE_OF": 3
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectOneOf"
+        ],
+        "features": [
+          "OBJECT_ONE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "class_expression_query"
+      },
+      {
+        "constructors": [
+          "ObjectUnionOf"
+        ],
+        "features": [
+          "OBJECT_UNION_OF_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "class_expression_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": false,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": false,
+            "value": [
+              [
+                "http://example.org/A"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": false,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": false,
+            "value": []
+          },
+          "expression": "ObjectSomeValuesFrom(<http://example.org/R> ObjectOneOf(<http://example.org/b> <http://example.org/a>))",
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "class_expression_query"
+            },
+            {
+              "constructors": [
+                "ObjectUnionOf"
+              ],
+              "features": [
+                "OBJECT_UNION_OF_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "class_expression_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1,
+            "OBJECT_UNION_OF_POSITIVE": 1
+          },
+          "satisfiable": {
+            "complete": false,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/OneOf.owl",
+    "ontology_sha256": "c9e72c9c22eaeaed59c0667f8eaa7a5004f41766b5bee75193941c825f89e321",
+    "upstream_goldens": [
+      {
+        "path": "query/class/OneOf.classquery",
+        "sha256": "e3c8f61a1bcd4ac4ffd530498892bd276e75c130d0ccb6377f3b810527b14f6c"
+      }
+    ]
+  }
+}

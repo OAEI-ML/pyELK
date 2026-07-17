@@ -1,0 +1,71 @@
+{
+  "case_id": "query/entailment/EquivalentClasses",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "axiom": "EquivalentClasses(<http://example.org/A> <http://example.org/B> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(<http://example.org/B> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>) <http://example.org/E>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(<http://example.org/B> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(<http://example.org/C> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/EquivalentClasses.owl",
+    "ontology_sha256": "b73221b7dba96f0d11489c1947f2d061955fafa9ae9a4dc8d9eae5f44710962a",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/EquivalentClasses.entailed",
+        "sha256": "fda6855dcaeb5e281036450887edfc8a0dbcbb7dd35fe7645adff1f3de852a7b"
+      },
+      {
+        "path": "query/entailment/EquivalentClasses.notentailed",
+        "sha256": "f12a1b2dc96ac8664d9667175b7ac6e7e0b6669c5d7cf4e159ec703654a40ef3"
+      }
+    ]
+  }
+}

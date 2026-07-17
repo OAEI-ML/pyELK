@@ -1,0 +1,49 @@
+{
+  "case_id": "classification/ReflexivePropertyDomains",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "REFLEXIVE_OBJECT_PROPERTY": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/ReflexivePropertyDomains.owl",
+    "ontology_sha256": "98201d8318a1ba8320432901bc6e78c36a8aca7294dd40e32f16c2e09a0ed15b",
+    "upstream_goldens": [
+      {
+        "path": "classification/ReflexivePropertyDomains.taxonomy",
+        "sha256": "e29b29db08ca5acddc1ca97fade67c470423901523b2d8d21eb4fa4298c41232"
+      }
+    ]
+  }
+}

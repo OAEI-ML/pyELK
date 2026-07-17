@@ -1,0 +1,115 @@
+{
+  "case_id": "realization/AssertionsExistentials",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "realization",
+  "operation": "realization",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_PROPERTY_ASSERTION": 2
+    },
+    "issues": [],
+    "value": {
+      "bottom": 4,
+      "direct_edges": [
+        [
+          0,
+          5
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "direct_types": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "instance_nodes": [
+        [
+          "http://example.org/a"
+        ],
+        [
+          "http://example.org/b"
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 5
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "realization/AssertionsExistentials.owl",
+    "ontology_sha256": "77d73aa466b93ebc674a0c6aae249dc75c7eb662366cb10debf014a49cd7889b",
+    "upstream_goldens": [
+      {
+        "path": "realization/AssertionsExistentials.instancetaxonomy",
+        "sha256": "cd27cc9bd013001a27731737eb743b24190407c79cd3a57c6e3365f1e9493f0e"
+      }
+    ]
+  }
+}

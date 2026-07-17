@@ -1,0 +1,101 @@
+{
+  "case_id": "query/entailment/SubClassOf",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "axiom": "SubClassOf(<http://example.org/A> <http://example.org/B>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/A> <http://example.org/D>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/A> <http://example.org/F>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/B> <http://example.org/C>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/C> <http://example.org/D>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/D> <http://example.org/A>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/F> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/E>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(ObjectIntersectionOf(<http://example.org/E> <http://example.org/C>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/A>))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(ObjectIntersectionOf(<http://example.org/E> <http://example.org/C>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/SubClassOf.owl",
+    "ontology_sha256": "aa75af8b1e10e7237beb74daa5f6b98e428f244148a45b3f72c3bebb1e328a1a",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/SubClassOf.entailed",
+        "sha256": "bb2bab66d2559ddb8f7213c8042887cf904f9bf0b33a0367f5a473ca494aec86"
+      },
+      {
+        "path": "query/entailment/SubClassOf.notentailed",
+        "sha256": "7f2eb62e4cdeddade669d22bd070191bb5aa71d3464aa6801d9403a556ec26e1"
+      }
+    ]
+  }
+}

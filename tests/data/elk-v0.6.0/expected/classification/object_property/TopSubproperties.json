@@ -1,0 +1,60 @@
+{
+  "case_id": "classification/object_property/TopSubproperties",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 2,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org#A"
+        ],
+        [
+          "http://example.org#B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ]
+      ],
+      "top": 3
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/TopSubproperties.owl",
+    "ontology_sha256": "73e0291591bbec03640656e22b1f77c10f93fccee25fa87b4cb149796d77a773",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/TopSubproperties.propertytaxonomy",
+        "sha256": "a5c35d92d5bd2e99feabdcbfae268746316f2e9588b09e39b93783922f1f3f39"
+      }
+    ]
+  }
+}

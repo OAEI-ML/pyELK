@@ -1,0 +1,76 @@
+{
+  "case_id": "classification/object_property/Top",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "TOP_OBJECT_PROPERTY_NEGATIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "owl:topObjectProperty"
+        ],
+        "features": [
+          "TOP_OBJECT_PROPERTY_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "object_property_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 3,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C",
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/Top.owl",
+    "ontology_sha256": "ba7394845ed3f72055d7280f1253746fcea1f2db9f4998ef0c8adc5d736aa309",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/Top.propertytaxonomy",
+        "sha256": "0d44e8867fac08371fae9d021844956be4c6e47fc05ecc40526fcae51bb908f8"
+      }
+    ]
+  }
+}

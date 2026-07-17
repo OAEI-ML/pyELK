@@ -1,0 +1,96 @@
+{
+  "case_id": "query/class/Disjunctions",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {},
+    "issues": [
+      {
+        "constructors": [
+          "ObjectUnionOf"
+        ],
+        "features": [
+          "OBJECT_UNION_OF_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "class_expression_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": false,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": false,
+            "value": [
+              [
+                "http://example.org/A"
+              ],
+              [
+                "http://example.org/B"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": false,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": false,
+            "value": []
+          },
+          "expression": "ObjectUnionOf(<http://example.org/A> <http://example.org/B>)",
+          "issues": [
+            {
+              "constructors": [
+                "ObjectUnionOf"
+              ],
+              "features": [
+                "OBJECT_UNION_OF_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "class_expression_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_UNION_OF_POSITIVE": 1
+          },
+          "satisfiable": {
+            "complete": false,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/Disjunctions.owl",
+    "ontology_sha256": "403821773ce52d83f85c6ee41c925c9c1a98dcc8c2042e10947727f46138308e",
+    "upstream_goldens": [
+      {
+        "path": "query/class/Disjunctions.classquery",
+        "sha256": "dc4df38e4e84239c08f530895c30794862b4bfbd5e4288035dfcce67c5dd7ea3"
+      }
+    ]
+  }
+}

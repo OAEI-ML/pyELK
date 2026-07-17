@@ -1,0 +1,81 @@
+{
+  "case_id": "classification/object_property/InconsistentPropertyByDisjointClasses",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "DisjointClasses"
+        ],
+        "features": [
+          "DISJOINT_CLASSES"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "object_property_taxonomy"
+      },
+      {
+        "constructors": [
+          "owl:Nothing"
+        ],
+        "features": [
+          "OWL_NOTHING_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "object_property_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/R"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/InconsistentPropertyByDisjointClasses.owl",
+    "ontology_sha256": "e38f6a79866491f6e390da5b1bde198f28371859de05c611405ce1edd09c0d84",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/InconsistentPropertyByDisjointClasses.propertytaxonomy",
+        "sha256": "4a37d454508948a8887b01f892e47b6f69f701ca430cecad70ae9c83a8ad3757"
+      }
+    ]
+  }
+}

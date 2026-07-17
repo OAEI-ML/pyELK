@@ -1,0 +1,129 @@
+{
+  "case_id": "classification/PropertyRangesChains",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 2,
+      "OBJECT_PROPERTY_RANGE": 3
+    },
+    "issues": [],
+    "value": {
+      "bottom": 8,
+      "direct_edges": [
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          9
+        ],
+        [
+          2,
+          9
+        ],
+        [
+          3,
+          9
+        ],
+        [
+          4,
+          9
+        ],
+        [
+          5,
+          9
+        ],
+        [
+          6,
+          9
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          8,
+          3
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          8,
+          7
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://example.org/E"
+        ],
+        [
+          "http://example.org/RH"
+        ],
+        [
+          "http://example.org/RR"
+        ],
+        [
+          "http://example.org/RS"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 9
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/PropertyRangesChains.owl",
+    "ontology_sha256": "3588184dac1ebd4330a9f47990af1bbd0f21028d4147cb77d41d1844f4a71df4",
+    "upstream_goldens": [
+      {
+        "path": "classification/PropertyRangesChains.taxonomy",
+        "sha256": "60bf3db8d96daa94823a7db62cf79fad8c049e511e1a70d3ce5c46225301f817"
+      }
+    ]
+  }
+}

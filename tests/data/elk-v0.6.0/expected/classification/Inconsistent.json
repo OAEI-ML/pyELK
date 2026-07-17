@@ -1,0 +1,44 @@
+{
+  "case_id": "classification/Inconsistent",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://example.org/C",
+          "http://www.w3.org/2002/07/owl#Nothing",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/Inconsistent.owl",
+    "ontology_sha256": "3f1e39fff34c4f9c0690d5483a69c36d43090f7715b0f16026a76f291e0c7054",
+    "upstream_goldens": [
+      {
+        "path": "classification/Inconsistent.taxonomy",
+        "sha256": "d9e42ea893102802c48b66f895c39e132d8c3f23c2289b0e33bc6370240ff314"
+      }
+    ]
+  }
+}

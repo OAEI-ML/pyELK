@@ -1,0 +1,93 @@
+{
+  "case_id": "query/class/UnsupportedQueryIndexing",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {},
+    "issues": [
+      {
+        "constructors": [
+          "ObjectAllValuesFrom"
+        ],
+        "features": [
+          "OBJECT_ALL_VALUES_FROM"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "class_expression_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": false,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": false,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": false,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": false,
+            "value": []
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/D> ObjectAllValuesFrom(<http://example.org/R> <http://example.org/B>))",
+          "issues": [
+            {
+              "constructors": [
+                "ObjectAllValuesFrom"
+              ],
+              "features": [
+                "OBJECT_ALL_VALUES_FROM"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "class_expression_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ALL_VALUES_FROM": 1
+          },
+          "satisfiable": {
+            "complete": false,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/UnsupportedQueryIndexing.owl",
+    "ontology_sha256": "dd08edad094192e22c3e2bd51e0876637947d98f1ca3ec70f46387381f0b2245",
+    "upstream_goldens": [
+      {
+        "path": "query/class/UnsupportedQueryIndexing.classquery",
+        "sha256": "855ca2e287eed4a2876571f5886f2acaa1a64540b6d3cb26ec71e2a4be5f63a0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "case_id": "classification/ReflexiveExistential",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 3,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 4
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/ReflexiveExistential.owl",
+    "ontology_sha256": "1081a503e09b8289245a314de4776d704580c6180831bd626af1b2f346d596df",
+    "upstream_goldens": [
+      {
+        "path": "classification/ReflexiveExistential.taxonomy",
+        "sha256": "b8ea8bcc7bcfa5a89486cf5facc9a7e7528cfc59e841ad2431c8fee3b4a1655a"
+      }
+    ]
+  }
+}

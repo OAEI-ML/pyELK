@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:TOP_OBJECT_PROPERTY_NEGATIVE",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "TOP_OBJECT_PROPERTY_NEGATIVE": 1
+    },
+    "constructor": "owl:topObjectProperty",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 48,
+    "name": "TOP_OBJECT_PROPERTY_NEGATIVE",
+    "polarity": "NEGATIVE",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/TOP_OBJECT_PROPERTY_NEGATIVE.ofn",
+    "fixture_sha256": "6e90f0ae7571beb8a0901255fa5bae147f74f5bb2980d1ca3e9cd627ac0b1276"
+  }
+}

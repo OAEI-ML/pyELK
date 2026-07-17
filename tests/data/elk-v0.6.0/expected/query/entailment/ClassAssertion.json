@@ -1,0 +1,82 @@
+{
+  "case_id": "query/entailment/ClassAssertion",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_PROPERTY_ASSERTION": 2,
+      "OBJECT_PROPERTY_CHAIN": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ClassAssertion(<http://example.org/A> <http://example.org/a>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ClassAssertion(<http://example.org/A> <http://example.org/c>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ClassAssertion(<http://example.org/C> <http://example.org/a>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ClassAssertion(<http://example.org/C> <http://example.org/c>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ClassAssertion(ObjectIntersectionOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>)) <http://example.org/a>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "ClassAssertion(ObjectIntersectionOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>)) <http://example.org/b>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/ClassAssertion.owl",
+    "ontology_sha256": "6b6f63c0a580b5179a6345710cce2eccc6aca01307aa55f0ba6c720aa6eb430c",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/ClassAssertion.entailed",
+        "sha256": "0b807362ca102e58f1cf6d11b9218084e8a4a925cf98e3300d121590bb774ac9"
+      },
+      {
+        "path": "query/entailment/ClassAssertion.notentailed",
+        "sha256": "cde9b5223f0d11bd0a72801d115c26777a84977ec6b3f878e28d9a24c9618bbf"
+      }
+    ]
+  }
+}

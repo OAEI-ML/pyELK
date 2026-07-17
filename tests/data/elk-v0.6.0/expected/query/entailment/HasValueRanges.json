@@ -1,0 +1,101 @@
+{
+  "case_id": "query/entailment/HasValueRanges",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_PROPERTY_RANGE": 2
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectPropertyRange",
+          "ObjectHasValue"
+        ],
+        "features": [
+          "OBJECT_PROPERTY_RANGE",
+          "OBJECT_HAS_VALUE_POSITIVE"
+        ],
+        "polarities": [
+          "ANY",
+          "POSITIVE"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ClassAssertion(<http://example.org/B> <http://example.org/a>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectPropertyRange",
+                "ObjectHasValue"
+              ],
+              "features": [
+                "OBJECT_PROPERTY_RANGE",
+                "OBJECT_HAS_VALUE_POSITIVE"
+              ],
+              "polarities": [
+                "ANY",
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        },
+        {
+          "axiom": "ClassAssertion(<http://example.org/C> <http://example.org/a>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectPropertyRange",
+                "ObjectHasValue"
+              ],
+              "features": [
+                "OBJECT_PROPERTY_RANGE",
+                "OBJECT_HAS_VALUE_POSITIVE"
+              ],
+              "polarities": [
+                "ANY",
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/HasValueRanges.owl",
+    "ontology_sha256": "1ac0a12586ec58c372b1ab232ffb961f94f409fc34c3dbf0020e4b7b0daba10e",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/HasValueRanges.entailed",
+        "sha256": "975176720b4083b10db51f168c06e865d3615ae8b85f68a74f1ee109191219dc"
+      },
+      {
+        "path": "query/entailment/HasValueRanges.notentailed",
+        "sha256": "67f3599a97dc6d215bc849990799972f2652fb1d4836829d1ad8a92700a7b389"
+      }
+    ]
+  }
+}

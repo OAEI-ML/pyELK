@@ -1,0 +1,48 @@
+{
+  "case_id": "classification/TopEquivalence",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/TopEquivalence.owl",
+    "ontology_sha256": "56f23f0e8e1e57da426c7c8a6bf0f23fd954bbad995f8b20ab7c2f591e4f04ff",
+    "upstream_goldens": [
+      {
+        "path": "classification/TopEquivalence.taxonomy",
+        "sha256": "4372d0fdcbe8bb0addd559c139aa689e6700cccb7f3153eae730b989518ad916"
+      }
+    ]
+  }
+}

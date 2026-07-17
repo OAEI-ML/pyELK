@@ -1,0 +1,73 @@
+{
+  "case_id": "query/class/BasicABox",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_PROPERTY_ASSERTION": 2,
+      "OBJECT_PROPERTY_CHAIN": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/a"
+              ]
+            ]
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/A"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>))",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/BasicABox.owl",
+    "ontology_sha256": "e80e1c66af92cff3cf1275a1f5f63ba723bb532eff4dc5837c1cd4824b6c756e",
+    "upstream_goldens": [
+      {
+        "path": "query/class/BasicABox.classquery",
+        "sha256": "1d0eda0f03cb2acbf0b2fdd5c87fd78343f3969fd746080dc0690bc2812bcb0a"
+      }
+    ]
+  }
+}

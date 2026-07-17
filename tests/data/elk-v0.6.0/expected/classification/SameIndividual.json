@@ -1,0 +1,56 @@
+{
+  "case_id": "classification/SameIndividual",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2
+    },
+    "issues": [],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/SameIndividual.owl",
+    "ontology_sha256": "f33fa7405f29f66e135c550cb3586696b47e28e3b93031ce82cd4c55e026c6fa",
+    "upstream_goldens": [
+      {
+        "path": "classification/SameIndividual.taxonomy",
+        "sha256": "f9e537811ad04abc52241cac7d5c4dc91b46b2a0a4082e4a3a30a6bab0f6c01b"
+      }
+    ]
+  }
+}

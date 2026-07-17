@@ -1,0 +1,66 @@
+{
+  "case_id": "query/class/Top",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "REFLEXIVE_OBJECT_PROPERTY": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/B"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": []
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://example.org/C",
+              "http://www.w3.org/2002/07/owl#Thing"
+            ]
+          },
+          "expression": "ObjectIntersectionOf(<http://example.org/C> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/B>))",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/Top.owl",
+    "ontology_sha256": "7996c346275e057e12df9c8ebde3769ec672e2b13dcbaa1a2620c7a3bf5f62b1",
+    "upstream_goldens": [
+      {
+        "path": "query/class/Top.classquery",
+        "sha256": "9d6c89ea7790115b130f10af7b79142852485fd7e8c67f1296d28a012482488e"
+      }
+    ]
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "case_id": "classification/StructuralHasSelfEquivalence",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_SELF_NEGATIVE": 2
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectHasSelf"
+        ],
+        "features": [
+          "OBJECT_HAS_SELF_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/StructuralHasSelfEquivalence.owl",
+    "ontology_sha256": "aca701dd9d4c1cdf419b12640079e7be9bee0d2a56e41b67a7a711264dc4a600",
+    "upstream_goldens": [
+      {
+        "path": "classification/StructuralHasSelfEquivalence.taxonomy",
+        "sha256": "f9e537811ad04abc52241cac7d5c4dc91b46b2a0a4082e4a3a30a6bab0f6c01b"
+      }
+    ]
+  }
+}

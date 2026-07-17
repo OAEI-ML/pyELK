@@ -1,0 +1,71 @@
+{
+  "case_id": "classification/Disjunctions",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 3,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 4
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/Disjunctions.owl",
+    "ontology_sha256": "05f20bbd8481fe6c22d587c54e1ada1021daa8cdd74a28430074afb0f14d7895",
+    "upstream_goldens": [
+      {
+        "path": "classification/Disjunctions.taxonomy",
+        "sha256": "403821773ce52d83f85c6ee41c925c9c1a98dcc8c2042e10947727f46138308e"
+      }
+    ]
+  }
+}

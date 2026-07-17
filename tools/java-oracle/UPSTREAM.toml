@@ -1,0 +1,36 @@
+schema = "pyelk.java-oracle-provenance/1"
+repository = "https://github.com/liveontologies/elk-reasoner"
+tag = "v0.6.0"
+commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+tree = "9becd9e41eac6434a1e247c2a9b19644cdd9d27a"
+license = "Apache-2.0"
+elk_version = "0.6.0"
+owlapi_version = "5.1.20"
+java_distribution = "Eclipse Temurin"
+java_version = "17.0.19+10"
+maven_version = "3.9.16"
+configuration_workers = 1
+configuration_incremental = false
+configuration_allow_fresh_entities = true
+configuration_class_query_evictor = "NQEvictor(0, 0.75)"
+configuration_entailment_query_evictor = "NQEvictor(0, 0.75)"
+unsupported_policy = "IGNORE"
+oracle_schema = 1
+
+[[derived_semantics]]
+source_path = "elk-reasoner/src/test/java/org/semanticweb/elk/reasoner/taxonomy/MockTaxonomyLoader.java"
+usage = "Loaded from the pinned tests-classifier artifact; not copied."
+
+[[derived_semantics]]
+source_path = "elk-reasoner/src/test/java/org/semanticweb/elk/reasoner/taxonomy/MockObjectPropertyTaxonomyLoader.java"
+usage = "Loaded from the pinned tests-classifier artifact; not copied."
+
+[[derived_semantics]]
+source_path = "elk-reasoner/src/test/java/org/semanticweb/elk/reasoner/query/ElkExpectedTestOutputLoader.java"
+usage = "Loaded from the pinned tests-classifier artifact; not copied."
+
+[[investigated_generator_corrections]]
+id = "elk-0.6.0-datatype-definition-visitor-dispatch"
+source_path = "elk-owl-parent/elk-owl-implementation/src/main/java/org/semanticweb/elk/owl/implementation/ElkDatatypeDefinitionAxiomImpl.java"
+observation = "accept(ElkAxiomVisitor) returns null and bypasses both pinned feature converters."
+resolution = "The quarantined oracle wraps only this parsed axiom type and restores generic visitor dispatch; structural values are delegated unchanged."

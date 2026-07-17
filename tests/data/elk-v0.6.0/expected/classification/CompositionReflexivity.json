@@ -1,0 +1,74 @@
+{
+  "case_id": "classification/CompositionReflexivity",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 1,
+      "REFLEXIVE_OBJECT_PROPERTY": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 3,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 4
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/CompositionReflexivity.owl",
+    "ontology_sha256": "2e6ed90b7a18bdcfa994074abef6cd1b4861d9ffb399c357d7b4c6d8e60597b6",
+    "upstream_goldens": [
+      {
+        "path": "classification/CompositionReflexivity.taxonomy",
+        "sha256": "06a4a917a66db1cbea629eea277a292309ea91fdcfa5e2f28fc5090ff1226f34"
+      }
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "case_id": "classification/StructuralHasSelfInclusion",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_SELF_NEGATIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectHasSelf"
+        ],
+        "features": [
+          "OBJECT_HAS_SELF_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 2,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 3
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/StructuralHasSelfInclusion.owl",
+    "ontology_sha256": "62d6a5b2ac47f570d07b8d4992b48cb3e18b5d2d80189b98b45d5faac1d1278e",
+    "upstream_goldens": [
+      {
+        "path": "classification/StructuralHasSelfInclusion.taxonomy",
+        "sha256": "f8b539d6626b21a53a3780f8f437c90d672a7fd8d208eefb68b0092fd1748617"
+      }
+    ]
+  }
+}

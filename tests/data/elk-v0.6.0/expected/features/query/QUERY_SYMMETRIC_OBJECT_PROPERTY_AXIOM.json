@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM": 1
+    },
+    "constructor": "SymmetricObjectPropertyAxiom",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 76,
+    "name": "QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM",
+    "polarity": "ANY",
+    "scope": "query"
+  },
+  "operation": "query_feature_counts",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "value": {
+      "query_axiom_count": 1
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/query/QUERY_SYMMETRIC_OBJECT_PROPERTY_AXIOM.ofn",
+    "fixture_sha256": "c2686d29592f152025859e0bc8dbf16e269a41764bee30c49ceceefbfc25fd4e"
+  }
+}

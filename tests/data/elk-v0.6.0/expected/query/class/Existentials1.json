@@ -1,0 +1,67 @@
+{
+  "case_id": "query/class/Existentials1",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/A"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://example.org/B"
+            ]
+          },
+          "expression": "ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/Existentials1.owl",
+    "ontology_sha256": "28e98d8c47f1d6abcef467d3ab22aac0fa17d68848875ac4a2bb58a0630607c4",
+    "upstream_goldens": [
+      {
+        "path": "query/class/Existentials1.classquery",
+        "sha256": "d910631f1c26415763fd64340215fa2e4bdbdd7a70a72ff1a1e43438725b17cb"
+      }
+    ]
+  }
+}

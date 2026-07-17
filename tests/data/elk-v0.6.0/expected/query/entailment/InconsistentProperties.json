@@ -1,0 +1,406 @@
+{
+  "case_id": "query/entailment/InconsistentProperties",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "BOTTOM_OBJECT_PROPERTY_POSITIVE": 1,
+      "TOP_OBJECT_PROPERTY_NEGATIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "owl:bottomObjectProperty"
+        ],
+        "features": [
+          "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "entailment_query"
+      },
+      {
+        "constructors": [
+          "ObjectOneOf"
+        ],
+        "features": [
+          "OBJECT_ONE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "entailment_query"
+      },
+      {
+        "constructors": [
+          "owl:topObjectProperty"
+        ],
+        "features": [
+          "TOP_OBJECT_PROPERTY_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ClassAssertion(<http://example.org/D> <http://example.org/a>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        },
+        {
+          "axiom": "DifferentIndividuals(<http://example.org/a> <http://example.org/b> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 6
+          }
+        },
+        {
+          "axiom": "DisjointClasses(<http://example.org/A> <http://example.org/B> <http://example.org/C>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(<http://example.org/B> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/D>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>) <http://example.org/E>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        },
+        {
+          "axiom": "ObjectPropertyAssertion(<http://example.org/R> <http://example.org/a> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1
+          }
+        },
+        {
+          "axiom": "ObjectPropertyDomain(<http://example.org/R> <http://example.org/D>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        },
+        {
+          "axiom": "SameIndividual(<http://example.org/a> <http://example.org/b> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 6
+          }
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/B> <http://example.org/A>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://www.w3.org/2002/07/owl#Thing> <http://www.w3.org/2002/07/owl#Nothing>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "owl:bottomObjectProperty"
+              ],
+              "features": [
+                "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+              ],
+              "polarities": [
+                "POSITIVE"
+              ],
+              "task": "entailment_query"
+            },
+            {
+              "constructors": [
+                "owl:topObjectProperty"
+              ],
+              "features": [
+                "TOP_OBJECT_PROPERTY_NEGATIVE"
+              ],
+              "polarities": [
+                "NEGATIVE"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/InconsistentProperties.owl",
+    "ontology_sha256": "dc454def213f3feac8b3554679564f8ddf414613cb2d2074a996c2be9aca2d92",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/InconsistentProperties.entailed",
+        "sha256": "035249ea2530b63033111f4413ef894b61923272a47a250f74f7bcdfefda64a7"
+      },
+      {
+        "path": "query/entailment/InconsistentProperties.notentailed",
+        "sha256": "f5566d8cede641db706b46297131092a1be8fc7465eb0a764c9bd10cd231f3e0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "case_id": "query/entailment/SameIndividual",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 1,
+      "OBJECT_ONE_OF": 6,
+      "OBJECT_PROPERTY_ASSERTION": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectOneOf"
+        ],
+        "features": [
+          "OBJECT_ONE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "SameIndividual(<http://example.org/a> <http://example.org/b> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 6
+          }
+        },
+        {
+          "axiom": "SameIndividual(<http://example.org/a> <http://example.org/b> <http://example.org/d>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 6
+          }
+        },
+        {
+          "axiom": "SameIndividual(<http://example.org/a> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 4
+          }
+        },
+        {
+          "axiom": "SameIndividual(<http://example.org/a> <http://example.org/d>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 4
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/SameIndividual.owl",
+    "ontology_sha256": "c0eb2d28d44c7191cae5e388a3af67c8c22688b11ce9ed4acf38aad4486eae55",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/SameIndividual.entailed",
+        "sha256": "2c555782588d356bf53de4869699ca6ad59804437107e92d5af9182ec832dc66"
+      },
+      {
+        "path": "query/entailment/SameIndividual.notentailed",
+        "sha256": "06ff20c1a456028b1afc523cbe1c976606ac4f9be92a5a39784ae5dea2ec794d"
+      }
+    ]
+  }
+}

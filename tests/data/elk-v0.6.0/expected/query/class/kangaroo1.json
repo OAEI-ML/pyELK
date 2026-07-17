@@ -1,0 +1,73 @@
+{
+  "case_id": "query/class/kangaroo1",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 1,
+      "OBJECT_PROPERTY_RANGE": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": []
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.test.com/schema#KangarooInfant"
+              ],
+              [
+                "http://www.test.com/schema#Parent"
+              ],
+              [
+                "http://www.test.com/schema#Pouch"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://www.w3.org/2002/07/owl#Nothing"
+            ]
+          },
+          "expression": "ObjectIntersectionOf(<http://www.test.com/schema#Kangaroo> ObjectSomeValuesFrom(<http://www.test.com/schema#has-body-part> <http://www.test.com/schema#Pouch>) ObjectSomeValuesFrom(<http://www.test.com/schema#has-child> <http://www.test.com/schema#KangarooInfant>))",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": false
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/kangaroo1.owl",
+    "ontology_sha256": "fefdfe68b1fcaeec8ef9b8b5d548a9e5215c4f2c47ab08c6405ac8210a947119",
+    "upstream_goldens": [
+      {
+        "path": "query/class/kangaroo1.classquery",
+        "sha256": "6219a7d4cf137cbd36fcc7976f02c20a685b534a8f6952cafadd12b7b03de1cb"
+      }
+    ]
+  }
+}

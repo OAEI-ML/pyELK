@@ -1,0 +1,146 @@
+{
+  "case_id": "query/entailment/EmptyOntology",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {},
+    "issues": [
+      {
+        "constructors": [
+          "ObjectOneOf"
+        ],
+        "features": [
+          "OBJECT_ONE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "EquivalentClasses(ObjectHasValue(<http://example.org/R> <http://example.org/a>) ObjectSomeValuesFrom(<http://example.org/R> ObjectOneOf(<http://example.org/a>)))",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_HAS_VALUE_POSITIVE": 2,
+            "OBJECT_ONE_OF": 2
+          }
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectIntersectionOf(<http://example.org/A> <http://example.org/B> <http://example.org/A>) ObjectIntersectionOf(<http://example.org/B> <http://example.org/A>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectIntersectionOf(<http://example.org/A> <http://example.org/B> <http://example.org/C>) ObjectIntersectionOf(<http://example.org/A> <http://example.org/C> <http://example.org/B>) ObjectIntersectionOf(<http://example.org/B> <http://example.org/A> <http://example.org/C>) ObjectIntersectionOf(<http://example.org/C> <http://example.org/B> <http://example.org/C> <http://example.org/A>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectIntersectionOf(<http://example.org/A> <http://www.w3.org/2002/07/owl#Nothing>) <http://www.w3.org/2002/07/owl#Nothing>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {
+            "OWL_NOTHING_POSITIVE": 2
+          }
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectIntersectionOf(<http://example.org/A> <http://www.w3.org/2002/07/owl#Thing>) <http://example.org/A>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectIntersectionOf(ObjectIntersectionOf(<http://example.org/A> <http://example.org/B>) <http://example.org/C>) ObjectIntersectionOf(<http://example.org/A> ObjectIntersectionOf(<http://example.org/C> <http://example.org/B>)))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectIntersectionOf(ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/A>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/B>)) ObjectSomeValuesFrom(<http://example.org/R> ObjectIntersectionOf(<http://example.org/A> <http://example.org/B>)))",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectSomeValuesFrom(<http://example.org/R> <http://www.w3.org/2002/07/owl#Nothing>) <http://www.w3.org/2002/07/owl#Nothing>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {
+            "OWL_NOTHING_POSITIVE": 2
+          }
+        },
+        {
+          "axiom": "EquivalentClasses(ObjectSomeValuesFrom(<http://example.org/R> ObjectIntersectionOf(<http://example.org/A> <http://example.org/B>)) ObjectSomeValuesFrom(<http://example.org/R> ObjectIntersectionOf(<http://example.org/B> <http://example.org/A>)))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(ObjectIntersectionOf(<http://example.org/A> <http://example.org/B> <http://example.org/C>) ObjectIntersectionOf(<http://example.org/C> <http://example.org/A>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(ObjectSomeValuesFrom(<http://example.org/R> ObjectIntersectionOf(<http://example.org/A> <http://example.org/B>)) ObjectIntersectionOf(ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/A>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/B>)))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/EmptyOntology.owl",
+    "ontology_sha256": "9f82c240a7a3b91f417433a725d1bdf95f16b0f173dbcdb7263b4cef3ccf27f8",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/EmptyOntology.entailed",
+        "sha256": "898ef32693f32b7517c7250cea54686d1078f3e6d681282aa30996d980d78834"
+      },
+      {
+        "path": "query/entailment/EmptyOntology.notentailed",
+        "sha256": "4639b5eeb9379d30ae8dbe3387c926c85f8e1c5ff1984b2cf525fc26ef4399b8"
+      }
+    ]
+  }
+}

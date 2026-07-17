@@ -1,0 +1,71 @@
+{
+  "case_id": "query/class/HasValue",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": [
+              "http://example.org/A"
+            ]
+          },
+          "expression": "ObjectHasValue(<http://example.org/R> <http://example.org/b>)",
+          "issues": [],
+          "query_features": {
+            "OBJECT_HAS_VALUE_POSITIVE": 1
+          },
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/HasValue.owl",
+    "ontology_sha256": "211343387f24ee41d9e5764409a8f5496a80daa038de3d51f15bac0245c74f52",
+    "upstream_goldens": [
+      {
+        "path": "query/class/HasValue.classquery",
+        "sha256": "9dad7fc2150717ccdecc350a17cdc57b0bb8089b169898ce01892a8e2be325e5"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:QUERY_DISJOINT_DATA_PROPERTIES_AXIOM",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "QUERY_DISJOINT_DATA_PROPERTIES_AXIOM": 1
+    },
+    "constructor": "DisjointDataPropertiesAxiom",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 59,
+    "name": "QUERY_DISJOINT_DATA_PROPERTIES_AXIOM",
+    "polarity": "ANY",
+    "scope": "query"
+  },
+  "operation": "query_feature_counts",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "value": {
+      "query_axiom_count": 1
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/query/QUERY_DISJOINT_DATA_PROPERTIES_AXIOM.ofn",
+    "fixture_sha256": "b0ef610f068c14acde99edf03bb0f5a0ddf628107daee29afcaa48562b725dd9"
+  }
+}

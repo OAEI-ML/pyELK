@@ -1,0 +1,141 @@
+{
+  "case_id": "query/entailment/ObjectPropertyAssertion",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_ONE_OF": 1,
+      "OBJECT_PROPERTY_ASSERTION": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectOneOf"
+        ],
+        "features": [
+          "OBJECT_ONE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "entailment_query"
+      }
+    ],
+    "value": {
+      "queries": [
+        {
+          "axiom": "ObjectPropertyAssertion(<http://example.org/R> <http://example.org/a> <http://example.org/b>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1
+          }
+        },
+        {
+          "axiom": "ObjectPropertyAssertion(<http://example.org/R> <http://example.org/a> <http://example.org/c>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1
+          }
+        },
+        {
+          "axiom": "ObjectPropertyAssertion(<http://example.org/S> <http://example.org/a> <http://example.org/b>)",
+          "complete": false,
+          "entailed": false,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1
+          }
+        },
+        {
+          "axiom": "ObjectPropertyAssertion(<http://example.org/S> <http://example.org/a> <http://example.org/c>)",
+          "complete": false,
+          "entailed": true,
+          "issues": [
+            {
+              "constructors": [
+                "ObjectOneOf"
+              ],
+              "features": [
+                "OBJECT_ONE_OF"
+              ],
+              "polarities": [
+                "ANY"
+              ],
+              "task": "entailment_query"
+            }
+          ],
+          "query_features": {
+            "OBJECT_ONE_OF": 1
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/ObjectPropertyAssertion.owl",
+    "ontology_sha256": "5e0202dccd3205a8cd57f48b65a6b30981a264195749d32d48f2c57a88d3bd83",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/ObjectPropertyAssertion.entailed",
+        "sha256": "71b5227df3c72c02ed3c5572baf6b6218f2cc316e2756e24c81bc9a82050448b"
+      },
+      {
+        "path": "query/entailment/ObjectPropertyAssertion.notentailed",
+        "sha256": "78a02f5dd9199734bf83e7b966c7dff9a892425c5862c797d127faeccd0767c9"
+      }
+    ]
+  }
+}

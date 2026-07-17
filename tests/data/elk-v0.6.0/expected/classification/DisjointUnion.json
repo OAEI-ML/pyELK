@@ -1,0 +1,65 @@
+{
+  "case_id": "classification/DisjointUnion",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_UNION": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "DisjointUnion"
+        ],
+        "features": [
+          "DISJOINT_UNION"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [
+        [
+          0,
+          1
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://example.org/B",
+          "http://example.org/C",
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 1
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/DisjointUnion.owl",
+    "ontology_sha256": "d09e1a0db39ba976a9044d139cff0b91ebccd2f1de5dbe3a88d1512b43280ca4",
+    "upstream_goldens": [
+      {
+        "path": "classification/DisjointUnion.taxonomy",
+        "sha256": "270eaed0ac8fa783da18ca41d4db589b5345e74254251830f42219b20ecb361c"
+      }
+    ]
+  }
+}

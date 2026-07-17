@@ -1,0 +1,60 @@
+{
+  "case_id": "classification/DuplicateConjuncts",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {},
+    "issues": [],
+    "value": {
+      "bottom": 2,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 3
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/DuplicateConjuncts.owl",
+    "ontology_sha256": "8e124f5dd595018016fbc6fb8e31a186d00af7577b62509a7f8a0166c69c11e9",
+    "upstream_goldens": [
+      {
+        "path": "classification/DuplicateConjuncts.taxonomy",
+        "sha256": "c09cbc7b7c75d8070440cfc19dc6b43cde71db4f6449a3a81a2378fab2ddc85a"
+      }
+    ]
+  }
+}

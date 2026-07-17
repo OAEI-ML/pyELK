@@ -1,0 +1,69 @@
+{
+  "case_id": "classification/PropertyChainsWithInverses",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_INVERSE_OF": 1,
+      "OBJECT_PROPERTY_CHAIN": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectInverseOf"
+        ],
+        "features": [
+          "OBJECT_INVERSE_OF"
+        ],
+        "polarities": [
+          "ANY"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/PropertyChainsWithInverses.owl",
+    "ontology_sha256": "b814da556278e4b7e9fdfb67c4d9eb30f62a31a639f1e9193998f64ef0c5785b",
+    "upstream_goldens": [
+      {
+        "path": "classification/PropertyChainsWithInverses.taxonomy",
+        "sha256": "d94efeea3298c825a64e813dd3b03f14e9d845abdde123adbc0124d0234d6dcd"
+      }
+    ]
+  }
+}

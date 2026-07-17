@@ -1,0 +1,183 @@
+{
+  "case_id": "classification/forest",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 2
+    },
+    "issues": [],
+    "value": {
+      "bottom": 13,
+      "direct_edges": [
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          14
+        ],
+        [
+          4,
+          14
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          7,
+          14
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          11,
+          3
+        ],
+        [
+          12,
+          4
+        ],
+        [
+          13,
+          0
+        ],
+        [
+          13,
+          1
+        ],
+        [
+          13,
+          2
+        ],
+        [
+          13,
+          5
+        ],
+        [
+          13,
+          6
+        ],
+        [
+          13,
+          8
+        ],
+        [
+          13,
+          9
+        ],
+        [
+          13,
+          10
+        ],
+        [
+          13,
+          11
+        ],
+        [
+          13,
+          12
+        ]
+      ],
+      "nodes": [
+        [
+          "http://www.test.com/schema#black"
+        ],
+        [
+          "http://www.test.com/schema#blue"
+        ],
+        [
+          "http://www.test.com/schema#brown"
+        ],
+        [
+          "http://www.test.com/schema#brown-thing"
+        ],
+        [
+          "http://www.test.com/schema#color"
+        ],
+        [
+          "http://www.test.com/schema#forest"
+        ],
+        [
+          "http://www.test.com/schema#green"
+        ],
+        [
+          "http://www.test.com/schema#green-thing"
+        ],
+        [
+          "http://www.test.com/schema#leaf"
+        ],
+        [
+          "http://www.test.com/schema#red"
+        ],
+        [
+          "http://www.test.com/schema#tree"
+        ],
+        [
+          "http://www.test.com/schema#trunk"
+        ],
+        [
+          "http://www.test.com/schema#yellow"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 14
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/forest.owl",
+    "ontology_sha256": "a7bab2ebc4c213fa3b4c301bd74d5ee70e68cb55e6ca1afcb7f1198855c3e420",
+    "upstream_goldens": [
+      {
+        "path": "classification/forest.taxonomy",
+        "sha256": "0566c7a48bb0e9ab516bafc9627d475f678213810cc1770d89523eea42024254"
+      }
+    ]
+  }
+}

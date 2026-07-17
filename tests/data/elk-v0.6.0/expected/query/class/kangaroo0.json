@@ -1,0 +1,70 @@
+{
+  "case_id": "query/class/kangaroo0",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 1,
+      "OBJECT_PROPERTY_RANGE": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": []
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.test.com/schema#MaternityKangaroo",
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.test.com/schema#Human"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectSomeValuesFrom(<http://www.test.com/schema#has-child> <http://www.w3.org/2002/07/owl#Thing>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/kangaroo0.owl",
+    "ontology_sha256": "89e5971f40d3a9fa2b261673b707a26e6fbe4736c7f802ca51f3831d2148d854",
+    "upstream_goldens": [
+      {
+        "path": "query/class/kangaroo0.classquery",
+        "sha256": "5464a9e3c5fd74c4c59b9b8e8dc528fd9ce12bb1f69df820fd11d285dfc34c99"
+      }
+    ]
+  }
+}

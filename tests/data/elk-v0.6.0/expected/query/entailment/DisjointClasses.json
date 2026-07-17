@@ -1,0 +1,78 @@
+{
+  "case_id": "query/entailment/DisjointClasses",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 2,
+      "OWL_NOTHING_POSITIVE": 4
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "axiom": "DisjointClasses(<http://example.org/A> <http://example.org/B> <http://example.org/C>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "DisjointClasses(<http://example.org/A> <http://example.org/B> <http://example.org/E>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "DisjointClasses(<http://example.org/A> <http://example.org/C>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "DisjointClasses(ObjectIntersectionOf(<http://example.org/A> <http://example.org/E>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/C>) <http://example.org/C> <http://www.w3.org/2002/07/owl#Nothing>)",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {
+            "OWL_NOTHING_POSITIVE": 3
+          }
+        },
+        {
+          "axiom": "DisjointClasses(ObjectIntersectionOf(<http://example.org/A> <http://example.org/E>) ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/E>) <http://example.org/C> <http://www.w3.org/2002/07/owl#Nothing>)",
+          "complete": true,
+          "entailed": false,
+          "issues": [],
+          "query_features": {
+            "OWL_NOTHING_POSITIVE": 3
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/DisjointClasses.owl",
+    "ontology_sha256": "16896a37cb7a12ef0c16f30d659aeb891a626062aee86b6ff3960d25d07efdb8",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/DisjointClasses.entailed",
+        "sha256": "380c819afecb58fe08e45192899992ce1d700b60c56237419d0dbc1c0afb3b76"
+      },
+      {
+        "path": "query/entailment/DisjointClasses.notentailed",
+        "sha256": "bc55df03edfac33eb1c69285fcac8c19f261c1a0eb738dff9179e568c44b0077"
+      }
+    ]
+  }
+}

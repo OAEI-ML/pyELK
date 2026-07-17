@@ -1,0 +1,81 @@
+{
+  "case_id": "classification/StructuralNegationEquivalence",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_COMPLEMENT_OF_NEGATIVE": 2,
+      "OBJECT_COMPLEMENT_OF_POSITIVE": 2
+    },
+    "issues": [
+      {
+        "constructors": [
+          "ObjectComplementOf"
+        ],
+        "features": [
+          "OBJECT_COMPLEMENT_OF_NEGATIVE"
+        ],
+        "polarities": [
+          "NEGATIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 2,
+      "direct_edges": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B",
+          "http://example.org/C"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 3
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/StructuralNegationEquivalence.owl",
+    "ontology_sha256": "da181e46153fa26a294dca8cec28781cd03b5671be3f1625fd228ab7fd235438",
+    "upstream_goldens": [
+      {
+        "path": "classification/StructuralNegationEquivalence.taxonomy",
+        "sha256": "5086b2dcdfaa2bf998ffa937b72ae45229907fee4457c16c79d5d5cca3fa220a"
+      }
+    ]
+  }
+}

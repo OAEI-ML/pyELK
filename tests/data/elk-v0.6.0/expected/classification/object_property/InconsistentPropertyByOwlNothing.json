@@ -1,0 +1,68 @@
+{
+  "case_id": "classification/object_property/InconsistentPropertyByOwlNothing",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "object_property_classification",
+  "operation": "object_property_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [
+      {
+        "constructors": [
+          "owl:Nothing"
+        ],
+        "features": [
+          "OWL_NOTHING_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "object_property_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/R"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#topObjectProperty"
+        ]
+      ],
+      "top": 2
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/object_property/InconsistentPropertyByOwlNothing.owl",
+    "ontology_sha256": "8cdf547d564502e852910ce55be83efdc2c1efbb2a9f0c92306102491a6d183c",
+    "upstream_goldens": [
+      {
+        "path": "classification/object_property/InconsistentPropertyByOwlNothing.propertytaxonomy",
+        "sha256": "4a37d454508948a8887b01f892e47b6f69f701ca430cecad70ae9c83a8ad3757"
+      }
+    ]
+  }
+}

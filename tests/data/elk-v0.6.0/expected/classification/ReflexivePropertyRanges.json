@@ -1,0 +1,50 @@
+{
+  "case_id": "classification/ReflexivePropertyRanges",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_RANGE": 1,
+      "REFLEXIVE_OBJECT_PROPERTY": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 1,
+      "direct_edges": [
+        [
+          1,
+          0
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/ReflexivePropertyRanges.owl",
+    "ontology_sha256": "fc2910475db8fe64cfcf39fc4403a5ef856067ec7bc5bd0f02ee3354e41684e5",
+    "upstream_goldens": [
+      {
+        "path": "classification/ReflexivePropertyRanges.taxonomy",
+        "sha256": "3f3ec9452c25ee3f97418e14545123c374fa3121b3f4691183e428d6d24daaac"
+      }
+    ]
+  }
+}

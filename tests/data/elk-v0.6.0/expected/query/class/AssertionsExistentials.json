@@ -1,0 +1,109 @@
+{
+  "case_id": "query/class/AssertionsExistentials",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_query",
+  "operation": "class_queries",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_PROPERTY_ASSERTION": 2
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/a"
+              ]
+            ]
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/C"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/B>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        },
+        {
+          "direct_instances": {
+            "complete": true,
+            "value": [
+              [
+                "http://example.org/b"
+              ]
+            ]
+          },
+          "direct_subclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Nothing"
+              ]
+            ]
+          },
+          "direct_superclasses": {
+            "complete": true,
+            "value": [
+              [
+                "http://www.w3.org/2002/07/owl#Thing"
+              ]
+            ]
+          },
+          "equivalent_classes": {
+            "complete": true,
+            "value": []
+          },
+          "expression": "ObjectSomeValuesFrom(<http://example.org/S> <http://example.org/C>)",
+          "issues": [],
+          "query_features": {},
+          "satisfiable": {
+            "complete": true,
+            "value": true
+          }
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/class/AssertionsExistentials.owl",
+    "ontology_sha256": "c4905d28ccfcfeaf5c7829eccd16c4f4e98eff7225a1513978d6a397d8f16af7",
+    "upstream_goldens": [
+      {
+        "path": "query/class/AssertionsExistentials.classquery",
+        "sha256": "9130d63e4eda792554b4cef0c6d392d546396bfbb685527250ee4d2112488aec"
+      }
+    ]
+  }
+}

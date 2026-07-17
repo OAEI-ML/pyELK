@@ -1,0 +1,97 @@
+{
+  "case_id": "classification/BottomObjectProperty",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": false,
+    "diagnostics": [],
+    "features": {
+      "BOTTOM_OBJECT_PROPERTY_POSITIVE": 2
+    },
+    "issues": [
+      {
+        "constructors": [
+          "owl:bottomObjectProperty"
+        ],
+        "features": [
+          "BOTTOM_OBJECT_PROPERTY_POSITIVE"
+        ],
+        "polarities": [
+          "POSITIVE"
+        ],
+        "task": "class_taxonomy"
+      }
+    ],
+    "value": {
+      "bottom": 4,
+      "direct_edges": [
+        [
+          0,
+          5
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/D"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 5
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/BottomObjectProperty.owl",
+    "ontology_sha256": "a150255986bea588c04982128cc2941847411fd581646b7106c38606ad04eb02",
+    "upstream_goldens": [
+      {
+        "path": "classification/BottomObjectProperty.taxonomy",
+        "sha256": "cd7541bc5d7ab75492ee46980c044fc7c74f0f244bfc982bb80c74edd60170cf"
+      }
+    ]
+  }
+}

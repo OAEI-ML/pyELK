@@ -1,0 +1,34 @@
+{
+  "case_id": "feature:DATATYPE_DEFINITION",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "feature": {
+    "actual_counts": {
+      "DATATYPE_DEFINITION": 1
+    },
+    "constructor": "DatatypeDefinition",
+    "expected_count": 1,
+    "expected_issue": true,
+    "index": 14,
+    "name": "DATATYPE_DEFINITION",
+    "polarity": "ANY",
+    "scope": "ontology"
+  },
+  "operation": "feature_counts",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "value": {
+      "feature_count": 79
+    }
+  },
+  "schema": "pyelk.elk-oracle-feature/1",
+  "source": {
+    "fixture": "tests/data/elk-v0.6.0/features/ontology/DATATYPE_DEFINITION.ofn",
+    "fixture_sha256": "597f1bf30a05e19fffe6d7e0b445af8ba438aa154dd2ab11bc41f4106642891a"
+  }
+}

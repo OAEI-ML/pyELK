@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.pyelk.dev</groupId>
+  <artifactId>pyelk-elk-reference-oracle</artifactId>
+  <version>0.6.0.1</version>
+  <name>pyELK quarantined ELK 0.6.0 reference oracle</name>
+  <description>Development-only JSON-lines oracle; never part of pyELK runtime artifacts.</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>17</maven.compiler.release>
+    <elk.version>0.6.0</elk.version>
+    <owlapi.version>5.1.20</owlapi.version>
+    <jackson.version>2.17.2</jackson.version>
+    <slf4j.version>2.0.13</slf4j.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.liveontologies</groupId>
+      <artifactId>elk-reasoner</artifactId>
+      <version>${elk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.liveontologies</groupId>
+      <artifactId>elk-reasoner</artifactId>
+      <version>${elk.version}</version>
+      <classifier>tests</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.github.liveontologies</groupId>
+      <artifactId>elk-owl-parsing-javacc</artifactId>
+      <version>${elk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.liveontologies</groupId>
+      <artifactId>elk-util-testing</artifactId>
+      <version>${elk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.liveontologies</groupId>
+      <artifactId>elk-util-concurrent</artifactId>
+      <version>${elk.version}</version>
+      <classifier>tests</classifier>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-nop</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <release>17</release>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <finalName>pyelk-elk-reference-oracle</finalName>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>org.pyelk.oracle.Main</mainClass>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,55 @@
+{
+  "case_id": "query/entailment/RedundantComposition",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "entailment",
+  "operation": "entailment",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_PROPERTY_CHAIN": 2
+    },
+    "issues": [],
+    "value": {
+      "queries": [
+        {
+          "axiom": "SubClassOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/E>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/A> ObjectSomeValuesFrom(<http://example.org/T> <http://example.org/D>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        },
+        {
+          "axiom": "SubClassOf(<http://example.org/B> ObjectSomeValuesFrom(<http://example.org/R> <http://example.org/E>))",
+          "complete": true,
+          "entailed": true,
+          "issues": [],
+          "query_features": {}
+        }
+      ]
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "query/entailment/RedundantComposition.owl",
+    "ontology_sha256": "7acbfdfe4a2dd47599a94c9bde3221585aad7eface303486534185e9f9244dad",
+    "upstream_goldens": [
+      {
+        "path": "query/entailment/RedundantComposition.entailed",
+        "sha256": "94db12ddc7128510bde96c3d9d6682e37b3df7e6d018179f28f10cbafe17a422"
+      }
+    ]
+  }
+}

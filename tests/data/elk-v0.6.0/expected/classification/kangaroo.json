@@ -1,0 +1,130 @@
+{
+  "case_id": "classification/kangaroo",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DISJOINT_CLASSES": 2,
+      "OBJECT_PROPERTY_RANGE": 1,
+      "OWL_NOTHING_POSITIVE": 2
+    },
+    "issues": [],
+    "value": {
+      "bottom": 6,
+      "direct_edges": [
+        [
+          0,
+          10
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          9
+        ],
+        [
+          3,
+          10
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          6,
+          8
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          8,
+          10
+        ],
+        [
+          9,
+          10
+        ]
+      ],
+      "nodes": [
+        [
+          "http://www.test.com/schema#Animal"
+        ],
+        [
+          "http://www.test.com/schema#Beast"
+        ],
+        [
+          "http://www.test.com/schema#Human"
+        ],
+        [
+          "http://www.test.com/schema#Irrational"
+        ],
+        [
+          "http://www.test.com/schema#Kangaroo"
+        ],
+        [
+          "http://www.test.com/schema#KangarooInfant"
+        ],
+        [
+          "http://www.test.com/schema#MaternityKangaroo",
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.test.com/schema#Parent"
+        ],
+        [
+          "http://www.test.com/schema#Pouch"
+        ],
+        [
+          "http://www.test.com/schema#Rational"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 10
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/kangaroo.owl",
+    "ontology_sha256": "30154841a99d723c5bb297af431b4c5f76fd029f6da6b88232866ac250bcaf57",
+    "upstream_goldens": [
+      {
+        "path": "classification/kangaroo.taxonomy",
+        "sha256": "da4f7b9b4c63db1ec15ae7bcf0f317facac056e1311cd0879c57f1c412873ae3"
+      }
+    ]
+  }
+}

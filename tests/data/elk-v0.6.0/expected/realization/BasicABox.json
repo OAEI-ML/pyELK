@@ -1,0 +1,115 @@
+{
+  "case_id": "realization/BasicABox",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "realization",
+  "operation": "realization",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "OBJECT_HAS_VALUE_POSITIVE": 2,
+      "OBJECT_PROPERTY_ASSERTION": 2,
+      "OBJECT_PROPERTY_CHAIN": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 4,
+      "direct_edges": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "direct_types": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "instance_nodes": [
+        [
+          "http://example.org/a"
+        ],
+        [
+          "http://example.org/b"
+        ],
+        [
+          "http://example.org/c"
+        ]
+      ],
+      "nodes": [
+        [
+          "http://example.org/A"
+        ],
+        [
+          "http://example.org/B"
+        ],
+        [
+          "http://example.org/C"
+        ],
+        [
+          "http://example.org/X"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Nothing"
+        ],
+        [
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 5
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "realization/BasicABox.owl",
+    "ontology_sha256": "3fce2c1cfe3d4b5a90c31acbc748585c218f9d4f19186ee2ac78346dcf0d3824",
+    "upstream_goldens": [
+      {
+        "path": "realization/BasicABox.instancetaxonomy",
+        "sha256": "4ea3d991cee1c379357d04edca981e23d995fc30de105ad2ae7be52970770d38"
+      }
+    ]
+  }
+}

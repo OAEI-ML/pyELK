@@ -1,0 +1,42 @@
+{
+  "case_id": "classification/InconsistentDifferentSameIndividual",
+  "configuration": {
+    "allow_fresh_entities": true,
+    "incremental": false,
+    "unsupported": "ignore",
+    "workers": 1
+  },
+  "family": "class_classification",
+  "operation": "class_taxonomy",
+  "result": {
+    "complete": true,
+    "diagnostics": [],
+    "features": {
+      "DIFFERENT_INDIVIDUALS": 1,
+      "OWL_NOTHING_POSITIVE": 1
+    },
+    "issues": [],
+    "value": {
+      "bottom": 0,
+      "direct_edges": [],
+      "nodes": [
+        [
+          "http://www.w3.org/2002/07/owl#Nothing",
+          "http://www.w3.org/2002/07/owl#Thing"
+        ]
+      ],
+      "top": 0
+    }
+  },
+  "schema": "pyelk.elk-oracle-case/1",
+  "source": {
+    "ontology": "classification/InconsistentDifferentSameIndividual.owl",
+    "ontology_sha256": "5a7e7cb9952c332f250b87405e85e8f75a15f4ccc8360439c88c066066cc2e7c",
+    "upstream_goldens": [
+      {
+        "path": "classification/InconsistentDifferentSameIndividual.taxonomy",
+        "sha256": "744e719c36a99fc0b23cdc98f53aefb447e4f69bc15c4fc8c9dbdf5ca65f057b"
+      }
+    ]
+  }
+}
