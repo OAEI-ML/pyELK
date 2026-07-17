@@ -15,8 +15,7 @@ def functional(
     components = [*(f"Import(<{item}>)" for item in imports), *body]
     content = whitespace.join(components)
     return (
-        f"Prefix(:=<urn:test#>){whitespace}"
-        f"Ontology(<{ontology_iri}>{whitespace}{content})"
+        f"Prefix(:=<urn:test#>){whitespace}Ontology(<{ontology_iri}>{whitespace}{content})"
     ).encode()
 
 

@@ -116,9 +116,7 @@ def _version_details(
     capabilities: CoreCapabilities | None = None,
 ) -> dict[str, str | int]:
     adapter = (
-        versions.adapter_protocol_version
-        if capabilities is None
-        else capabilities.adapter_protocol
+        versions.adapter_protocol_version if capabilities is None else capabilities.adapter_protocol
     )
     model = versions.model_schema_version if capabilities is None else capabilities.model_schema
     wire = versions.wire_format_version if capabilities is None else capabilities.wire_format

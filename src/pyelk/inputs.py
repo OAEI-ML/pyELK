@@ -33,9 +33,7 @@ from .core import CapturedOntology, capture_compatible_view
 load_snapshot = _core.load_snapshot
 coerce_snapshot = _core.coerce_snapshot
 
-_EMPTY_OPTIONS_FINGERPRINT = hashlib.sha256(
-    b"pyelk:semantic-options:none:v1\x00"
-).digest()
+_EMPTY_OPTIONS_FINGERPRINT = hashlib.sha256(b"pyelk:semantic-options:none:v1\x00").digest()
 
 
 class OntologyViewKind(str, Enum):

@@ -97,9 +97,7 @@ def _programmatic_snapshot(
 
     document_iri = pyowl_core.IRI(namespace)
     axioms: pyowl_core.CanonicalSet[pyowl_core.AxiomNode] = pyowl_core.CanonicalSet(
-        pyowl_core.Declaration(
-            pyowl_core.Class(pyowl_core.IRI(f"{namespace}#C{index}"))
-        )
+        pyowl_core.Declaration(pyowl_core.Class(pyowl_core.IRI(f"{namespace}#C{index}")))
         for index in range(axiom_count)
     )
     descriptor = f"pyelk-ingestion-benchmark:{namespace}:{axiom_count}".encode()
@@ -207,9 +205,7 @@ def run(*, axiom_count: int, repeats: int, adapter_peak_mib: float) -> dict[str,
     overlay_axiom = pyowl_core.Declaration(
         pyowl_core.Class(pyowl_core.IRI("urn:pyelk:benchmark:overlay#Added"))
     )
-    overlay_delta = pyowl_core.OntologyDelta(
-        add_axioms=pyowl_core.CanonicalSet((overlay_axiom,))
-    )
+    overlay_delta = pyowl_core.OntologyDelta(add_axioms=pyowl_core.CanonicalSet((overlay_axiom,)))
     overlay, overlay_create_phase = _measure(
         lambda: pyowl_core.apply_delta(source, overlay_delta),
         repeats=repeats,
@@ -232,9 +228,7 @@ def run(*, axiom_count: int, repeats: int, adapter_peak_mib: float) -> dict[str,
         pyowl_core.Class(pyowl_core.IRI("urn:pyelk:benchmark:source#C0")),
         pyowl_core.Class(pyowl_core.IRI("urn:pyelk:benchmark:target#C0")),
     )
-    bridge_delta = pyowl_core.OntologyDelta(
-        add_axioms=pyowl_core.CanonicalSet((bridge,))
-    )
+    bridge_delta = pyowl_core.OntologyDelta(add_axioms=pyowl_core.CanonicalSet((bridge,)))
     composite, composite_create_phase = _measure(
         lambda: pyowl_core.compose_views(
             source,
