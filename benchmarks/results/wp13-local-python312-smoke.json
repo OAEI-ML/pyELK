@@ -1,0 +1,204 @@
+{
+  "elapsed_seconds": 8.23789756797487,
+  "enforced": false,
+  "environment": {
+    "cpu": "i386",
+    "implementation": "CPython",
+    "logical_cpu_count": 12,
+    "machine_label": "wp13-local-macos-x86_64",
+    "physical_memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-x86_64-i386-64bit",
+    "python": "3.12.3"
+  },
+  "java_comparison": null,
+  "manifest": {
+    "path": "benchmarks/manifest.toml",
+    "sha256": "5b19ab7e3b261250fdd13b2b2920a6c6bc591b5a2d34095e8f6df3f4d7e7c192"
+  },
+  "native": false,
+  "results": {
+    "class-saturation": {
+      "benchmark": "deep-class-saturation",
+      "class_count": 1000,
+      "conclusion_count": 2001,
+      "fixture_setup_seconds": 0.019717738963663578,
+      "measurements": {
+        "maximum_seconds": 0.023547696007881314,
+        "median_absolute_deviation_seconds": 0.0,
+        "median_seconds": 0.023547696007881314,
+        "minimum_seconds": 0.023547696007881314,
+        "repeats": 1
+      },
+      "peak_rss_bytes": 33058816,
+      "platform": "macOS-26.5.2-x86_64-i386-64bit",
+      "python": "3.12.3",
+      "rule_dispatch_count": 2001
+    },
+    "end-to-end": {
+      "backend": "python",
+      "environment": {
+        "implementation": "CPython",
+        "platform": "macOS-26.5.2-x86_64-i386-64bit",
+        "pyowl_core": "0.1.0.dev0",
+        "python": "3.12.3"
+      },
+      "fixture": {
+        "axiom_count": 199,
+        "class_count": 100,
+        "source_sha256": "9e0bd5e58dd134b89fc9b27ab7dbcd4850e33b1f4fe530743fa1d96443c9f63d"
+      },
+      "load_seconds": 0.11266964901005849,
+      "result_sha256": "2d143c33b25f8b65d111f7e1e82839ec285254cc379de957af7d8ed966047974",
+      "schema": "pyelk.end-to-end-benchmark/1",
+      "shared": {
+        "median_absolute_deviation_seconds": 0.0,
+        "median_seconds": 0.3146701710065827,
+        "minimum_seconds": 0.3146701710065827,
+        "repeats": 1
+      },
+      "standalone": {
+        "median_absolute_deviation_seconds": 0.0,
+        "median_seconds": 0.36973476700950414,
+        "minimum_seconds": 0.36973476700950414,
+        "repeats": 1
+      },
+      "workers": 1
+    },
+    "property-saturation": {
+      "benchmark": "sparse-property-chain-saturation",
+      "compiled_chain_count": 1003,
+      "composition_count": 999,
+      "fixture_setup_seconds": 0.006523508985992521,
+      "measurements": {
+        "maximum_seconds": 0.047813781013246626,
+        "median_absolute_deviation_seconds": 0.0,
+        "median_seconds": 0.047813781013246626,
+        "minimum_seconds": 0.047813781013246626,
+        "repeats": 1
+      },
+      "peak_rss_bytes": 34713600,
+      "platform": "macOS-26.5.2-x86_64-i386-64bit",
+      "property_count": 1000,
+      "python": "3.12.3",
+      "saturated_chain_count": 2001,
+      "subproperty_conclusion_count": 2002
+    },
+    "snapshot-ingestion": {
+      "environment": {
+        "implementation": "CPython",
+        "pyowl_core": "0.1.0.dev0",
+        "python": "3.12.3"
+      },
+      "fixture": {
+        "axiom_count": 1000,
+        "bridge_axioms": 1,
+        "overlay_delta_entries": 1,
+        "source_axioms": 500,
+        "source_setup_seconds": 0.15575037599774078,
+        "target_axioms": 500,
+        "target_setup_seconds": 0.14995487203123048
+      },
+      "invariants": {
+        "adapter_peak_limit_bytes": 16777216,
+        "bounded_phases_within_limit": true,
+        "composite_members_retained_by_identity": true,
+        "composite_retained_by_identity": true,
+        "fingerprints_present": true,
+        "overlay_base_retained_by_identity": true,
+        "overlay_retained_by_identity": true,
+        "provider_call_count": 1,
+        "provider_one_call_per_capture": true,
+        "serialized_intermediate_created": false,
+        "source_retained_by_identity": true
+      },
+      "phases": {
+        "composite_cold_core_fingerprints_and_capture": {
+          "median_seconds": 1.8790560110355727,
+          "minimum_seconds": 1.8790560110355727,
+          "peak_traced_bytes": 328192,
+          "repeats": 1
+        },
+        "composite_create": {
+          "median_seconds": 0.006375851982738823,
+          "minimum_seconds": 0.006375851982738823,
+          "peak_traced_bytes": 11173,
+          "repeats": 1
+        },
+        "composite_warm_capture": {
+          "median_seconds": 0.0004546240088529885,
+          "minimum_seconds": 0.0004546240088529885,
+          "peak_traced_bytes": 2000,
+          "repeats": 1
+        },
+        "overlay_cold_core_fingerprints_and_capture": {
+          "median_seconds": 1.0532489489996806,
+          "minimum_seconds": 1.0532489489996806,
+          "peak_traced_bytes": 189247,
+          "repeats": 1
+        },
+        "overlay_create": {
+          "median_seconds": 0.00562028301646933,
+          "minimum_seconds": 0.00562028301646933,
+          "peak_traced_bytes": 7193,
+          "repeats": 1
+        },
+        "overlay_warm_capture": {
+          "median_seconds": 0.00038517697248607874,
+          "minimum_seconds": 0.00038517697248607874,
+          "peak_traced_bytes": 1934,
+          "repeats": 1
+        },
+        "provider_capture": {
+          "median_seconds": 0.0005541800055652857,
+          "minimum_seconds": 0.0005541800055652857,
+          "peak_traced_bytes": 2792,
+          "repeats": 1
+        }
+      },
+      "schema": "pyelk.snapshot-ingestion-benchmark.v1"
+    },
+    "taxonomy": {
+      "benchmark": "taxonomy-reduction",
+      "dense": {
+        "input_edge_count": 4950,
+        "measurements": {
+          "maximum_seconds": 0.014924796996638179,
+          "median_absolute_deviation_seconds": 0.0,
+          "median_seconds": 0.014924796996638179,
+          "minimum_seconds": 0.014924796996638179,
+          "repeats": 1
+        },
+        "node_count": 100,
+        "output_edge_count": 99
+      },
+      "peak_rss_bytes": 33398784,
+      "platform": "macOS-26.5.2-x86_64-i386-64bit",
+      "python": "3.12.3",
+      "sparse": {
+        "input_edge_count": 999,
+        "measurements": {
+          "maximum_seconds": 0.010533036023844033,
+          "median_absolute_deviation_seconds": 0.0,
+          "median_seconds": 0.010533036023844033,
+          "minimum_seconds": 0.010533036023844033,
+          "repeats": 1
+        },
+        "node_count": 1000,
+        "output_edge_count": 999
+      }
+    }
+  },
+  "revisions": {
+    "pyelk": {
+      "commit": "c076c7e5a2784c46e737a32446c22d82fdee3d4d",
+      "dirty": true
+    },
+    "pyowl_core": {
+      "commit": "6df155e3ef83588352dbfd11bc4b15bdc0fa9c4e",
+      "dirty": true
+    }
+  },
+  "schema": "pyelk.integrated-benchmark/1",
+  "suite": "quick",
+  "workers": 1
+}

@@ -1,0 +1,90 @@
+schema = "pyelk.performance-corpus/1"
+generated_on = "2026-07-17"
+
+[protocol]
+warmups = 2
+measured_runs = 5
+summary = ["median", "median-absolute-deviation", "minimum"]
+semantic_equality_required = true
+machine_specific_baselines = true
+
+[thresholds]
+native_python_geometric_mean_speedup = 5.0
+native_boundary_fraction_max = 0.05
+native_java_geometric_mean_ratio_max = 1.25
+native_java_per_corpus_ratio_max = 2.0
+release_regression_fraction_max = 0.10
+
+[[corpora]]
+name = "elk-0.6.0-frozen"
+kind = "redistributable-upstream"
+source = "https://github.com/liveontologies/elk-reasoner/releases/tag/v0.6.0"
+license = "Apache-2.0"
+descriptor = "tests/data/elk-v0.6.0/manifest.json"
+descriptor_sha256 = "dc8b2b6c59cf1c384d72785d13704dbbb29ba0b699ddd78667b1cdf4e6a51a71"
+ontology_count = 124
+golden_count = 138
+redistribution = "retained with upstream licence, hashes, and modified notice"
+
+[[corpora]]
+name = "generated-el-chain-medium"
+kind = "generated"
+source = "benchmarks.bench_end_to_end._source"
+license = "Apache-2.0"
+descriptor = "pyelk:generated-el-chain:v1:classes=1000"
+descriptor_sha256 = "3e50c00a20e4bd37762dc650ed24914223f3a22eb119dc57ad0de3765a1cad9f"
+axiom_count = 1999
+entity_count = 1000
+redistribution = "regenerate locally"
+
+[[corpora]]
+name = "generated-el-chain-large"
+kind = "generated"
+source = "benchmarks.bench_saturation._compiled_deep_hierarchy"
+license = "Apache-2.0"
+descriptor = "pyelk:generated-el-chain:v1:classes=100000"
+descriptor_sha256 = "7594d66f9d3cc48483f86a7dd4b7d4e941360b83d6adcead9551db07ace2b5c5"
+axiom_count = 99999
+entity_count = 100000
+redistribution = "regenerate locally"
+
+[[corpora]]
+name = "generated-property-chain-large"
+kind = "generated"
+source = "benchmarks.bench_properties._compiled_sparse_chain"
+license = "Apache-2.0"
+descriptor = "pyelk:generated-property-chain:v1:properties=100000"
+descriptor_sha256 = "1a85b1a9e55d2d2cc4af40e6f22ddf047a7e5fbce7f795fa32d34b320cf2551d"
+axiom_count = 1
+entity_count = 100004
+redistribution = "regenerate locally"
+
+[[corpora]]
+name = "generated-taxonomy-mixed"
+kind = "generated"
+source = "benchmarks.bench_taxonomy"
+license = "Apache-2.0"
+descriptor = "pyelk:generated-taxonomy:v1:sparse=100000:dense=1000"
+descriptor_sha256 = "9bf2d19042bcfffa1a6cc3b1a058f9bf84a1e1b78252e28b06fc22c176a8bd1b"
+axiom_count = 599499
+entity_count = 101000
+redistribution = "regenerate locally"
+
+[[corpora]]
+name = "shared-snapshot-million"
+kind = "generated"
+source = "benchmarks.bench_snapshot_ingestion._programmatic_snapshot"
+license = "Apache-2.0"
+descriptor = "pyelk:shared-snapshot:v1:axioms=1000000"
+descriptor_sha256 = "beedacbe36bae3ad875b28a3dea848e519d49893142e36da5e3e62126d4a2728"
+axiom_count = 1000000
+entity_count = 1000000
+redistribution = "regenerate locally"
+
+[[external_corpora]]
+name = "representative-biomedical"
+kind = "owner-supplied-by-hash"
+source = "not redistributed; configure on the labelled performance runner"
+license = "corpus-specific"
+required_fields = ["name", "source", "license", "sha256", "axiom_count", "entity_count"]
+redistribution = "forbidden unless the corpus licence explicitly permits it"

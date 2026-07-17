@@ -1,0 +1,1079 @@
+schema = "pyelk.w3c-el-manifest/1"
+generated_on = "2026-07-17"
+source_commit = "37ec30aced32ac81ebecc5e33fad255ddefcb4c3"
+source_url = "https://github.com/phillord/hermit-reasoner/blob/37ec30aced32ac81ebecc5e33fad255ddefcb4c3/src/test/resources/org/semanticweb/HermiT/owl_wg_tests/ontologies/all.rdf"
+source_sha256 = "a703d36b774f55f14c0758cf20f2bdd635677045f7ba55053199660c10d6fefc"
+elk_commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+pyowl_core_commit = "6df155e3ef83588352dbfd11bc4b15bdc0fa9c4e"
+java_oracle_run = true
+redistribution = "metadata and hashes only; embedded ontology bodies are not copied"
+case_count = 65
+
+[[cases]]
+id = "DisjointClasses-002"
+source_url = "http://owl.semanticweb.org/id/DisjointClasses-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "8f3b6e961a71787480a2f158b4a544d344ba2caf327553bc5f40f29338f8f444"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"DISJOINT_CLASSES\":1,\"OWL_NOTHING_POSITIVE\":1},\"id\":\"w3c/DisjointClasses-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":false,\"inconsistent\":true}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "FS2RDF-different-individuals-2-ar"
+source_url = "http://owl.semanticweb.org/id/FS2RDF-2Ddifferent-2Dindividuals-2D2-2Dar"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "6f92b7b359ad9508713c70ae800361cf077e23da07c2eb031ecc6c13a224fb69"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"DIFFERENT_INDIVIDUALS\":1,\"OWL_NOTHING_POSITIVE\":1},\"id\":\"w3c/FS2RDF-different-individuals-2-ar/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "FS2RDF-different-individuals-3-ar"
+source_url = "http://owl.semanticweb.org/id/FS2RDF-2Ddifferent-2Dindividuals-2D3-2Dar"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "d8b1e3016e2ba4270a48d2ffe3a938b5f6a9ab6e325f5e2e66c8edc8d18a691f"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"DIFFERENT_INDIVIDUALS\":1},\"id\":\"w3c/FS2RDF-different-individuals-3-ar/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "FS2RDF-no-builtin-prefixes-ar"
+source_url = "http://owl.semanticweb.org/id/FS2RDF-2Dno-2Dbuiltin-2Dprefixes-2Dar"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "cb29a2e6650b4147a5216f447362160dca5b97632aaf98050da5f3e3877c1462"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/FS2RDF-no-builtin-prefixes-ar/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "FS2RDF-same-individual-2-ar"
+source_url = "http://owl.semanticweb.org/id/FS2RDF-2Dsame-2Dindividual-2D2-2Dar"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "82916e925cf3888e7da8668bfb04716115f67e1dc9b321e39f062eb239083575"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/FS2RDF-same-individual-2-ar/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "New-Feature-AnnotationAnnotations-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DAnnotationAnnotations-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "6a06f01628a9fc4042685fbb6e4303a8931c8320833f54b8852ad34c5e1675a6"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/New-Feature-AnnotationAnnotations-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "New-Feature-AxiomAnnotations-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DAxiomAnnotations-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "ef9f5448304f4c86dfa290567d68475d03eba98218c12599143b98a9a5d8d863"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/New-Feature-AxiomAnnotations-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "New-Feature-BottomDataProperty-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DBottomDataProperty-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "e108042b389bf0c024e6545c581b4b07246233ce22015b2f905520d4ec108bb5"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_SOME_VALUES_FROM\":1},\"id\":\"w3c/New-Feature-BottomDataProperty-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_SOME_VALUES_FROM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-BottomObjectProperty-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DBottomObjectProperty-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "afc822beba870ba2db412e140225d1e38309d44e1bfe023b9ab01f19eac4cd01"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"BOTTOM_OBJECT_PROPERTY_POSITIVE\":1},\"id\":\"w3c/New-Feature-BottomObjectProperty-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["BOTTOM_OBJECT_PROPERTY_POSITIVE"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-Keys-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "60330073049ccbb58fde5bd5ebbf729f1ecd1870e127faa916616c4dd8be5013"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":2,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":2,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-001/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"SameIndividual(<http://example.org/Peter> <http://example.org/Peter_Griffin>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"OBJECT_ONE_OF\":4},\"upstream_expected\":true,\"upstream_source\":\"0065.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "HAS_KEY", "OBJECT_ONE_OF"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "5e1e9eb09e0a21a25de4861ec0db11946020854c5626aecb4cea9baab3030d48"
+
+[[cases]]
+id = "New-Feature-Keys-002"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "1238b10b65b117e73e97b224002db776a96c06c2df3d8cd66b84e64428e58977"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":2,\"DIFFERENT_INDIVIDUALS\":1,\"HAS_KEY\":1,\"OWL_NOTHING_POSITIVE\":1},\"id\":\"w3c/New-Feature-Keys-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "HAS_KEY"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-Keys-003"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "03e69777da5886979d8fdce507a02fd6fd5ad6773007652d529517f12a343918"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":3,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-003/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":3,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-003/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"SameIndividual(<http://example.org/Peter> <http://example.org/Peter_Griffin>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"OBJECT_ONE_OF\":4},\"upstream_expected\":true,\"upstream_source\":\"0067.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "HAS_KEY", "OBJECT_ONE_OF"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "5e1e9eb09e0a21a25de4861ec0db11946020854c5626aecb4cea9baab3030d48"
+
+[[cases]]
+id = "New-Feature-Keys-004"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D004"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "NegativeEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "03e69777da5886979d8fdce507a02fd6fd5ad6773007652d529517f12a343918"
+expected_direct = ["consistent", "not-entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":3,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-004/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":3,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-004/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"SameIndividual(<http://example.org/Peter> <http://example.org/StPeter>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"OBJECT_ONE_OF\":4},\"upstream_expected\":false,\"upstream_source\":\"0068.notentailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "HAS_KEY", "OBJECT_ONE_OF"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "062233d36ed9b3d1ca04bcf6fc132376477af6354a8931677ab0b5aca5cfe8d0"
+
+[[cases]]
+id = "New-Feature-Keys-005"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D005"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "523e91b0de918d7a82bd294dcdbb35021d64bec1d5139a22a34bb62cd9c5fcfb"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":2,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-005/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "HAS_KEY"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-Keys-006"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D006"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "59782c883ac4eef4d4128c4a852f853751111ad44b54a1089ec7ecd54cc692fe"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":2,\"FUNCTIONAL_DATA_PROPERTY\":1,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-006/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "FUNCTIONAL_DATA_PROPERTY", "HAS_KEY"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-Keys-007"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DKeys-2D007"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "NegativeEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "ee20fc54ba64bf6a6e65a02a52c387d26e48091b075d78bf6b1f29a9085c77cb"
+expected_direct = ["consistent", "not-entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_HAS_VALUE\":1,\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":1,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-007/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_HAS_VALUE\":1,\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":1,\"HAS_KEY\":1},\"id\":\"w3c/New-Feature-Keys-007/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"ClassAssertion(<http://example.org/Man> <http://example.org/Peter>)\",\"complete\":false,\"entailed\":false,\"query_features\":{},\"upstream_expected\":false,\"upstream_source\":\"0071.notentailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_HAS_VALUE", "DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "HAS_KEY"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "0d165b2cf33e6083f95396be4fd0c45e54b032e7fb2b0a86f6907b63f5408de9"
+
+[[cases]]
+id = "New-Feature-NegativeDataPropertyAssertion-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DNegativeDataPropertyAssertion-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "f08022d5a5b312ecc9542a885e8b79a2c3c6657a74a3118618d61d81d610d884"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":1,\"NEGATIVE_DATA_PROPERTY_ASSERTION\":1},\"id\":\"w3c/New-Feature-NegativeDataPropertyAssertion-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "NEGATIVE_DATA_PROPERTY_ASSERTION"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-NegativeObjectPropertyAssertion-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DNegativeObjectPropertyAssertion-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "bdf1b6278247460afb9d59dd95a6d06123aea5f0392953bb92569c41d977cd65"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"NEGATIVE_OBJECT_PROPERTY_ASSERTION\":1,\"OBJECT_HAS_VALUE_POSITIVE\":1,\"OBJECT_PROPERTY_ASSERTION\":1},\"id\":\"w3c/New-Feature-NegativeObjectPropertyAssertion-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["NEGATIVE_OBJECT_PROPERTY_ASSERTION"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "New-Feature-ObjectPropertyChain-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DObjectPropertyChain-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "52dfc784024e1e99c64d9f54a0dfa118b217addd7313253536c1bc595fb04da3"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":2,\"OBJECT_PROPERTY_ASSERTION\":2,\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/New-Feature-ObjectPropertyChain-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":2,\"OBJECT_PROPERTY_ASSERTION\":2,\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/New-Feature-ObjectPropertyChain-001/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(ObjectProperty(<http://example.org/hasAunt>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0074.entailed\"},{\"axiom\":\"ObjectPropertyAssertion(<http://example.org/hasAunt> <http://example.org/Stewie> <http://example.org/Carol>)\",\"complete\":false,\"entailed\":true,\"query_features\":{\"OBJECT_ONE_OF\":1},\"upstream_expected\":true,\"upstream_source\":\"0074.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["OBJECT_ONE_OF", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "cfe177c0ed04f90fab7582d1bfc32d3b116cfce545e4a0b3d631d0edddff08c5"
+
+[[cases]]
+id = "New-Feature-ObjectPropertyChain-BJP-003"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DObjectPropertyChain-2DBJP-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "7b716f5c9c43bdefe6a650a52ffddd059e69e586847e2617bb7db54f273e6316"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":2,\"OBJECT_PROPERTY_ASSERTION\":2,\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/New-Feature-ObjectPropertyChain-BJP-003/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 1 unconsumed triple(s): <http://example.org/a> <http://example.org/p> <http://example.org/c>"
+conclusion_sha256 = "58b407a6b8df240f2944fe3fc8e696a5f017b37d53538a79166b50b566730031"
+
+[[cases]]
+id = "New-Feature-ObjectPropertyChain-BJP-004"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DObjectPropertyChain-2DBJP-2D004"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "NegativeEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "91843f4d3b36e34ee1bc4d21e1ce447aaae7f85493296d1a24aaff611e188455"
+expected_direct = ["consistent", "not-entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":2,\"OBJECT_PROPERTY_ASSERTION\":2,\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/New-Feature-ObjectPropertyChain-BJP-004/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":2,\"OBJECT_PROPERTY_ASSERTION\":2,\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/New-Feature-ObjectPropertyChain-BJP-004/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(ObjectProperty(<http://example.org/p>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":false,\"upstream_source\":\"0077.notentailed\"},{\"axiom\":\"TransitiveObjectProperty(<http://example.org/p>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM\":1},\"upstream_expected\":false,\"upstream_source\":\"0077.notentailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_DECLARATION_AXIOM", "QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "b4503a0bb75802af202ea3ef171b462afdbab7d81065de58f2a70ab096366aa6"
+
+[[cases]]
+id = "New-Feature-ReflexiveProperty-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DReflexiveProperty-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "85a8f150dc52d407a5adc03ca7268d337476240a947a7dc5bef821ba4bedc097"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"REFLEXIVE_OBJECT_PROPERTY\":1},\"id\":\"w3c/New-Feature-ReflexiveProperty-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"REFLEXIVE_OBJECT_PROPERTY\":1},\"id\":\"w3c/New-Feature-ReflexiveProperty-001/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(ObjectProperty(<http://example.org/knows>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0083.entailed\"},{\"axiom\":\"ObjectPropertyAssertion(<http://example.org/knows> <http://example.org/Peter> <http://example.org/Peter>)\",\"complete\":false,\"entailed\":true,\"query_features\":{\"OBJECT_ONE_OF\":1},\"upstream_expected\":true,\"upstream_source\":\"0083.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["OBJECT_ONE_OF", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "9b97c81392be5bf5f2484f0829799a351ddb04018e7997f4a71ff5c27c3923c0"
+
+[[cases]]
+id = "New-Feature-SelfRestriction-001"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DSelfRestriction-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "a4e6a1ab42ebbe05c31efd387dc428eab417bf42bec47768a8f204feb2170c71"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/New-Feature-SelfRestriction-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/New-Feature-SelfRestriction-001/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(ObjectProperty(<http://example.org/likes>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0084.entailed\"},{\"axiom\":\"ObjectPropertyAssertion(<http://example.org/likes> <http://example.org/Peter> <http://example.org/Peter>)\",\"complete\":false,\"entailed\":true,\"query_features\":{\"OBJECT_ONE_OF\":1},\"upstream_expected\":true,\"upstream_source\":\"0084.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["OBJECT_ONE_OF", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "cabe0d2494203a3a111e22e6f49d651370f600ad4df277bd678a73b585e4c3cf"
+
+[[cases]]
+id = "New-Feature-SelfRestriction-002"
+source_url = "http://owl.semanticweb.org/id/New-2DFeature-2DSelfRestriction-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "cabe0d2494203a3a111e22e6f49d651370f600ad4df277bd678a73b585e4c3cf"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":1,\"OBJECT_PROPERTY_ASSERTION\":1},\"id\":\"w3c/New-Feature-SelfRestriction-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"OBJECT_HAS_VALUE_POSITIVE\":1,\"OBJECT_PROPERTY_ASSERTION\":1},\"id\":\"w3c/New-Feature-SelfRestriction-002/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"ClassAssertion(ObjectHasSelf(<http://example.org/likes>) <http://example.org/Peter>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"OBJECT_HAS_SELF_NEGATIVE\":1},\"upstream_expected\":true,\"upstream_source\":\"0085.entailed\"},{\"axiom\":\"Declaration(ObjectProperty(<http://example.org/likes>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0085.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["OBJECT_HAS_SELF_NEGATIVE", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "a4e6a1ab42ebbe05c31efd387dc428eab417bf42bec47768a8f204feb2170c71"
+
+[[cases]]
+id = "Plus and Minus Zero are Distinct"
+source_url = "http://owl.semanticweb.org/id/Plus-2Dminus-2D0-2Dplus-2Ddisjointness"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "1327f51cdd0f780807f131b575c65517aa1af73bc3b14af6ca805a49bb4fd86d"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_PROPERTY\":1,\"DATA_PROPERTY_ASSERTION\":2,\"FUNCTIONAL_DATA_PROPERTY\":1},\"id\":\"w3c/Plus and Minus Zero are Distinct/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_PROPERTY", "DATA_PROPERTY_ASSERTION", "FUNCTIONAL_DATA_PROPERTY"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+
+[[cases]]
+id = "WebOnt-AnnotationProperty-003"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DAnnotationProperty-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "4bd73c2b33e486b89e120d108b4ddb02fff9e4d7a36ed56cf6153d92647b1dab"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-AnnotationProperty-003/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-AnnotationProperty-004"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DAnnotationProperty-2D004"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "f2fdd832c37424f21a09986b1d047a9864241c6feee50506c2dee39f0aed1d64"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-AnnotationProperty-004/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-I4.6-005-Direct"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI4.6-2D005-2DDirect"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "4361b29f7e1b1364536ebca7da69c843520caba3d0552fa3741a480837d1d427"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-I4.6-005-Direct/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-I4.6-005-Direct/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"AnnotationAssertion( <http://www.w3.org/2000/01/rdf-schema#comment> <http://www.w3.org/2002/03owlt/I4.6/nonconclusions005#C2> \\\"An example class.\\\"^^<http://www.w3.org/2001/XMLSchema#string> )\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_ANNOTATION_ASSERTION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0218.entailed\"},{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/I4.6/nonconclusions005#C2>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0218.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_ANNOTATION_ASSERTION_AXIOM", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "9ca3e2a24a74bfdb4efb74e2ef757cbcae46c518b83efec150661b5fe0e6f13d"
+
+[[cases]]
+id = "WebOnt-I5.26-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI5.26-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "79f783eee2fccc9b66ac19af2cb1846893fd373d79e34cac72df38d78607594d"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-I5.26-002"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI5.26-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "56ba97ba353557563835a7c454b94d985a7f91535010b7faaebe8d46e8ed5a02"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-I5.26-005"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI5.26-2D005"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "dc365f1fbef0b57c01260703e3d379aa3964464d9a707a6feab4a057f4ba87d7"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-I5.26-010"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI5.26-2D010"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "052ea93b5dcc5c7875404bb14562588912efe144158b8d536b95bd582e4bef2e"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-I5.26-010/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 3 unconsumed triple(s): _:n <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction>; _:n <http://www.w3.org/2002/07/owl#minCardinality> '1'; _:n <http://www.w3.org/2002/07/owl#onProperty> <http://www.w3.org/2002/03owlt/I5.26/premises010#p>"
+conclusion_sha256 = "fbfd37fe10c5a3eb745a9dba1cb9318da5e83845f571e14dd5ec050e24c74e94"
+
+[[cases]]
+id = "WebOnt-I5.5-005"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI5.5-2D005"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "3a9e52b2c4338f41a7e41c30ee67f125d4df24425d72641f9018f6675c304944"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-I5.5-005/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 4 unconsumed triple(s): _:node-1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class>; _:node-1 <http://www.w3.org/2002/07/owl#unionOf> _:node-2; _:node-2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/2002/03owlt/I5.5/premises005#a>"
+conclusion_sha256 = "1df88f6da39f318e52bfbdf7315997057bc886e18afc011b50ebd7cf41682559"
+
+[[cases]]
+id = "WebOnt-I5.8-011"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DI5.8-2D011"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "48a6ca912656be64d42c05d43b9208bd11be91d42913eeb1c4feaaf214394280"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-I5.8-011/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-I5.8-011/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(Datatype(<http://www.w3.org/2001/XMLSchema#integer>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0269.entailed\"},{\"axiom\":\"Declaration(Datatype(<http://www.w3.org/2001/XMLSchema#string>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0269.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "4d11aa4686e774593f00ade85c21d624c8bb192ebd3403ee6a89bd77a9a8e9ab"
+
+[[cases]]
+id = "WebOnt-Nothing-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DNothing-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "1fc56e4db4e8e149047d622f172e9676a721d9f1c73311d2dc0e8e087febb40d"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 1 unconsumed triple(s): _:node-2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Nothing>"
+
+[[cases]]
+id = "WebOnt-Ontology-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DOntology-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "884ee1073b2fb30aadb12871d94ba7804c08eafa63bf22ea4989ab0209027b79"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 2 unconsumed triple(s): <http://www.w3.org/2002/03owlt/Ontology/premises001#auto> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>; <http://www.w3.org/2002/03owlt/Ontology/premises001#car> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+conclusion_sha256 = "c2c38df8d7cbda17cc9eb94de8f034e50190c06031dfd23980a0138202732614"
+
+[[cases]]
+id = "WebOnt-Restriction-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DRestriction-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "f6847fea58c2e9b2bf0f47dff682fdfded33edece6335f958910be0db9cb716c"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OWL_NOTHING_POSITIVE\":2},\"id\":\"w3c/WebOnt-Restriction-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":false,\"inconsistent\":true}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-Restriction-002"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DRestriction-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "642d149d4d16220042d7ea4f4932ad6c55633ed318416dd497ed56e2dad39d94"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OWL_NOTHING_POSITIVE\":2},\"id\":\"w3c/WebOnt-Restriction-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":false,\"inconsistent\":true}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-Thing-003"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DThing-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "ae015165fe34ae97b64274842ff09f0032df22a0be55867dc59b666b0e0c83b4"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OWL_NOTHING_POSITIVE\":1},\"id\":\"w3c/WebOnt-Thing-003/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":false,\"inconsistent\":true}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-Thing-004"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DThing-2D004"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "4116e294396f04a207626f64ba373f51dda894225bf10cb6e64b4da8c91bbdae"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 4 unconsumed triple(s): _:list-2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/2002/03owlt/Thing/consistent004#s>; _:list-2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>; <http://www.w3.org/2002/03owlt/Thing/consistent004#s> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+
+[[cases]]
+id = "WebOnt-backwardCompatibleWith-002"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DbackwardCompatibleWith-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "544d0b0dc87af9b8d30c02be15ddef83f910a361618c5a3defb93c439e45965c"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-backwardCompatibleWith-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-differentFrom-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdifferentFrom-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "a57b9024633a12a1fc294ba4d710b8938faebf6f9733093a4d2b70c4aeb0212b"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"DIFFERENT_INDIVIDUALS\":1,\"OWL_NOTHING_POSITIVE\":1},\"id\":\"w3c/WebOnt-differentFrom-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DIFFERENT_INDIVIDUALS\":1,\"OWL_NOTHING_POSITIVE\":1},\"id\":\"w3c/WebOnt-differentFrom-001/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"DifferentIndividuals(<http://www.w3.org/2002/03owlt/differentFrom/premises001#a> <http://www.w3.org/2002/03owlt/differentFrom/premises001#b>)\",\"complete\":false,\"entailed\":true,\"query_features\":{\"OBJECT_ONE_OF\":2},\"upstream_expected\":true,\"upstream_source\":\"0420.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["OBJECT_ONE_OF"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "8cb1530fc04612732095abb21eadae3e214fdd870bd018829e32acfaa8633844"
+
+[[cases]]
+id = "WebOnt-disjointWith-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "8ad1fa7b11dee72eb5f887e004efa6199c199787fbdb007f265c4c9ab69a0e7c"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 2 unconsumed triple(s): <http://www.w3.org/2002/03owlt/disjointWith/premises001#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>; <http://www.w3.org/2002/03owlt/disjointWith/premises001#b> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+conclusion_sha256 = "83dd2ff953948ebc48c8d4d69784f1d3d5addfffa9137c9e11bf2e8bc3f04a43"
+
+[[cases]]
+id = "WebOnt-disjointWith-003"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "6d82ad0098c7ea635bf919c449bde7fb87aa9f2a9e909efb4fbcfb12d4ee89af"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-disjointWith-004"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D004"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "d76a05ce65429183ca3260c91dd1830a01857ef2ea127670156dd3dedf5e7786"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-disjointWith-005"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D005"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "58bbc01f724b6e229f4b4bc0b842f6eb448d3d269068db8f33e5af7f968d7ac4"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-disjointWith-006"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D006"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "827430c84174674dcd408582cda508003d1700a2c192f3fc7495f5d7e0344476"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-disjointWith-007"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D007"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "0bfe177929f7df5bf38bbf180cfd046a3ff40b66f3adda53d90a4266bd2c517a"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-disjointWith-008"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D008"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "79af0a0fe7dbf0686817f427517f788a7d9835bc2b78326c854269f19995237c"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-disjointWith-009"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DdisjointWith-2D009"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "e7119f440b41b51ba1130a5c8d683999070ca70e6b225e135659013ccd66b54c"
+expected_direct = ["consistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "StructuralConstraintError: ObjectIntersectionOf.operands requires at least 2 distinct value(s); got 1"
+
+[[cases]]
+id = "WebOnt-equivalentClass-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentClass-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "12798e09ff85af898c252cc390f11cc2100679a7685d63721de7bc6f4c341bb2"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 2 unconsumed triple(s): <http://www.w3.org/2002/03owlt/equivalentClass/premises001#auto> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>; <http://www.w3.org/2002/03owlt/equivalentClass/premises001#car> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+conclusion_sha256 = "1c96152e53c058c9c205adc3149fd688ed2323d92c1dcb84351a1a83ace076fa"
+
+[[cases]]
+id = "WebOnt-equivalentClass-002"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentClass-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "9903f09854efad678ecc164b40076e4f3bea3c771be6720c0ae0b4042d4f103a"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentClass-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentClass-002/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/equivalentClass/premises002#Automobile>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0434.entailed\"},{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/equivalentClass/premises002#Car>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0434.entailed\"},{\"axiom\":\"SubClassOf(<http://www.w3.org/2002/03owlt/equivalentClass/premises002#Automobile> <http://www.w3.org/2002/03owlt/equivalentClass/premises002#Car>)\",\"complete\":true,\"entailed\":true,\"query_features\":{},\"upstream_expected\":true,\"upstream_source\":\"0434.entailed\"},{\"axiom\":\"SubClassOf(<http://www.w3.org/2002/03owlt/equivalentClass/premises002#Car> <http://www.w3.org/2002/03owlt/equivalentClass/premises002#Automobile>)\",\"complete\":true,\"entailed\":true,\"query_features\":{},\"upstream_expected\":true,\"upstream_source\":\"0434.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "5867b3bf4d42f414a779d42c062dd638c9fb05cf20c70a9f81f51bc5aeb910b1"
+
+[[cases]]
+id = "WebOnt-equivalentClass-003"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentClass-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "6f5edaedeaf20380df810ab985b4fa7c185522800ca3bf3614d335b00358acd1"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentClass-003/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentClass-003/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/equivalentClass/conclusions003#Automobile>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0435.entailed\"},{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/equivalentClass/conclusions003#Car>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0435.entailed\"},{\"axiom\":\"EquivalentClasses(<http://www.w3.org/2002/03owlt/equivalentClass/conclusions003#Car> <http://www.w3.org/2002/03owlt/equivalentClass/conclusions003#Automobile>)\",\"complete\":true,\"entailed\":true,\"query_features\":{},\"upstream_expected\":true,\"upstream_source\":\"0435.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "24f68ac9b082cf88abb2454a4f4438d645a86edb1641d06d0b1cc9e20127b865"
+
+[[cases]]
+id = "WebOnt-equivalentClass-008-Direct"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentClass-2D008-2DDirect"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "8995f946da1b3478240ddf8f34ef5ac38ae7169f88e506a857984d4c007e219d"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentClass-008-Direct/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentClass-008-Direct/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"AnnotationAssertion( <http://www.w3.org/2002/03owlt/equivalentClass/premises008#annotate> <http://www.w3.org/2002/03owlt/equivalentClass/premises008#c2> \\\"description of c1\\\"^^<http://www.w3.org/2001/XMLSchema#string> )\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_ANNOTATION_ASSERTION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0441.entailed\"},{\"axiom\":\"Declaration(AnnotationProperty(<http://www.w3.org/2002/03owlt/equivalentClass/premises008#annotate>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0441.entailed\"},{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/equivalentClass/premises008#c2>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0441.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_ANNOTATION_ASSERTION_AXIOM", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "7e26d748ce6f5a25f210756318792fba56e3a540a7c5747ef78de4b45d72594d"
+
+[[cases]]
+id = "WebOnt-equivalentProperty-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentProperty-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "59c5ba3d5c26d2eef11ed60e4e12912e46aafa36d2efb26361848e6ded1a5a87"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 2 unconsumed triple(s): <http://www.w3.org/2002/03owlt/equivalentProperty/premises001#X> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>; <http://www.w3.org/2002/03owlt/equivalentProperty/premises001#Y> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+conclusion_sha256 = "a136b5112d8f7494e6a379c00e40633811284f311e8cd7afffd4e529c27693c3"
+
+[[cases]]
+id = "WebOnt-equivalentProperty-002"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentProperty-2D002"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "34d7cd8237945d8017bd819908b006f2f83b37e2ac21cd769572567fde6eb357"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentProperty-002/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentProperty-002/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(ObjectProperty(<http://www.w3.org/2002/03owlt/equivalentProperty/premises002#hasHead>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0444.entailed\"},{\"axiom\":\"Declaration(ObjectProperty(<http://www.w3.org/2002/03owlt/equivalentProperty/premises002#hasLeader>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0444.entailed\"},{\"axiom\":\"SubObjectPropertyOf(<http://www.w3.org/2002/03owlt/equivalentProperty/premises002#hasHead> <http://www.w3.org/2002/03owlt/equivalentProperty/premises002#hasLeader>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_SUB_OBJECT_PROPERTY_OF_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0444.entailed\"},{\"axiom\":\"SubObjectPropertyOf(<http://www.w3.org/2002/03owlt/equivalentProperty/premises002#hasLeader> <http://www.w3.org/2002/03owlt/equivalentProperty/premises002#hasHead>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_SUB_OBJECT_PROPERTY_OF_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0444.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_DECLARATION_AXIOM", "QUERY_SUB_OBJECT_PROPERTY_OF_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "b0d039d3f0cc08961905a01722d057bc9267338d1962fc923fa561a6988152be"
+
+[[cases]]
+id = "WebOnt-equivalentProperty-003"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DequivalentProperty-2D003"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "bf67f67dbdbbdf0f20bc41d10c6f4367842dc18aea1facf9a8c40e2ec2897a3a"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentProperty-003/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-equivalentProperty-003/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"Declaration(ObjectProperty(<http://www.w3.org/2002/03owlt/equivalentProperty/conclusions003#hasHead>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0445.entailed\"},{\"axiom\":\"Declaration(ObjectProperty(<http://www.w3.org/2002/03owlt/equivalentProperty/conclusions003#hasLeader>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0445.entailed\"},{\"axiom\":\"EquivalentObjectProperties(<http://www.w3.org/2002/03owlt/equivalentProperty/conclusions003#hasHead> <http://www.w3.org/2002/03owlt/equivalentProperty/conclusions003#hasLeader>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_EQUIVALENT_OBJECT_PROPERTIES_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0445.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_DECLARATION_AXIOM", "QUERY_EQUIVALENT_OBJECT_PROPERTIES_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "3e89751537d1967870a91909c246eb4e47e20de281e6df69669943d6d326c80f"
+
+[[cases]]
+id = "WebOnt-imports-011"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2Dimports-2D011"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "c20b3e9a6f2afcb10c8a2edc11e74f899ba38ad35cc1f987f439a2b78c22819c"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-imports-011/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-imports-011/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"ClassAssertion(<http://www.w3.org/2002/03owlt/imports/support011-A#Mortal> <http://example.org/data#Socrates>)\",\"complete\":true,\"entailed\":false,\"query_features\":{},\"upstream_expected\":true,\"upstream_source\":\"0461.entailed\"},{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/imports/support011-A#Mortal>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0461.entailed\"}],\"upstream_golden_match\":false,\"upstream_goldens_checked\":1}}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "ValueError: embedded import resolver case"
+conclusion_sha256 = "4d4d8c619dadf18c31f3068c0a5910f25d3963de12f7bef459d7fb569d429acf"
+
+[[cases]]
+id = "WebOnt-miscellaneous-302-Direct"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2Dmiscellaneous-2D302-2DDirect"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "0973cee67e6bb90b4cfbb369f5fd711ca8f050fdf3d7924d4f7ede60d2426d84"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 1 unconsumed triple(s): <http://www.w3.org/2002/03owlt/miscellaneous/premises302#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+conclusion_sha256 = "1226f6d8c9732787c3382a46b017efd823e72a1f8e102a1ec9a97b0848cc28f2"
+
+[[cases]]
+id = "WebOnt-miscellaneous-303"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2Dmiscellaneous-2D303"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "d89c76c660545fde054e4ffe8044e9cf99f4c55b28b6cc1aee79bcd8498d2fc9"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-miscellaneous-303/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "WebOnt-sameAs-001"
+source_url = "http://owl.semanticweb.org/id/TestCase-3AWebOnt-2DsameAs-2D001"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "8a8f64b1c449c508d43e40a93492954aa21973cf6209dd8e284093e9df02a0d9"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-sameAs-001/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/WebOnt-sameAs-001/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"AnnotationAssertion( <http://www.w3.org/2002/03owlt/sameAs/premises001#annotate> <http://www.w3.org/2002/03owlt/sameAs/premises001#c2> \\\"description of c1\\\"^^<http://www.w3.org/2001/XMLSchema#string> )\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_ANNOTATION_ASSERTION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0484.entailed\"},{\"axiom\":\"Declaration(AnnotationProperty(<http://www.w3.org/2002/03owlt/sameAs/premises001#annotate>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0484.entailed\"},{\"axiom\":\"Declaration(Class(<http://www.w3.org/2002/03owlt/sameAs/premises001#c2>))\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_DECLARATION_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0484.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_ANNOTATION_ASSERTION_AXIOM", "QUERY_DECLARATION_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "65667b7a81674e198240ba73e8c37253373208ca5c59250d709e0a4915f5b253"
+
+[[cases]]
+id = "bnode2somevaluesfrom"
+source_url = "http://owl.semanticweb.org/id/Bnode2somevaluesfrom"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "899f93d3a06bc346bf3e695842b48324624b2ebc13fab35ebf08307c7cb84c82"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"pyelk_public_result\":{}}"
+classification = "outside-pyowl-core-input-scope"
+classification_features = []
+classification_detail = "UnsupportedSyntaxError: RDF graph is not completely mappable to OWL 2 structure; 1 unconsumed triple(s): <http://example.org/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing>"
+conclusion_sha256 = "0a46463f99b1a8f1f6403cba1b45c5c4ba02df50aa48bfa38f6ef97ebc29de81"
+
+[[cases]]
+id = "chain2trans1"
+source_url = "http://owl.semanticweb.org/id/Chain2trans"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "PositiveEntailmentTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "31565548496bcf70668dbb4b0e57900bf1a79eb331d5d1b90e7da00f22e7c60b"
+expected_direct = ["consistent", "entailed"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/chain2trans1/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}},\"entailment\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"OBJECT_PROPERTY_CHAIN\":1},\"id\":\"w3c/chain2trans1/entailment\",\"ok\":true,\"schema\":1,\"value\":{\"queries\":[{\"axiom\":\"TransitiveObjectProperty(<http://example.org/#p>)\",\"complete\":false,\"entailed\":false,\"query_features\":{\"QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM\":1},\"upstream_expected\":true,\"upstream_source\":\"0001.entailed\"}],\"upstream_golden_match\":true,\"upstream_goldens_checked\":1}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["QUERY_TRANSITIVE_OBJECT_PROPERTY_AXIOM"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
+conclusion_sha256 = "b46faef8730447b75e3cd360c932f30d7f2c363962fea6b156db68f8eb79818d"
+
+[[cases]]
+id = "owl2-rl-invalid-rightside-somevaluesfrom"
+source_url = "http://owl.semanticweb.org/id/Owl2-2Drl-2Dinvalid-2Drightside-2Dsomevaluesfrom"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["ConsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "RDFXML"
+input_sha256 = "1f29e17d969fcca9d5034294ff4069c5a859288394cc34c277fa619cb4f09721"
+expected_direct = ["consistent"]
+elk_0_6_complete = true
+elk_0_6_result_json = "{\"consistency\":{\"complete\":true,\"diagnostics\":[],\"features\":{},\"id\":\"w3c/owl2-rl-invalid-rightside-somevaluesfrom/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-complete"
+classification_features = []
+classification_detail = "pyELK result is complete under the pinned ELK monitors"
+
+[[cases]]
+id = "string-integer-clash"
+source_url = "http://owl.semanticweb.org/id/String-2Dinteger-2Dclash"
+status = "Approved"
+semantics = "DIRECT"
+profile = "EL"
+test_types = ["InconsistencyTest", "ProfileIdentificationTest"]
+input_syntax = "FUNCTIONAL"
+input_sha256 = "cfc49a56c3b62ec30ffd414b6b43b854c0ba4e70f5b56901d163adea1eb5fae9"
+expected_direct = ["inconsistent"]
+elk_0_6_complete = false
+elk_0_6_result_json = "{\"consistency\":{\"complete\":false,\"diagnostics\":[],\"features\":{\"DATA_HAS_VALUE\":1,\"DATA_PROPERTY\":1,\"DATA_PROPERTY_RANGE\":1},\"id\":\"w3c/string-integer-clash/consistency\",\"ok\":true,\"schema\":1,\"value\":{\"consistent\":true,\"inconsistent\":false}}}"
+classification = "elk-incomplete-as-designed"
+classification_features = ["DATA_HAS_VALUE", "DATA_PROPERTY", "DATA_PROPERTY_RANGE"]
+classification_detail = "pinned ELK incompleteness monitor reported the listed features"
