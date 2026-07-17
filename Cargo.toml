@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "rust/pyelk-core",
+    "rust/pyelk-pyo3",
+]
+exclude = ["rust/fuzz"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0-dev.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/OAEI-ML/pyELK"
+
+[workspace.dependencies]
+blake2 = "0.10.6"
+criterion = "0.5.1"
+pyo3 = "0.29.0"
+rayon = "1.11.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

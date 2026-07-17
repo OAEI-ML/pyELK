@@ -1,0 +1,19 @@
+[package]
+name = "pyelk-pyo3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Private PyO3 bindings for the pyELK native reasoning core"
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyelk-core = { path = "../pyelk-core" }
+pyo3 = { workspace = true, features = ["abi3-py310", "extension-module"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "pyelk-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.10"
+pyelk-core = { path = "../pyelk-core" }
+
+[[bin]]
+name = "ir_decoder"
+path = "fuzz_targets/ir_decoder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "query_decoder"
+path = "fuzz_targets/query_decoder.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]
