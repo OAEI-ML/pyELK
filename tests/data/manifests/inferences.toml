@@ -1,0 +1,347 @@
+schema = 1
+elk_version = "0.6.0"
+elk_commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+java_package = "org.semanticweb.elk.reasoner.saturation.inferences"
+
+[[inference]]
+java_class = "ContextInitializationNoPremises"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ContextInitializationNoPremises.java"
+python_rule = "pyelk.reasoning.rules.context_initialization_no_premises"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_context_initialization_no_premises_inference"
+rust_test = "pyelk_core::rules::tests::context_initialization_no_premises"
+status = "implemented"
+
+[[inference]]
+java_class = "SubContextInitializationNoPremises"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubContextInitializationNoPremises.java"
+python_rule = "pyelk.reasoning.rules.subcontext_initialization_no_premises"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subcontext_initialization_no_premises_inference"
+rust_test = "pyelk_core::rules::tests::subcontext_initialization_no_premises"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionTautology"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionTautology.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_tautology"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_tautology_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_tautology"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionOwlThing"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionOwlThing.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_owl_thing"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_owl_thing_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_owl_thing"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionExpandedSubClassOf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionExpandedSubClassOf.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_expanded_subclass_of"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_expanded_subclass_of_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_expanded_subclass_of"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionExpandedDefinition"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionExpandedDefinition.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_expanded_definition"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_expanded_definition_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_expanded_definition"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionExpandedFirstEquivalentClass"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionExpandedFirstEquivalentClass.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_expanded_first_equivalent_class"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_expanded_first_equivalent_class_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_expanded_first_equivalent_class"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionExpandedSecondEquivalentClass"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionExpandedSecondEquivalentClass.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_expanded_second_equivalent_class"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_expanded_second_equivalent_class_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_expanded_second_equivalent_class"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionComposedDefinedClass"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionComposedDefinedClass.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_composed_defined_class"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_composed_defined_class_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_composed_defined_class"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionComposedOfDecomposed"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionComposedOfDecomposed.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_composed_of_decomposed"
+unit_test = "tests/unit/reasoning/rules/test_subclass.py::test_subclass_inclusion_composed_of_decomposed_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_composed_of_decomposed"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionDecomposedFirstConjunct"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionDecomposedFirstConjunct.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_decomposed_first_conjunct"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_subclass_inclusion_decomposed_first_conjunct_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_decomposed_first_conjunct"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionDecomposedSecondConjunct"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionDecomposedSecondConjunct.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_decomposed_second_conjunct"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_subclass_inclusion_decomposed_second_conjunct_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_decomposed_second_conjunct"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionComposedObjectIntersectionOf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionComposedObjectIntersectionOf.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_composed_object_intersection_of"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_subclass_inclusion_composed_object_intersection_of_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_composed_object_intersection_of"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionComposedObjectUnionOf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionComposedObjectUnionOf.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_composed_object_union_of"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_subclass_inclusion_composed_object_union_of_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_composed_object_union_of"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionComposedObjectSomeValuesFrom"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionComposedObjectSomeValuesFrom.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_composed_object_some_values_from"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_subclass_inclusion_composed_object_some_values_from_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_composed_object_some_values_from"
+status = "implemented"
+
+[[inference]]
+java_class = "ForwardLinkOfObjectSomeValuesFrom"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ForwardLinkOfObjectSomeValuesFrom.java"
+python_rule = "pyelk.reasoning.rules.forward_link_of_object_some_values_from"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_forward_link_of_object_some_values_from_inference"
+rust_test = "pyelk_core::rules::tests::forward_link_of_object_some_values_from"
+status = "implemented"
+
+[[inference]]
+java_class = "BackwardLinkOfObjectSomeValuesFrom"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/BackwardLinkOfObjectSomeValuesFrom.java"
+python_rule = "pyelk.reasoning.rules.backward_link_of_object_some_values_from"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_backward_link_of_object_some_values_from_inference"
+rust_test = "pyelk_core::rules::tests::backward_link_of_object_some_values_from"
+status = "implemented"
+
+[[inference]]
+java_class = "ForwardLinkOfObjectHasSelf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ForwardLinkOfObjectHasSelf.java"
+python_rule = "pyelk.reasoning.rules.forward_link_of_object_has_self"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_forward_link_of_object_has_self_inference"
+rust_test = "pyelk_core::rules::tests::forward_link_of_object_has_self"
+status = "implemented"
+
+[[inference]]
+java_class = "BackwardLinkOfObjectHasSelf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/BackwardLinkOfObjectHasSelf.java"
+python_rule = "pyelk.reasoning.rules.backward_link_of_object_has_self"
+unit_test = "tests/unit/reasoning/rules/test_expressions_links.py::test_backward_link_of_object_has_self_inference"
+rust_test = "pyelk_core::rules::tests::backward_link_of_object_has_self"
+status = "implemented"
+
+[[inference]]
+java_class = "ForwardLinkComposition"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ForwardLinkComposition.java"
+python_rule = "pyelk.reasoning.rules.forward_link_composition"
+unit_test = "tests/unit/reasoning/rules/test_composition_ranges.py::test_forward_link_composition_inference"
+rust_test = "pyelk_core::rules::tests::forward_link_composition"
+status = "implemented"
+
+[[inference]]
+java_class = "BackwardLinkComposition"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/BackwardLinkComposition.java"
+python_rule = "pyelk.reasoning.rules.backward_link_composition"
+unit_test = "tests/unit/reasoning/rules/test_composition_ranges.py::test_backward_link_composition_inference"
+rust_test = "pyelk_core::rules::tests::backward_link_composition"
+status = "implemented"
+
+[[inference]]
+java_class = "BackwardLinkReversedExpanded"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/BackwardLinkReversedExpanded.java"
+python_rule = "pyelk.reasoning.rules.backward_link_reversed_expanded"
+unit_test = "tests/unit/reasoning/rules/test_composition_ranges.py::test_backward_link_reversed_expanded_inference"
+rust_test = "pyelk_core::rules::tests::backward_link_reversed_expanded"
+status = "implemented"
+
+[[inference]]
+java_class = "PropagationGenerated"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/PropagationGenerated.java"
+python_rule = "pyelk.reasoning.rules.propagation_generated"
+unit_test = "tests/unit/reasoning/rules/test_composition_ranges.py::test_propagation_generated_inference"
+rust_test = "pyelk_core::rules::tests::propagation_generated"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionRange"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionRange.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_range"
+unit_test = "tests/unit/reasoning/rules/test_composition_ranges.py::test_subclass_inclusion_range_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_range"
+status = "implemented"
+
+[[inference]]
+java_class = "SubClassInclusionObjectHasSelfPropertyRange"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/SubClassInclusionObjectHasSelfPropertyRange.java"
+python_rule = "pyelk.reasoning.rules.subclass_inclusion_object_has_self_property_range"
+unit_test = "tests/unit/reasoning/rules/test_composition_ranges.py::test_subclass_inclusion_object_has_self_property_range_inference"
+rust_test = "pyelk_core::rules::tests::subclass_inclusion_object_has_self_property_range"
+status = "implemented"
+
+[[inference]]
+java_class = "DisjointSubsumerFromSubsumer"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/DisjointSubsumerFromSubsumer.java"
+python_rule = "pyelk.reasoning.rules.disjoint_subsumer_from_subsumer"
+unit_test = "tests/unit/reasoning/rules/test_inconsistency.py::test_disjoint_subsumer_from_subsumer_inference"
+rust_test = "pyelk_core::rules::tests::disjoint_subsumer_from_subsumer"
+status = "implemented"
+
+[[inference]]
+java_class = "ClassInconsistencyOfDisjointSubsumers"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ClassInconsistencyOfDisjointSubsumers.java"
+python_rule = "pyelk.reasoning.rules.class_inconsistency_of_disjoint_subsumers"
+unit_test = "tests/unit/reasoning/rules/test_inconsistency.py::test_class_inconsistency_of_disjoint_subsumers_inference"
+rust_test = "pyelk_core::rules::tests::class_inconsistency_of_disjoint_subsumers"
+status = "implemented"
+
+[[inference]]
+java_class = "ClassInconsistencyOfObjectComplementOf"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ClassInconsistencyOfObjectComplementOf.java"
+python_rule = "pyelk.reasoning.rules.class_inconsistency_of_object_complement_of"
+unit_test = "tests/unit/reasoning/rules/test_inconsistency.py::test_class_inconsistency_of_object_complement_of_inference"
+rust_test = "pyelk_core::rules::tests::class_inconsistency_of_object_complement_of"
+status = "implemented"
+
+[[inference]]
+java_class = "ClassInconsistencyOfOwlNothing"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ClassInconsistencyOfOwlNothing.java"
+python_rule = "pyelk.reasoning.rules.class_inconsistency_of_owl_nothing"
+unit_test = "tests/unit/reasoning/rules/test_inconsistency.py::test_class_inconsistency_of_owl_nothing_inference"
+rust_test = "pyelk_core::rules::tests::class_inconsistency_of_owl_nothing"
+status = "implemented"
+
+[[inference]]
+java_class = "ClassInconsistencyPropagated"
+java_path = "elk-reasoner/src/main/java/org/semanticweb/elk/reasoner/saturation/inferences/ClassInconsistencyPropagated.java"
+python_rule = "pyelk.reasoning.rules.class_inconsistency_propagated"
+unit_test = "tests/unit/reasoning/rules/test_inconsistency.py::test_class_inconsistency_propagated_inference"
+rust_test = "pyelk_core::rules::tests::class_inconsistency_propagated"
+status = "implemented"
+
+[[ignored]]
+java_class = "AbstractBackwardLinkInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractClassInconsistencyInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractClassInconsistencyOfInconsistentSubsumerInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractClassInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractContextInitializationInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractDisjointSubsumerInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractForwardLinkInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractPropagationInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractSubClassInclusionComposedInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractSubClassInclusionDecomposedInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractSubClassInclusionExpansionInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractSubClassInclusionInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractSubClassInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "AbstractSubContextInitializationInference"
+reason = "abstract base class"
+[[ignored]]
+java_class = "BackwardLinkInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "ClassInconsistencyInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "ClassInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "ClassInferenceConclusionVisitor"
+reason = "conclusion visitor, not an inference"
+[[ignored]]
+java_class = "ComposedClassInferenceVisitor"
+reason = "visitor adapter, not an inference"
+[[ignored]]
+java_class = "ContextInitializationInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "DisjointSubsumerInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "DummyClassInferenceVisitor"
+reason = "visitor adapter, not an inference"
+[[ignored]]
+java_class = "DummySaturationInferenceVisitor"
+reason = "visitor adapter, not an inference"
+[[ignored]]
+java_class = "ForwardLinkInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "InitializationInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "LinkComposition"
+reason = "inference interface"
+[[ignored]]
+java_class = "PropagationInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "SaturationInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "SubClassInclusionComposedInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "SubClassInclusionDecomposedConjunct"
+reason = "abstract base class"
+[[ignored]]
+java_class = "SubClassInclusionDecomposedInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "SubClassInclusionInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "SubClassInference"
+reason = "inference interface"
+[[ignored]]
+java_class = "SubContextInitializationInference"
+reason = "inference interface"
