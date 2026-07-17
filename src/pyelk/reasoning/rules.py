@@ -7,12 +7,26 @@ The occurrence-aware dispatcher is defined below the inference catalogue.
 
 from __future__ import annotations
 
-from typing import TypeVar
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final, Protocol, TypeVar
 
-from pyelk.indexing.ir import U32_RESERVED, DisjointGroupId, EntityId, ExpressionId, PropertyChainId
+from pyelk.indexing.ir import (
+    OWL_NOTHING_IRI,
+    OWL_THING_IRI,
+    U32_RESERVED,
+    CompiledOntology,
+    DisjointGroupId,
+    EntityId,
+    EntityKind,
+    ExpressionId,
+    ExpressionTag,
+    PropertyChainId,
+)
 from pyelk.reasoning.conclusions import (
     BackwardLink,
     ClassInconsistency,
+    Conclusion,
     ContextInitialization,
     DisjointSubsumer,
     ForwardLink,
@@ -21,7 +35,8 @@ from pyelk.reasoning.conclusions import (
     SubClassInclusionDecomposed,
     SubContextInitialization,
 )
-from pyelk.reasoning.properties import PropertyRange, SubPropertyChain
+from pyelk.reasoning.contexts import ContextState
+from pyelk.reasoning.properties import PropertyChainRecord, PropertyRange, SubPropertyChain
 
 _Premise = TypeVar("_Premise")
 
@@ -550,7 +565,679 @@ def class_inconsistency_propagated(
     return ClassInconsistency(backward.source)
 
 
+class ConclusionProducer(Protocol):
+    """Destination-aware output sink supplied by the WP7 scheduler."""
+
+    def produce(self, conclusion: Conclusion, /) -> object:
+        """Route one local or cross-context structural conclusion."""
+
+
+class PropertyView(Protocol):
+    """Read-only portion of property saturation consumed by class rules."""
+
+    @property
+    def chains(self) -> tuple[PropertyChainRecord, ...]: ...
+
+    def compiled_chain(self, chain: PropertyChainId) -> PropertyChainId: ...
+
+    def singleton_chain(self, property_id: EntityId) -> PropertyChainId: ...
+
+    def sub_properties(self, super_chain: PropertyChainId) -> tuple[EntityId, ...]: ...
+
+    def ranges(self, property_id: EntityId) -> tuple[ExpressionId, ...]: ...
+
+    def compositions_by_right(
+        self,
+        left_property: EntityId,
+        *,
+        redundant: bool = False,
+    ) -> Mapping[PropertyChainId, tuple[PropertyChainId, ...]]: ...
+
+    def compositions_by_left(
+        self,
+        right_chain: PropertyChainId,
+        *,
+        redundant: bool = False,
+    ) -> Mapping[EntityId, tuple[PropertyChainId, ...]]: ...
+
+
+# This table is deliberately explicit: it is the audited non-incremental Java rule surface,
+# while the value names the structural conclusion family that triggers the Python handler.
+RULE_CLASS_TRIGGERS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "RootContextInitializationRule": "context_initialization",
+        "OwlThingContextInitRule": "context_initialization",
+        "SuperClassFromSubClassRule": "composed_subsumer",
+        "ComposedFromDecomposedSubsumerRule": "decomposed_subsumer",
+        "EquivalentClassFirstFromSecondRule": "composed_subsumer",
+        "EquivalentClassSecondFromFirstRule": "composed_subsumer",
+        "IndexedClassFromDefinitionRule": "composed_subsumer",
+        "IndexedClassDecompositionRule": "decomposed_subsumer",
+        "IndexedObjectComplementOfDecomposition": "decomposed_subsumer",
+        "ObjectIntersectionFromFirstConjunctRule": "composed_subsumer",
+        "ObjectIntersectionFromSecondConjunctRule": "composed_subsumer",
+        "IndexedObjectIntersectionOfDecomposition": "decomposed_subsumer",
+        "ObjectUnionFromDisjunctRule": "composed_subsumer",
+        "IndexedObjectSomeValuesFromDecomposition": "decomposed_subsumer",
+        "IndexedObjectHasSelfDecomposition": "decomposed_subsumer",
+        "PropagationFromExistentialFillerRule": "composed_subsumer",
+        "PropagationInitializationRule": "subcontext_initialization",
+        "SubsumerPropagationRule": "propagation",
+        "SubsumerBackwardLinkRule": "backward_link",
+        "BackwardLinkFromForwardLinkRule": "forward_link",
+        "BackwardLinkChainFromBackwardLinkRule": "backward_link",
+        "NonReflexiveBackwardLinkCompositionRule": "forward_link",
+        "ReflexiveBackwardLinkCompositionRule": "forward_link",
+        "ContradictionFromNegationRule": "composed_subsumer",
+        "ContradictionFromOwlNothingRule": "decomposed_subsumer",
+        "ContradictionCompositionRule": "disjoint_subsumer",
+        "ContradictionOverBackwardLinkRule": "backward_link",
+        "ContradictionPropagationRule": "class_inconsistency",
+        "OwlNothingDecompositionRule": "decomposed_subsumer",
+        "DisjointSubsumerFromMemberRule": "composed_subsumer",
+    }
+)
+
+
+def _append_index(
+    index: dict[int, set[tuple[int, ...]]],
+    key: int,
+    value: tuple[int, ...],
+) -> None:
+    index.setdefault(key, set()).add(value)
+
+
+def _freeze_index(
+    index: dict[int, set[tuple[int, ...]]],
+) -> dict[int, tuple[tuple[int, ...], ...]]:
+    return {key: tuple(sorted(values)) for key, values in index.items()}
+
+
+def _class_expression(compiled: CompiledOntology, iri: str) -> ExpressionId:
+    entity = EntityId(
+        next(
+            index
+            for index, record in enumerate(compiled.entities)
+            if record.kind is EntityKind.CLASS and record.iri == iri
+        )
+    )
+    return ExpressionId(
+        next(
+            index
+            for index, record in enumerate(compiled.expressions)
+            if record.tag is ExpressionTag.CLASS and record.arguments == (entity,)
+        )
+    )
+
+
+def _emit(producer: ConclusionProducer, conclusion: Conclusion | None) -> None:
+    if conclusion is not None:
+        producer.produce(conclusion)
+
+
+class RuleDispatcher:
+    """Occurrence-aware, iterative dispatcher for one already-stored novel premise.
+
+    Construction freezes all linked-rule lookups for a compiled ontology. ``dispatch`` only
+    reads the supplied context and property view and writes through ``ConclusionProducer``;
+    it never inserts a conclusion or recursively applies another rule.
+    """
+
+    def __init__(self, compiled: CompiledOntology, properties: PropertyView) -> None:
+        if not isinstance(compiled, CompiledOntology):
+            raise TypeError("compiled must be CompiledOntology")
+        self.compiled = compiled
+        self.properties = properties
+        self.owl_thing = _class_expression(compiled, OWL_THING_IRI)
+        self.owl_nothing = _class_expression(compiled, OWL_NOTHING_IRI)
+        self._introduce_thing = compiled.expression_occurrences[self.owl_thing].negative > 0
+        self._decompose_nothing = compiled.expression_occurrences[self.owl_nothing].positive > 0
+
+        subclasses: dict[int, set[tuple[int, ...]]] = {}
+        for sub_expression, super_expression in compiled.subclass_axioms:
+            _append_index(subclasses, sub_expression, (super_expression,))
+        self._subclasses = _freeze_index(subclasses)
+
+        definitions_by_class: dict[int, set[tuple[int, ...]]] = {}
+        classes_by_definition: dict[int, set[tuple[int, ...]]] = {}
+        equivalent_first: dict[int, set[tuple[int, ...]]] = {}
+        equivalent_second: dict[int, set[tuple[int, ...]]] = {}
+        for first, second in compiled.equivalent_class_axioms:
+            if compiled.expressions[first].tag is ExpressionTag.CLASS:
+                _append_index(definitions_by_class, first, (second,))
+                _append_index(classes_by_definition, second, (first,))
+            else:
+                _append_index(equivalent_first, second, (first,))
+                _append_index(equivalent_second, first, (second,))
+        self._definitions_by_class = _freeze_index(definitions_by_class)
+        self._classes_by_definition = _freeze_index(classes_by_definition)
+        self._equivalent_first = _freeze_index(equivalent_first)
+        self._equivalent_second = _freeze_index(equivalent_second)
+
+        intersections_by_first: dict[int, set[tuple[int, ...]]] = {}
+        intersections_by_second: dict[int, set[tuple[int, ...]]] = {}
+        unions_by_disjunct: dict[int, set[tuple[int, ...]]] = {}
+        existentials_by_filler: dict[int, set[tuple[int, ...]]] = {}
+        complements_by_negated: dict[int, set[tuple[int, ...]]] = {}
+        positive_complements: dict[int, set[tuple[int, ...]]] = {}
+        for expression_index, record in enumerate(compiled.expressions):
+            expression = ExpressionId(expression_index)
+            occurrence = compiled.expression_occurrences[expression_index]
+            if record.tag is ExpressionTag.OBJECT_INTERSECTION_OF and occurrence.negative:
+                first = ExpressionId(record.arguments[0])
+                second = ExpressionId(record.arguments[1])
+                _append_index(intersections_by_first, first, (second, expression))
+                _append_index(intersections_by_second, second, (first, expression))
+            elif record.tag is ExpressionTag.OBJECT_UNION_OF and occurrence.negative:
+                for position, argument in enumerate(record.arguments):
+                    _append_index(
+                        unions_by_disjunct,
+                        ExpressionId(argument),
+                        (expression, position),
+                    )
+            elif record.tag is ExpressionTag.OBJECT_SOME_VALUES_FROM and occurrence.negative:
+                relation = EntityId(record.arguments[0])
+                filler = ExpressionId(record.arguments[1])
+                _append_index(existentials_by_filler, filler, (expression, relation))
+            elif record.tag is ExpressionTag.OBJECT_COMPLEMENT_OF and occurrence.positive:
+                negated = ExpressionId(record.arguments[0])
+                _append_index(complements_by_negated, negated, (expression,))
+                _append_index(positive_complements, expression, (negated,))
+        self._intersections_by_first = _freeze_index(intersections_by_first)
+        self._intersections_by_second = _freeze_index(intersections_by_second)
+        self._unions_by_disjunct = _freeze_index(unions_by_disjunct)
+        self._existentials_by_filler = _freeze_index(existentials_by_filler)
+        self._complements_by_negated = _freeze_index(complements_by_negated)
+        self._positive_complements = _freeze_index(positive_complements)
+
+        disjoint_by_member: dict[int, set[tuple[int, ...]]] = {}
+        for group_index, members in enumerate(compiled.disjoint_groups):
+            for position, member in enumerate(members):
+                _append_index(disjoint_by_member, member, (group_index, position))
+        self._disjoint_by_member = _freeze_index(disjoint_by_member)
+
+        told_super_properties: dict[int, set[tuple[int, ...]]] = {}
+        for compiled_chain, super_property in compiled.subproperty_axioms:
+            local_chain = properties.compiled_chain(compiled_chain)
+            _append_index(told_super_properties, local_chain, (super_property,))
+        self._told_super_properties = _freeze_index(told_super_properties)
+
+    def dispatch(
+        self,
+        state: ContextState,
+        premise: Conclusion,
+        producer: ConclusionProducer,
+    ) -> None:
+        """Apply the trigger family for a novel premise already inserted in ``state``."""
+
+        if not isinstance(state, ContextState):
+            raise TypeError("state must be ContextState")
+        if not state.contains(premise):
+            raise ValueError("the dispatched premise must already be stored in its context")
+        if isinstance(premise, ContextInitialization):
+            self._on_context_initialization(premise, producer)
+        elif isinstance(premise, SubContextInitialization):
+            self._on_subcontext_initialization(state, premise, producer)
+        elif isinstance(premise, SubClassInclusionDecomposed):
+            self._on_decomposed_subsumer(state, premise, producer)
+        elif isinstance(premise, SubClassInclusionComposed):
+            self._on_composed_subsumer(state, premise, producer)
+        elif isinstance(premise, ForwardLink):
+            self._on_forward_link(state, premise, producer)
+        elif isinstance(premise, BackwardLink):
+            self._on_backward_link(state, premise, producer)
+        elif isinstance(premise, Propagation):
+            self._on_propagation(state, premise, producer)
+        elif isinstance(premise, DisjointSubsumer):
+            self._on_disjoint_subsumer(state, premise, producer)
+        elif isinstance(premise, ClassInconsistency):
+            self._on_class_inconsistency(state, premise, producer)
+        else:  # pragma: no cover - exhaustive union, retained for hostile runtime callers
+            raise TypeError(f"unsupported conclusion type: {type(premise).__name__}")
+
+    def _on_context_initialization(
+        self,
+        premise: ContextInitialization,
+        producer: ConclusionProducer,
+    ) -> None:
+        _emit(producer, subclass_inclusion_tautology(premise))
+        if self._introduce_thing:
+            _emit(producer, subclass_inclusion_owl_thing(premise, self.owl_thing))
+
+    def _on_subcontext_initialization(
+        self,
+        state: ContextState,
+        premise: SubContextInitialization,
+        producer: ConclusionProducer,
+    ) -> None:
+        relation_chain = self.properties.singleton_chain(premise.sub_destination_property)
+        for filler in sorted(state.composed_subsumers):
+            for existential_value, property_value in self._existentials_by_filler.get(filler, ()):
+                existential = ExpressionId(existential_value)
+                carry_property = EntityId(property_value)
+                carry_chain = self.properties.singleton_chain(carry_property)
+                if premise.sub_destination_property not in self.properties.sub_properties(
+                    carry_chain
+                ):
+                    continue
+                conclusion = propagation_generated(
+                    premise,
+                    SubClassInclusionComposed(state.root, filler),
+                    SubPropertyChain(relation_chain, carry_chain),
+                    filler,
+                    existential,
+                    relation_chain,
+                    carry_chain,
+                )
+                if conclusion is not None:
+                    producer.produce(conclusion)
+
+    def _on_decomposed_subsumer(
+        self,
+        state: ContextState,
+        premise: SubClassInclusionDecomposed,
+        producer: ConclusionProducer,
+    ) -> None:
+        conclusion: Conclusion | None
+        composed = subclass_inclusion_composed_of_decomposed(premise)
+        if composed is not None:
+            producer.produce(composed)
+        for (definition_value,) in self._definitions_by_class.get(premise.subsumer, ()):
+            conclusion = subclass_inclusion_expanded_definition(
+                premise,
+                premise.subsumer,
+                ExpressionId(definition_value),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+        if premise.subsumer >= len(self.compiled.expressions):
+            return
+        record = self.compiled.expressions[premise.subsumer]
+        occurrence = self.compiled.expression_occurrences[premise.subsumer]
+        if record.tag is ExpressionTag.OBJECT_INTERSECTION_OF and occurrence.positive:
+            first = subclass_inclusion_decomposed_first_conjunct(
+                premise,
+                premise.subsumer,
+                ExpressionId(record.arguments[0]),
+            )
+            second = subclass_inclusion_decomposed_second_conjunct(
+                premise,
+                premise.subsumer,
+                ExpressionId(record.arguments[1]),
+            )
+            if first is not None:
+                producer.produce(first)
+            if second is not None:
+                producer.produce(second)
+        elif record.tag is ExpressionTag.OBJECT_SOME_VALUES_FROM and occurrence.positive:
+            relation = EntityId(record.arguments[0])
+            target = ExpressionId(record.arguments[1])
+            relation_chain = self.properties.singleton_chain(relation)
+            backward = backward_link_of_object_some_values_from(
+                premise,
+                premise.subsumer,
+                relation,
+                target,
+            )
+            if backward is not None:
+                producer.produce(backward)
+            if self.properties.compositions_by_left(relation_chain):
+                forward = forward_link_of_object_some_values_from(
+                    premise,
+                    premise.subsumer,
+                    relation_chain,
+                    target,
+                )
+                if forward is not None:
+                    producer.produce(forward)
+        elif record.tag is ExpressionTag.OBJECT_HAS_SELF and occurrence.positive:
+            relation = EntityId(record.arguments[0])
+            relation_chain = self.properties.singleton_chain(relation)
+            backward = backward_link_of_object_has_self(premise, premise.subsumer, relation)
+            if backward is not None:
+                producer.produce(backward)
+            if self.properties.compositions_by_left(relation_chain):
+                forward = forward_link_of_object_has_self(
+                    premise,
+                    premise.subsumer,
+                    relation_chain,
+                )
+                if forward is not None:
+                    producer.produce(forward)
+            for range_expression in self.properties.ranges(relation):
+                conclusion = subclass_inclusion_object_has_self_property_range(
+                    premise,
+                    PropertyRange(relation, range_expression),
+                    premise.subsumer,
+                    relation,
+                )
+                if conclusion is not None:
+                    producer.produce(conclusion)
+        elif record.tag is ExpressionTag.OBJECT_COMPLEMENT_OF and occurrence.positive:
+            for (negated_value,) in self._positive_complements.get(premise.subsumer, ()):
+                negated = ExpressionId(negated_value)
+                if negated not in state.composed_subsumers:
+                    continue
+                conclusion = class_inconsistency_of_object_complement_of(
+                    SubClassInclusionComposed(state.root, negated),
+                    premise,
+                    negated,
+                    premise.subsumer,
+                )
+                if conclusion is not None:
+                    producer.produce(conclusion)
+        if self._decompose_nothing and premise.subsumer == self.owl_nothing:
+            conclusion = class_inconsistency_of_owl_nothing(premise, self.owl_nothing)
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+    def _on_composed_subsumer(
+        self,
+        state: ContextState,
+        premise: SubClassInclusionComposed,
+        producer: ConclusionProducer,
+    ) -> None:
+        conclusion: Conclusion | None
+        for (super_value,) in self._subclasses.get(premise.subsumer, ()):
+            conclusion = subclass_inclusion_expanded_subclass_of(
+                premise,
+                premise.subsumer,
+                ExpressionId(super_value),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+        for (defined_value,) in self._classes_by_definition.get(premise.subsumer, ()):
+            conclusion = subclass_inclusion_composed_defined_class(
+                premise,
+                premise.subsumer,
+                ExpressionId(defined_value),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+        for (first_value,) in self._equivalent_first.get(premise.subsumer, ()):
+            conclusion = subclass_inclusion_expanded_first_equivalent_class(
+                premise,
+                ExpressionId(first_value),
+                premise.subsumer,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+        for (second_value,) in self._equivalent_second.get(premise.subsumer, ()):
+            conclusion = subclass_inclusion_expanded_second_equivalent_class(
+                premise,
+                premise.subsumer,
+                ExpressionId(second_value),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+        for second_value, conjunction_value in self._intersections_by_first.get(
+            premise.subsumer, ()
+        ):
+            second = ExpressionId(second_value)
+            if second in state.composed_subsumers:
+                self._produce_intersection(
+                    premise,
+                    SubClassInclusionComposed(state.root, second),
+                    premise.subsumer,
+                    second,
+                    ExpressionId(conjunction_value),
+                    producer,
+                )
+        for first_value, conjunction_value in self._intersections_by_second.get(
+            premise.subsumer, ()
+        ):
+            first = ExpressionId(first_value)
+            if first in state.composed_subsumers:
+                self._produce_intersection(
+                    SubClassInclusionComposed(state.root, first),
+                    premise,
+                    first,
+                    premise.subsumer,
+                    ExpressionId(conjunction_value),
+                    producer,
+                )
+        for union_value, position in self._unions_by_disjunct.get(premise.subsumer, ()):
+            conclusion = subclass_inclusion_composed_object_union_of(
+                premise,
+                premise.subsumer,
+                ExpressionId(union_value),
+                position,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+        for existential_value, property_value in self._existentials_by_filler.get(
+            premise.subsumer, ()
+        ):
+            carry_property = EntityId(property_value)
+            carry_chain = self.properties.singleton_chain(carry_property)
+            compatible = self.properties.sub_properties(carry_chain)
+            for relation in sorted(state.initialized_subcontexts):
+                if relation not in compatible:
+                    continue
+                relation_chain = self.properties.singleton_chain(relation)
+                conclusion = propagation_generated(
+                    SubContextInitialization(state.root, relation),
+                    premise,
+                    SubPropertyChain(relation_chain, carry_chain),
+                    premise.subsumer,
+                    ExpressionId(existential_value),
+                    relation_chain,
+                    carry_chain,
+                )
+                if conclusion is not None:
+                    producer.produce(conclusion)
+
+        for (complement_value,) in self._complements_by_negated.get(premise.subsumer, ()):
+            complement = ExpressionId(complement_value)
+            if complement not in state.decomposed_subsumers:
+                continue
+            conclusion = class_inconsistency_of_object_complement_of(
+                premise,
+                SubClassInclusionDecomposed(state.root, complement),
+                premise.subsumer,
+                complement,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+        for group_value, position in self._disjoint_by_member.get(premise.subsumer, ()):
+            conclusion = disjoint_subsumer_from_subsumer(
+                premise,
+                premise.subsumer,
+                DisjointGroupId(group_value),
+                position,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+    @staticmethod
+    def _produce_intersection(
+        first_premise: SubClassInclusionComposed,
+        second_premise: SubClassInclusionComposed,
+        first: ExpressionId,
+        second: ExpressionId,
+        conjunction: ExpressionId,
+        producer: ConclusionProducer,
+    ) -> None:
+        conclusion = subclass_inclusion_composed_object_intersection_of(
+            first_premise,
+            second_premise,
+            first,
+            second,
+            conjunction,
+        )
+        if conclusion is not None:
+            producer.produce(conclusion)
+
+    def _on_forward_link(
+        self,
+        state: ContextState,
+        premise: ForwardLink,
+        producer: ConclusionProducer,
+    ) -> None:
+        record = self.properties.chains[premise.chain]
+        if not record.is_singleton:
+            for (super_value,) in self._told_super_properties.get(premise.chain, ()):
+                super_property = EntityId(super_value)
+                super_chain = self.properties.singleton_chain(super_property)
+                conclusion = backward_link_reversed_expanded(
+                    premise,
+                    SubPropertyChain(premise.chain, super_chain),
+                    super_property,
+                    super_chain,
+                )
+                if conclusion is not None:
+                    producer.produce(conclusion)
+        compositions = self.properties.compositions_by_left(premise.chain)
+        for relation, result_chains in sorted(compositions.items()):
+            for source in sorted(state.backward_links.get(relation, ())):
+                backward = BackwardLink(state.root, relation, source)
+                for result_chain in result_chains:
+                    self._produce_link_composition(backward, premise, result_chain, producer)
+
+    def _on_backward_link(
+        self,
+        state: ContextState,
+        premise: BackwardLink,
+        producer: ConclusionProducer,
+    ) -> None:
+        conclusion: Conclusion | None
+        producer.produce(
+            subcontext_initialization_no_premises(state.root, premise.relation)
+        )
+        for carry in sorted(state.propagations.get(premise.relation, ())):
+            conclusion = subclass_inclusion_composed_object_some_values_from(
+                premise,
+                Propagation(state.root, premise.relation, carry),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+        if state.inconsistent:
+            conclusion = class_inconsistency_propagated(
+                premise,
+                ClassInconsistency(state.root),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+        # Frozen IR v1 represents context roots only by ExpressionId and therefore has no
+        # separate IndexedRangeFiller identity.  Attach inherited ranges when the named
+        # backward edge reaches its target; this preserves the specified v1 destination.
+        for range_expression in self.properties.ranges(premise.relation):
+            producer.produce(SubClassInclusionDecomposed(state.root, range_expression))
+        compositions = self.properties.compositions_by_right(premise.relation)
+        for right_chain, result_chains in sorted(compositions.items()):
+            for target in sorted(state.forward_links.get(right_chain, ())):
+                forward = ForwardLink(state.root, right_chain, target)
+                for result_chain in result_chains:
+                    self._produce_link_composition(premise, forward, result_chain, producer)
+
+    def _produce_link_composition(
+        self,
+        backward: BackwardLink,
+        forward: ForwardLink,
+        result_chain: PropertyChainId,
+        producer: ConclusionProducer,
+    ) -> None:
+        conclusion: Conclusion | None
+        result = self.properties.chains[result_chain]
+        if result.suffix_chain is None:
+            raise AssertionError("property composition result must be a complex chain")
+        backward_chain = self.properties.singleton_chain(backward.relation)
+        first_chain = self.properties.singleton_chain(result.first_property)
+        left_premise = SubPropertyChain(backward_chain, first_chain)
+        right_premise = SubPropertyChain(forward.chain, result.suffix_chain)
+        if self._chain_is_extendable(result_chain):
+            conclusion = forward_link_composition(
+                backward,
+                left_premise,
+                forward,
+                right_premise,
+                result_chain,
+                backward_chain,
+                first_chain,
+                result.suffix_chain,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+            return
+        for (super_value,) in self._told_super_properties.get(result_chain, ()):
+            super_property = EntityId(super_value)
+            super_chain = self.properties.singleton_chain(super_property)
+            conclusion = backward_link_composition(
+                backward,
+                left_premise,
+                forward,
+                right_premise,
+                SubPropertyChain(result_chain, super_chain),
+                result_chain,
+                super_property,
+                backward_chain,
+                first_chain,
+                result.suffix_chain,
+                super_chain,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+    def _chain_is_extendable(self, chain: PropertyChainId) -> bool:
+        return bool(
+            self.properties.compositions_by_left(chain)
+            or self.properties.compositions_by_left(chain, redundant=True)
+        )
+
+    @staticmethod
+    def _on_propagation(
+        state: ContextState,
+        premise: Propagation,
+        producer: ConclusionProducer,
+    ) -> None:
+        for source in sorted(state.backward_links.get(premise.relation, ())):
+            conclusion = subclass_inclusion_composed_object_some_values_from(
+                BackwardLink(state.root, premise.relation, source),
+                premise,
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+    @staticmethod
+    def _on_disjoint_subsumer(
+        state: ContextState,
+        premise: DisjointSubsumer,
+        producer: ConclusionProducer,
+    ) -> None:
+        for position in sorted(state.disjoint_positions.get(premise.disjoint_group, ())):
+            if position == premise.position:
+                continue
+            conclusion = class_inconsistency_of_disjoint_subsumers(
+                premise,
+                DisjointSubsumer(state.root, premise.disjoint_group, position),
+            )
+            if conclusion is not None:
+                producer.produce(conclusion)
+
+    @staticmethod
+    def _on_class_inconsistency(
+        state: ContextState,
+        premise: ClassInconsistency,
+        producer: ConclusionProducer,
+    ) -> None:
+        for relation, sources in sorted(state.backward_links.items()):
+            for source in sorted(sources):
+                conclusion = class_inconsistency_propagated(
+                    BackwardLink(state.root, relation, source),
+                    premise,
+                )
+                if conclusion is not None:
+                    producer.produce(conclusion)
+
+
 __all__ = [
+    "RULE_CLASS_TRIGGERS",
+    "ConclusionProducer",
+    "PropertyView",
+    "RuleDispatcher",
     "backward_link_composition",
     "backward_link_of_object_has_self",
     "backward_link_of_object_some_values_from",
