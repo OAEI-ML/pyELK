@@ -1,0 +1,210 @@
+schema = 1
+elk_version = "0.6.0"
+elk_commit = "b8ac5ce83db0704a7359d96aa382891e2f547863"
+
+[[registration]]
+key = "root-context-initialization"
+source = "static"
+occurrence = "always"
+expression_tag = "none"
+anchor = "global"
+condition = "always"
+rule = "RootContextInitializationRule"
+
+[[registration]]
+key = "owl-thing-context-initialization"
+source = "expression"
+occurrence = "negative"
+expression_tag = "CLASS"
+anchor = "expression"
+condition = "owl_thing"
+rule = "OwlThingContextInitRule"
+
+[[registration]]
+key = "owl-nothing-decomposition"
+source = "expression"
+occurrence = "positive"
+expression_tag = "CLASS"
+anchor = "expression"
+condition = "owl_nothing"
+rule = "OwlNothingDecompositionRule"
+
+[[registration]]
+key = "intersection-from-first-conjunct"
+source = "expression"
+occurrence = "negative"
+expression_tag = "OBJECT_INTERSECTION_OF"
+anchor = "argument_0"
+condition = "always"
+rule = "ObjectIntersectionFromFirstConjunctRule"
+
+[[registration]]
+key = "intersection-from-second-conjunct"
+source = "expression"
+occurrence = "negative"
+expression_tag = "OBJECT_INTERSECTION_OF"
+anchor = "argument_1"
+condition = "always"
+rule = "ObjectIntersectionFromSecondConjunctRule"
+
+[[registration]]
+key = "intersection-decomposition"
+source = "expression"
+occurrence = "positive"
+expression_tag = "OBJECT_INTERSECTION_OF"
+anchor = "expression"
+condition = "always"
+rule = "IndexedObjectIntersectionOfDecomposition"
+
+[[registration]]
+key = "existential-filler-propagation"
+source = "expression"
+occurrence = "negative"
+expression_tag = "OBJECT_SOME_VALUES_FROM"
+anchor = "argument_1"
+condition = "always"
+rule = "PropagationFromExistentialFillerRule"
+
+[[registration]]
+key = "existential-decomposition"
+source = "expression"
+occurrence = "positive"
+expression_tag = "OBJECT_SOME_VALUES_FROM"
+anchor = "expression"
+condition = "always"
+rule = "IndexedObjectSomeValuesFromDecomposition"
+
+[[registration]]
+key = "self-decomposition"
+source = "expression"
+occurrence = "positive"
+expression_tag = "OBJECT_HAS_SELF"
+anchor = "expression"
+condition = "always"
+rule = "IndexedObjectHasSelfDecomposition"
+
+[[registration]]
+key = "complement-decomposition"
+source = "expression"
+occurrence = "positive"
+expression_tag = "OBJECT_COMPLEMENT_OF"
+anchor = "expression"
+condition = "always"
+rule = "IndexedObjectComplementOfDecomposition"
+
+[[registration]]
+key = "complement-contradiction"
+source = "expression"
+occurrence = "positive"
+expression_tag = "OBJECT_COMPLEMENT_OF"
+anchor = "argument_0"
+condition = "always"
+rule = "ContradictionFromNegationRule"
+
+[[registration]]
+key = "union-from-disjunct"
+source = "expression"
+occurrence = "negative"
+expression_tag = "OBJECT_UNION_OF"
+anchor = "each_argument"
+condition = "always"
+rule = "ObjectUnionFromDisjunctRule"
+
+[[registration]]
+key = "superclass-from-subclass"
+source = "subclass_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "sub_expression"
+condition = "always"
+rule = "SuperClassFromSubClassRule"
+
+[[registration]]
+key = "defined-class-decomposition"
+source = "equivalent_class_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "first_expression"
+condition = "named_definition"
+rule = "IndexedClassDecompositionRule"
+
+[[registration]]
+key = "class-from-definition"
+source = "equivalent_class_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "second_expression"
+condition = "named_definition"
+rule = "IndexedClassFromDefinitionRule"
+
+[[registration]]
+key = "equivalent-first-from-second"
+source = "equivalent_class_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "second_expression"
+condition = "general_equivalence"
+rule = "EquivalentClassFirstFromSecondRule"
+
+[[registration]]
+key = "equivalent-second-from-first"
+source = "equivalent_class_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "first_expression"
+condition = "general_equivalence"
+rule = "EquivalentClassSecondFromFirstRule"
+
+[[registration]]
+key = "disjoint-subsumer-from-member"
+source = "disjoint_group"
+occurrence = "always"
+expression_tag = "none"
+anchor = "each_member_position"
+condition = "always"
+rule = "DisjointSubsumerFromMemberRule"
+
+[[registration]]
+key = "object-property-told-range"
+source = "property_range"
+occurrence = "always"
+expression_tag = "none"
+anchor = "property"
+condition = "always"
+rule = "ToldObjectPropertyRange"
+
+[[registration]]
+key = "chain-told-super-property"
+source = "subproperty_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "sub_chain"
+condition = "always"
+rule = "ToldSuperObjectProperty"
+
+[[registration]]
+key = "property-told-sub-chain"
+source = "subproperty_axiom"
+occurrence = "always"
+expression_tag = "none"
+anchor = "super_property"
+condition = "always"
+rule = "ToldSubPropertyChain"
+
+[[registration]]
+key = "complex-chain-left-link"
+source = "property_chain"
+occurrence = "any"
+expression_tag = "none"
+anchor = "first_property"
+condition = "complex_chain"
+rule = "LeftChainLink"
+
+[[registration]]
+key = "complex-chain-right-link"
+source = "property_chain"
+occurrence = "any"
+expression_tag = "none"
+anchor = "suffix_chain"
+condition = "complex_chain"
+rule = "RightChainLink"
