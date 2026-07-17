@@ -1,0 +1,25 @@
+include Cargo.toml
+include Cargo.lock
+include LICENSE
+include README.md
+include pyproject.toml
+include rust-toolchain.toml
+include setup.py
+
+recursive-include rust/pyelk-core *.rs Cargo.toml
+recursive-include rust/pyelk-pyo3 *.rs Cargo.toml
+recursive-include src/pyelk *.py *.pyi py.typed
+
+prune benchmarks
+prune build
+prune rust/fuzz
+prune rust/pyelk-core/benches
+prune target
+prune tests
+prune tools
+
+global-exclude *.class
+global-exclude *.jar
+global-exclude *.py[cod]
+global-exclude .DS_Store
+global-exclude __pycache__

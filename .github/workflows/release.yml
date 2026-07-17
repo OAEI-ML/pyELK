@@ -1,0 +1,78 @@
+name: Atomic release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the fully staged set to PyPI (run this workflow from a version tag)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  distribution-matrix:
+    uses: ./.github/workflows/wheels.yml
+
+  final-audit:
+    name: Final atomic-set audit
+    needs: distribution-matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle
+          path: artifacts
+
+      - name: Re-audit all staged files and tag/version agreement
+        env:
+          PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          from check_artifact import inspect_artifact
+
+          artifacts = sorted(Path("artifacts").iterdir())
+          reports = [inspect_artifact(path) for path in artifacts]
+          assert len(reports) == 9, reports
+          versions = {report.version for report in reports}
+          assert len(versions) == 1, versions
+          if os.environ["PUBLISH"] == "true":
+              assert os.environ["RELEASE_REF"].startswith("refs/tags/v"), os.environ["RELEASE_REF"]
+              assert os.environ["RELEASE_TAG"][1:] == next(iter(versions)), (os.environ["RELEASE_TAG"], versions)
+          PY
+
+  publish:
+    name: Trusted PyPI publication
+    needs: final-audit
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle
+          path: artifacts
+
+      - name: Publish the complete set in one trusted-publishing job
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        with:
+          packages-dir: artifacts
+          skip-existing: false
+          verbose: true
