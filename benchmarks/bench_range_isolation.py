@@ -56,7 +56,13 @@ class Summary:
     maximum_seconds: float
 
 
-def _source(root_count: int, range_count: int) -> bytes:
+def _source(
+    root_count: int,
+    range_count: int,
+    *,
+    range_hierarchy: bool = False,
+    filler_chain: bool = False,
+) -> bytes:
     declarations = [
         "Declaration(ObjectProperty(:p))",
         "Declaration(Class(:Filler))",
@@ -65,10 +71,20 @@ def _source(root_count: int, range_count: int) -> bytes:
     ]
     axioms = [
         *(
-            f"SubClassOf(:Root{index} ObjectSomeValuesFrom(:p :Filler))"
+            "SubClassOf(:Root{index} ObjectSomeValuesFrom(:p :{filler}))".format(
+                index=index,
+                filler=(
+                    f"Root{index + 1}" if filler_chain and index + 1 < root_count else "Filler"
+                ),
+            )
             for index in range(root_count)
         ),
         *(f"ObjectPropertyRange(:p :Range{index})" for index in range(range_count)),
+        *(
+            f"SubClassOf(:Range{index} :Range{index + 1})"
+            for index in range(range_count - 1)
+            if range_hierarchy
+        ),
     ]
     body = " ".join((*declarations, *axioms))
     return f"Prefix(:=<urn:pyelk:range-isolation#>) Ontology({body})".encode()
@@ -170,12 +186,19 @@ def run(
     repeats: int,
     native_path: Path | None,
     verify_python: bool,
+    range_hierarchy: bool = False,
+    filler_chain: bool = False,
 ) -> dict[str, object]:
     if root_count < 1 or range_count < 0:
         raise ValueError("roots must be positive and ranges nonnegative")
     if workers < 1 or repeats < 1:
         raise ValueError("workers and repeats must be positive")
-    source = _source(root_count, range_count)
+    source = _source(
+        root_count,
+        range_count,
+        range_hierarchy=range_hierarchy,
+        filler_chain=filler_chain,
+    )
     setup_started = time.perf_counter()
     snapshot = owl.load_snapshot(
         source,
@@ -262,6 +285,8 @@ def run(
         "fixture": {
             "root_count": root_count,
             "range_count": range_count,
+            "range_hierarchy": range_hierarchy,
+            "filler_chain": filler_chain,
             "compiled_entity_count": len(compiled.entities),
             "compiled_expression_count": len(compiled.expressions),
             "compiled_property_range_count": len(compiled.property_ranges),
@@ -289,6 +314,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--native-path", type=Path)
     parser.add_argument("--verify-python", action="store_true")
+    parser.add_argument(
+        "--range-hierarchy",
+        action="store_true",
+        help="connect every range in a subclass chain to expose redundant range work",
+    )
+    parser.add_argument(
+        "--filler-chain",
+        action="store_true",
+        help="point each root at the next root instead of one shared filler",
+    )
     arguments = parser.parse_args(argv)
     report = run(
         root_count=arguments.roots,
@@ -297,6 +332,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         repeats=arguments.repeats,
         native_path=arguments.native_path,
         verify_python=arguments.verify_python,
+        range_hierarchy=arguments.range_hierarchy,
+        filler_chain=arguments.filler_chain,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

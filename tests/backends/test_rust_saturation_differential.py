@@ -27,20 +27,21 @@ from tests.integration.test_pure_reasoner import (
     _UPSTREAM,
     _snapshot,
 )
+from tests.unit.indexing._support import load_functional
 
 
 def _native_library() -> Path:
     root = Path(__file__).parents[2]
-    installed = importlib.util.find_spec("pyelk._native")
-    if installed is not None and installed.origin is not None:
-        candidate = Path(installed.origin).resolve()
-        if root not in candidate.parents and candidate.is_file():
-            return candidate
     for profile in ("release", "debug"):
         for filename in ("lib_native.dylib", "lib_native.so"):
             candidate = root / "target" / profile / filename
             if candidate.is_file():
                 return candidate
+    installed = importlib.util.find_spec("pyelk._native")
+    if installed is not None and installed.origin is not None:
+        candidate = Path(installed.origin).resolve()
+        if candidate.is_file():
+            return candidate
     pytest.skip("build the pyelk-pyo3 crate before running native-backend tests")
 
 
@@ -257,6 +258,29 @@ def test_workers_and_repeated_runs_are_byte_deterministic(
     compiled = builder.build()
     expected = _native_debug(native_differential_module, compiled, workers=1)
     for workers in (0, 1, 2, 4):
+        for _ in range(3):
+            assert _native_debug(native_differential_module, compiled, workers=workers) == expected
+
+
+def test_clean_context_templates_preserve_nested_range_fixed_point(
+    native_differential_module: ModuleType,
+) -> None:
+    compiled = compile_ontology(
+        load_functional(
+            "SubClassOf(:A ObjectSomeValuesFrom(:p :B)) "
+            "SubClassOf(:B ObjectSomeValuesFrom(:q :C)) "
+            "ObjectPropertyRange(:p :D) ObjectPropertyRange(:q :E) "
+            "SubClassOf(:D :F) SubClassOf(:E :F) "
+            "SubClassOf(ObjectSomeValuesFrom(:p ObjectIntersectionOf(:B :D)) :FromPRange) "
+            "SubClassOf(ObjectSomeValuesFrom(:q ObjectIntersectionOf(:C :E)) :FromQRange) "
+            "SubObjectPropertyOf(ObjectPropertyChain(:p :q) :r) "
+            "ObjectPropertyRange(:r :H) "
+            "SubClassOf(ObjectSomeValuesFrom(:r ObjectIntersectionOf(:C :H)) :FromChainRange)",
+            ontology_iri="urn:clean-context-template",
+        )
+    )
+    expected = _python_debug(compiled)
+    for workers in (1, 2, 4):
         for _ in range(3):
             assert _native_debug(native_differential_module, compiled, workers=workers) == expected
 

@@ -402,6 +402,7 @@ impl NativeCoreSession {
             .filter(|root| !self.contexts.contains_key(root))
             .collect::<BTreeSet<_>>()
             .into_iter()
+            .rev()
             .collect::<Vec<_>>();
         if missing.is_empty() {
             return Ok(());
@@ -409,31 +410,41 @@ impl NativeCoreSession {
         let ontology = Arc::clone(&self.ontology);
         let properties = Arc::clone(&self.properties);
         let prepared = PreparedSaturation::new(&ontology, &properties)?;
-        let outcomes = if let Some(pool) = &self.pool {
-            pool.install(|| {
-                missing
-                    .par_iter()
+        let batch_size = self.effective_workers.max(1);
+        for batch in missing.chunks(batch_size) {
+            // A batch observes only templates retained by earlier batches. Deferring writes until
+            // every peer finishes makes scheduler counters deterministic across worker races.
+            let outcomes = if let Some(pool) = &self.pool {
+                pool.install(|| {
+                    batch
+                        .par_iter()
+                        .map(|&root| {
+                            prepared
+                                .saturate_root_against_templates(root)
+                                .map(|(context, counters)| (root, context, counters))
+                        })
+                        .collect::<Vec<_>>()
+                })
+            } else {
+                batch
+                    .iter()
                     .map(|&root| {
                         prepared
-                            .saturate_root(root)
+                            .saturate_root_against_templates(root)
                             .map(|(context, counters)| (root, context, counters))
                     })
                     .collect::<Vec<_>>()
-            })
-        } else {
-            missing
-                .iter()
-                .map(|&root| {
-                    prepared
-                        .saturate_root(root)
-                        .map(|(context, counters)| (root, context, counters))
-                })
-                .collect::<Vec<_>>()
-        };
-        for outcome in outcomes {
-            let (root, context, counters) = outcome?;
-            self.contexts.insert(root, context);
-            self.accumulate(counters);
+            };
+            let outcomes = outcomes.into_iter().collect::<CoreResult<Vec<_>>>()?;
+            for (root, context, counters) in outcomes {
+                prepared.retain_clean_template(&context)?;
+                self.contexts.insert(root, context);
+                self.accumulate(counters);
+            }
+            // Reuse remains deterministic because trimming occurs only between batches. The
+            // record budget bounds duplicate fixed-point storage even when a class has thousands
+            // of known subsumers; the entry budget handles many tiny contexts.
+            prepared.trim_clean_templates(4_096, 1_000_000)?;
         }
         Ok(())
     }
