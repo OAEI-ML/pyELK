@@ -10,12 +10,17 @@ failed native source build.
 
 - CPython 3.10 or later.
 - `build==1.5.0`, `setuptools==83.0.0`, `setuptools-rust==1.13.0`, and `wheel==0.46.3`.
+- Platform release audits use `abi3audit==0.0.26` plus `auditwheel==6.7.0`,
+  `delocate==0.13.0`, or `delvewheel==1.13.0` as appropriate.
 - Rust 1.97.1 only for a native build. The committed lockfile is always enforced.
 - No Java runtime, Java bridge, JAR, ontology download, or code generator is used.
 
 Set `SOURCE_DATE_EPOCH` to the source commit timestamp before release builds. Start from a
 clean checkout, or run `python setup.py clean --all`, so a previous native extension cannot
 remain in setuptools' local build cache.
+
+The source and fallback release lane builds both artifacts twice and requires byte identity.
+The custom sdist command normalizes gzip/tar timestamps, ownership, modes, and entry order.
 
 ## Build modes
 
@@ -62,7 +67,7 @@ python tools/check_artifact.py compare \
 `check_artifact.py` fails closed on incorrect tags, unsafe archive paths, Java/JVM payloads or
 dependencies, unallowlisted shared libraries, absolute build paths, incompatible
 `pyowl-core` metadata, or divergent Python payloads. CI additionally lets cibuildwheel run
-ABI3 and platform repair/dependency audits.
+ABI3 and platform repair/dependency audits with pinned external tools.
 
 For an offline compiler/JRE-free test, first populate a wheelhouse while online. It must
 contain `pyowl-core` and, for a source install, every `[build-system]` requirement:
@@ -104,8 +109,8 @@ python tests/packaging/check_index_preference.py --index dist
 
 `.github/workflows/wheels.yml` builds and tests the source/fallback pair and seven native
 wheels on native x86-64/AArch64 hardware. CPython 3.10 runs the installed native suite under
-both backends; CPython 3.12 repeats standalone/shared smoke checks, including musllinux in a
-native Alpine container. The final job requires exactly nine files, compares every native
+both backends; CPython 3.11 through 3.14 repeat standalone/shared smoke checks, including
+musllinux in native Alpine containers. The final job requires exactly nine files, compares every native
 wheel with the fallback, and stages one `release-bundle` artifact.
 
 `.github/workflows/release.yml` reruns that complete matrix. A tag push only stages and

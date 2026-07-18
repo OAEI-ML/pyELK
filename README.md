@@ -14,9 +14,9 @@ python -m pip install pyelk-reasoner
 
 The separate `pyelk` distribution on PyPI is an unrelated graph-layout project. A normal
 install selects a compatible native wheel when one is published and otherwise installs the
-universal Python wheel. Python 3.10 and 3.12 are the release-test versions; the native module
-uses the CPython 3.10 limited ABI so the same platform wheel also runs on newer compatible
-CPython versions.
+universal Python wheel. Python 3.10 and 3.12 run the complete release suites; the native
+module uses the CPython 3.10 limited ABI and is additionally exercised on every supported
+CPython minor through 3.14.
 
 ## First classification
 

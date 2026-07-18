@@ -145,7 +145,7 @@ are confined to the explicit scope table in §2.
 | Frozen ELK 0.6 parity and regression reduction | `verification.md` §§2–6 | `tests/parity/runner.py`, `tests/parity/minimize.py` | 124 ontology cases, 138 goldens, hash-seed/wheel runs, deterministic semantic minimizer | implemented |
 | W3C Direct-EL classification | `verification.md` §6 | `tests/data/w3c/build_manifest.py` | 65-case W3C manifest validation | implemented |
 | Shared-consumer and OAEI wire paths | `SPEC.md` §3.2, `parsing.md` §§3, 8 | core view/provider and verified wire boundaries | `tests/integration/test_consumer_paths.py` | implemented |
-| Distribution and Java/compiler exclusion | `native-packaging.md` §§9–11 | build configuration and artifact auditor | packaging suite and distribution workflows | implemented |
+| Distribution and Java/compiler exclusion | `native-packaging.md` §§9–11 | build configuration, reproducible-sdist hook, and artifact auditor | byte-rebuilt source/fallback artifacts, pinned external ABI/platform audits, Python 3.10–3.14 installed lanes | implemented |
 | Performance corpus and semantic timing guard | `verification.md` §9 | `benchmarks/`, `tools/benchmark.py` | manifest validation and Java-free quick benchmark test | implemented |
 | User examples and attribution | WP13 deliverables 7–8 | `README.md`, `NOTICE.pyelk` | verbatim README execution and artifact notice audit | implemented |
 
@@ -155,9 +155,9 @@ are confined to the explicit scope table in §2.
 |---|---|---|
 | Pure Python 3.10/3.12, no Java/compiler | `PYELK_PURE_PYTHON=1 python -m pytest` | foundation and compiler-free wheel jobs |
 | Frozen semantic parity | `tests/parity/runner.py --backend python --workers 1` | installed Python and tier-one native wheel suites |
-| Native equality, workers 1/2/N, repetition | native backend and Rust crate tests | cibuildwheel platform matrix plus ABI3 Python 3.12 jobs |
+| Native equality, workers 1/2/N, repetition | native backend and Rust crate tests | cibuildwheel platform matrix plus ABI3 Python 3.11–3.14 jobs after the full Python 3.10 build test |
 | Core shared-view identity and wire handoff | consumer/shared integration tests | full installed suite under both backend selections |
-| Artifact metadata, notice, ABI, dependency, JVM policy | `tools/check_artifact.py` | source, fallback, and native artifact jobs |
+| Artifact reproducibility, metadata, notice, ABI, dependency, JVM policy | paired local builds and `tools/check_artifact.py` | byte-identical source/fallback rebuilds plus `abi3audit` and target-platform auditors |
 | Performance and RSS | `tools/benchmark.py --suite full --native --workers N --enforce` | labelled runner with machine baseline and optional pinned Java report |
 | Oracle regeneration | `tools/oracle.py regenerate` with pinned JDK/Maven | opt-in Java oracle workflow; reports remain development evidence |
 

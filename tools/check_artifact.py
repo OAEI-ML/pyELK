@@ -89,24 +89,36 @@ def _read_archive(path: Path) -> dict[str, bytes]:
     if path.suffix == ".whl":
         if not zipfile.is_zipfile(path):
             raise AuditError(f"wheel is not a valid ZIP archive: {path}")
-        with zipfile.ZipFile(path) as archive:
-            for info in archive.infolist():
-                mode = (info.external_attr >> 16) & 0xFFFF
-                if info.is_dir():
+        with zipfile.ZipFile(path) as zip_archive:
+            for zip_info in zip_archive.infolist():
+                mode = (zip_info.external_attr >> 16) & 0xFFFF
+                if zip_info.is_dir():
                     continue
-                add(info.filename, info.file_size, archive.read(info), mode=mode)
+                add(
+                    zip_info.filename,
+                    zip_info.file_size,
+                    zip_archive.read(zip_info),
+                    mode=mode,
+                )
     elif path.name.endswith((".tar.gz", ".tar.bz2", ".tar.xz")):
         try:
-            with tarfile.open(path, mode="r:*") as archive:
-                for info in archive.getmembers():
-                    if info.isdir():
+            with tarfile.open(path, mode="r:*") as tar_archive:
+                for tar_info in tar_archive.getmembers():
+                    if tar_info.isdir():
                         continue
-                    if not info.isfile():
-                        raise AuditError(f"source archive has a non-regular member: {info.name}")
-                    extracted = archive.extractfile(info)
+                    if not tar_info.isfile():
+                        raise AuditError(
+                            f"source archive has a non-regular member: {tar_info.name}"
+                        )
+                    extracted = tar_archive.extractfile(tar_info)
                     if extracted is None:
-                        raise AuditError(f"cannot read source member: {info.name}")
-                    add(info.name, info.size, extracted.read(), mode=info.mode)
+                        raise AuditError(f"cannot read source member: {tar_info.name}")
+                    add(
+                        tar_info.name,
+                        tar_info.size,
+                        extracted.read(),
+                        mode=tar_info.mode,
+                    )
         except tarfile.TarError as error:
             raise AuditError(f"invalid source archive: {path}") from error
     else:
@@ -309,6 +321,7 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         "Cargo.toml",
         "LICENSE",
         "NOTICE.pyelk",
+        "pyelk_build.py",
         "pyproject.toml",
         "rust-toolchain.toml",
         "rust/pyelk-core/Cargo.toml",

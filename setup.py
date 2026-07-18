@@ -10,9 +10,16 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
 from pathlib import Path
 
 from setuptools import setup
+from setuptools.command.sdist import sdist
+
+root = Path(__file__).resolve().parent
+sys.path.insert(0, str(root))
+
+from pyelk_build import build_reproducible_sdist  # noqa: E402
 
 
 def _flag(name: str) -> bool:
@@ -22,7 +29,6 @@ def _flag(name: str) -> bool:
     return value == "1"
 
 
-root = Path(__file__).resolve().parent
 pure_build = _flag("PYELK_BUILD_PURE")
 require_native = _flag("PYELK_REQUIRE_NATIVE")
 cibuildwheel = _flag("CIBUILDWHEEL")
@@ -37,6 +43,47 @@ if pure_build and require_native:
 
 rust_extensions = []
 rust_manifest = root / "rust/pyelk-pyo3/Cargo.toml"
+
+
+class ReproducibleSdist(sdist):
+    """Honor ``SOURCE_DATE_EPOCH`` in both tar and gzip metadata."""
+
+    def make_archive(
+        self,
+        base_name: str | os.PathLike[str],
+        format: str,
+        root_dir: str | os.PathLike[str] | bytes | os.PathLike[bytes] | None = None,
+        base_dir: str | None = None,
+        owner: str | None = None,
+        group: str | None = None,
+    ) -> str:
+        raw_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+        filesystem_root = None if root_dir is None else os.fspath(root_dir)
+        if (
+            format != "gztar"
+            or raw_epoch is None
+            or base_dir is None
+            or isinstance(filesystem_root, bytes)
+        ):
+            return super().make_archive(
+                base_name,
+                format,
+                root_dir,
+                base_dir,
+                owner,
+                group,
+            )
+        try:
+            epoch = int(raw_epoch)
+        except ValueError as error:
+            raise RuntimeError("SOURCE_DATE_EPOCH must be a non-negative integer") from error
+        return build_reproducible_sdist(
+            base_name,
+            base_dir,
+            epoch=epoch,
+            root_dir=filesystem_root,
+        )
+
 
 if not pure_build and rust_manifest.is_file():
     from setuptools_rust import Binding, RustExtension
@@ -71,6 +118,7 @@ elif require_native:
 
 setup(
     rust_extensions=rust_extensions,
+    cmdclass={"sdist": ReproducibleSdist},
     # This controls both the extension suffix and the wheel compatibility tag.
     # It is omitted in zero-extension mode so the fallback is truly universal.
     options={"bdist_wheel": {"py_limited_api": "cp310"}} if rust_extensions else {},

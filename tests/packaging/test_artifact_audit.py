@@ -81,6 +81,7 @@ def _sdist(tmp_path: Path, *, extra: dict[str, bytes] | None = None) -> Path:
         "Cargo.toml": b"[workspace]\n",
         "LICENSE": b"license\n",
         "NOTICE.pyelk": b"notice\n",
+        "pyelk_build.py": b"def build_reproducible_sdist(): ...\n",
         "pyproject.toml": b"[build-system]\n",
         "rust-toolchain.toml": b"[toolchain]\n",
         "setup.py": b"from setuptools import setup\nsetup()\n",

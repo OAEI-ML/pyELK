@@ -4,6 +4,7 @@ include LICENSE
 include NOTICE.pyelk
 include README.md
 include pyproject.toml
+include pyelk_build.py
 include rust-toolchain.toml
 include setup.py
 

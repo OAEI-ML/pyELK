@@ -40,14 +40,17 @@ jobs:
       - name: Set reproducible archive timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
-      - name: Build one sdist and the explicit zero-extension wheel
+      - name: Build the reproducible sdist and explicit zero-extension wheel twice
         env:
           PYELK_BUILD_PURE: "1"
           PYELK_REQUIRE_NATIVE: "0"
         run: |
           python -m build --sdist --wheel --no-isolation --outdir dist
+          python -m build --sdist --wheel --no-isolation --outdir rebuilt
           test "$(find dist -name '*.tar.gz' | wc -l)" -eq 1
           test "$(find dist -name '*-py3-none-any.whl' | wc -l)" -eq 1
+          cmp dist/*.tar.gz rebuilt/*.tar.gz
+          cmp dist/*-py3-none-any.whl rebuilt/*-py3-none-any.whl
 
       - name: Audit source and fallback artifacts
         run: |
@@ -162,11 +165,23 @@ jobs:
         with:
           output-dir: wheelhouse
 
-      - name: Enforce archive, metadata, JVM, path, and shared-library policy
+      - name: Install pinned Linux ABI and dependency auditors
+        if: runner.os == 'Linux'
+        run: python -m pip install abi3audit==0.0.26 auditwheel==6.7.0
+
+      - name: Install pinned macOS ABI and dependency auditors
+        if: runner.os == 'macOS'
+        run: python -m pip install abi3audit==0.0.26 delocate==0.13.0
+
+      - name: Install pinned Windows ABI and dependency auditors
+        if: runner.os == 'Windows'
+        run: python -m pip install abi3audit==0.0.26 delvewheel==1.13.0
+
+      - name: Enforce archive, ABI, JVM, path, and shared-library policy
         shell: bash
         run: |
           for wheel in wheelhouse/*.whl; do
-            python tools/check_artifact.py check "$wheel" --expect native-wheel
+            python tools/check_artifact.py check "$wheel" --expect native-wheel --external
           done
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -176,28 +191,35 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  abi3-python312:
-    name: ABI3 Python 3.12 / ${{ matrix.id }}
+  abi3-supported-cpython:
+    name: ABI3 Python ${{ matrix.python }} / ${{ matrix.lane }}
     needs: native-wheels
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        lane:
+          - linux-x86_64
+          - linux-aarch64
+          - macos-x86_64
+          - macos-arm64
+          - windows-amd64
         include:
-          - id: linux-x86_64
+          - lane: linux-x86_64
             runner: ubuntu-24.04
             pattern: "*manylinux*x86_64.whl"
-          - id: linux-aarch64
+          - lane: linux-aarch64
             runner: ubuntu-24.04-arm
             pattern: "*manylinux*aarch64.whl"
-          - id: macos-x86_64
+          - lane: macos-x86_64
             runner: macos-15-intel
             pattern: "*macosx*x86_64.whl"
-          - id: macos-arm64
+          - lane: macos-arm64
             runner: macos-14
             pattern: "*macosx*arm64.whl"
-          - id: windows-amd64
+          - lane: windows-amd64
             runner: windows-latest
             pattern: "*win_amd64.whl"
     steps:
@@ -207,11 +229,11 @@ jobs:
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: native-${{ matrix.id }}
+          name: native-${{ matrix.lane }}
           path: native
 
       - name: Prepare runtime dependency wheelhouse
@@ -230,21 +252,23 @@ jobs:
           python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend rust
           python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend python --force-python
 
-  musllinux-python312:
-    name: ABI3 Python 3.12 / musllinux ${{ matrix.arch }}
+  musllinux-supported-cpython:
+    name: ABI3 Python ${{ matrix.python }} / musllinux ${{ matrix.arch }}
     needs: native-wheels
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        arch: [x86_64, aarch64]
         include:
-          - id: linux-x86_64
+          - arch: x86_64
+            lane: linux-x86_64
             runner: ubuntu-24.04
-            arch: x86_64
-          - id: linux-aarch64
+          - arch: aarch64
+            lane: linux-aarch64
             runner: ubuntu-24.04-arm
-            arch: aarch64
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -256,7 +280,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: native-${{ matrix.id }}
+          name: native-${{ matrix.lane }}
           path: native
 
       - name: Download universal runtime dependency
@@ -264,11 +288,12 @@ jobs:
           python -m pip download --dest wheelhouse --only-binary=:all:
           "pyowl-core>=0.1,<0.2"
 
-      - name: Exercise musllinux wheel on native hardware under Python 3.12
+      - name: Exercise musllinux wheel on native hardware
         env:
           ARCH: ${{ matrix.arch }}
+          PYTHON_IMAGE: python:${{ matrix.python }}-alpine
         run: |
-          docker run --rm -v "$PWD:/project" -w /tmp python:3.12-alpine sh -ec '
+          docker run --rm -v "$PWD:/project" -w /tmp "$PYTHON_IMAGE" sh -ec '
             python -m venv /tmp/venv
             /tmp/venv/bin/python -m pip install --no-index --find-links /project/wheelhouse /project/native/*musllinux*'"$ARCH"'.whl
             /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend rust
@@ -281,8 +306,8 @@ jobs:
       - source-artifacts
       - compiler-free-installed
       - native-wheels
-      - abi3-python312
-      - musllinux-python312
+      - abi3-supported-cpython
+      - musllinux-supported-cpython
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
