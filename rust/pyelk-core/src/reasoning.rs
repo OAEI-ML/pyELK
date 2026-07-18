@@ -1,6 +1,6 @@
 //! Iterative occurrence-aware class saturation over one demanded root.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{ExpressionTag, OWL_NOTHING_IRI, OWL_THING_IRI, Ontology};
@@ -304,8 +304,12 @@ impl<'a> RuleDispatcher<'a> {
         }
     }
 
-    fn dispatch(&self, state: &Context, premise: &Conclusion) -> CoreResult<Vec<Conclusion>> {
-        let mut products = Vec::new();
+    fn dispatch(
+        &self,
+        state: &Context,
+        premise: &Conclusion,
+        products: &mut Vec<Conclusion>,
+    ) -> CoreResult<()> {
         match *premise {
             Conclusion::ContextInitialization(root) => {
                 products.push(Conclusion::Decomposed {
@@ -322,25 +326,25 @@ impl<'a> RuleDispatcher<'a> {
             Conclusion::SubContextInitialization {
                 destination,
                 relation,
-            } => self.on_subcontext(state, destination, relation, &mut products)?,
+            } => self.on_subcontext(state, destination, relation, products)?,
             Conclusion::Decomposed {
                 destination,
                 subsumer,
-            } => self.on_decomposed(state, destination, subsumer, &mut products)?,
+            } => self.on_decomposed(state, destination, subsumer, products)?,
             Conclusion::Composed {
                 destination,
                 subsumer,
-            } => self.on_composed(state, destination, subsumer, &mut products)?,
+            } => self.on_composed(state, destination, subsumer, products)?,
             Conclusion::ForwardLink {
                 destination,
                 chain,
                 target,
-            } => self.on_forward(state, destination, chain, target, &mut products)?,
+            } => self.on_forward(state, destination, chain, target, products)?,
             Conclusion::BackwardLink {
                 destination,
                 relation,
                 source,
-            } => self.on_backward(state, destination, relation, source, &mut products)?,
+            } => self.on_backward(state, destination, relation, source, products)?,
             Conclusion::Propagation {
                 destination,
                 relation,
@@ -378,7 +382,7 @@ impl<'a> RuleDispatcher<'a> {
                 debug_assert_eq!(destination, state.root);
             }
         }
-        Ok(products)
+        Ok(())
     }
 
     fn on_subcontext(
@@ -741,12 +745,12 @@ impl<'ontology> PreparedSaturation<'ontology> {
 
 struct Saturator<'dispatcher, 'ontology> {
     dispatcher: &'dispatcher RuleDispatcher<'ontology>,
-    contexts: BTreeMap<u32, Context>,
-    // These sets are queried only for membership. Their iteration order cannot affect the
-    // deterministic FIFO agenda, so hashing avoids logarithmic tree work without changing
-    // inference order or snapshot ordering.
-    seen: HashSet<Conclusion>,
-    pending: HashSet<Conclusion>,
+    // Context lookup is keyed only by numeric identity during saturation. Boundary conversion
+    // below restores canonical BTreeMap order before any snapshot can escape the engine.
+    contexts: HashMap<u32, Context>,
+    // Membership is monotone from enqueue onward. This set is never iterated, so hashing cannot
+    // affect the deterministic FIFO agenda or canonical snapshot ordering.
+    accepted: HashSet<Conclusion>,
     agenda: VecDeque<Conclusion>,
     counters: SaturationCounters,
 }
@@ -755,9 +759,8 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
     fn new(dispatcher: &'dispatcher RuleDispatcher<'ontology>) -> Self {
         Self {
             dispatcher,
-            contexts: BTreeMap::new(),
-            seen: HashSet::new(),
-            pending: HashSet::new(),
+            contexts: HashMap::new(),
+            accepted: HashSet::new(),
             agenda: VecDeque::new(),
             counters: SaturationCounters::default(),
         }
@@ -769,7 +772,7 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
                 "context root {root} is out of range"
             )));
         }
-        if let std::collections::btree_map::Entry::Vacant(entry) = self.contexts.entry(root) {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.contexts.entry(root) {
             entry.insert(Context::new(root));
             self.counters.contexts_created += 1;
             self.enqueue_raw(Conclusion::ContextInitialization(root));
@@ -779,7 +782,7 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
 
     fn enqueue_raw(&mut self, conclusion: Conclusion) {
         self.counters.conclusion_candidates += 1;
-        if self.seen.contains(&conclusion) || !self.pending.insert(conclusion.clone()) {
+        if !self.accepted.insert(conclusion.clone()) {
             self.counters.duplicate_candidates += 1;
             return;
         }
@@ -797,25 +800,23 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
         for root in roots {
             self.ensure_context(root)?;
         }
+        let mut products = Vec::new();
         while let Some(premise) = self.agenda.pop_front() {
-            self.pending.remove(&premise);
-            if !self.seen.insert(premise.clone()) {
-                self.counters.duplicate_candidates += 1;
-                continue;
-            }
+            debug_assert!(self.accepted.contains(&premise));
             self.counters.conclusions_inserted += 1;
             let destination = premise.destination();
-            let products = {
+            products.clear();
+            {
                 let state = self
                     .contexts
                     .get_mut(&destination)
                     .ok_or_else(|| CoreError::internal("conclusion destination disappeared"))?;
                 state.insert(&premise);
-                self.dispatcher.dispatch(state, &premise)?
-            };
+                self.dispatcher.dispatch(state, &premise, &mut products)?;
+            }
             self.counters.rule_dispatches += 1;
             self.counters.product_candidates += products.len() as u64;
-            for product in products {
+            for product in products.drain(..) {
                 self.enqueue(product)?;
             }
         }

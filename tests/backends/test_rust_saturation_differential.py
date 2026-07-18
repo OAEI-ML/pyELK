@@ -261,6 +261,49 @@ def test_workers_and_repeated_runs_are_byte_deterministic(
             assert _native_debug(native_differential_module, compiled, workers=workers) == expected
 
 
+def test_monotone_scheduler_preserves_duplicate_counters_and_boundary_order(
+    native_differential_module: ModuleType,
+) -> None:
+    builder = TinyCompiledOntologyBuilder()
+    builder.add_subclass("urn:scheduler:A", "urn:scheduler:B")
+    builder.add_subclass("urn:scheduler:A", "urn:scheduler:C")
+    builder.add_subclass("urn:scheduler:B", "urn:scheduler:D")
+    builder.add_subclass("urn:scheduler:C", "urn:scheduler:D")
+    compiled = builder.build()
+    expected_payload: bytes | None = None
+    expected_counters: dict[str, int] | None = None
+    counter_names = (
+        "conclusion_candidates",
+        "conclusions_inserted",
+        "duplicate_candidates",
+        "product_candidates",
+        "rule_dispatches",
+    )
+
+    for workers in (1, 2, 4):
+        session = native_differential_module.create_session(compiled.encode(), workers)
+        try:
+            payload = session.class_taxonomy()
+            diagnostics = session.diagnostics()
+        finally:
+            session.close()
+        counters = {name: diagnostics[name] for name in counter_names}
+        assert all(
+            isinstance(value, int) and not isinstance(value, bool) for value in counters.values()
+        )
+        assert counters["duplicate_candidates"] > 0
+        assert counters["conclusion_candidates"] == (
+            counters["conclusions_inserted"] + counters["duplicate_candidates"]
+        )
+        assert counters["rule_dispatches"] == counters["conclusions_inserted"]
+        if expected_payload is None:
+            expected_payload = payload
+            expected_counters = counters
+        else:
+            assert payload == expected_payload
+            assert counters == expected_counters
+
+
 def test_concurrent_session_calls_do_not_strand_work_or_deadlock(
     native_differential_module: ModuleType,
 ) -> None:
