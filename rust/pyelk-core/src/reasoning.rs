@@ -1,7 +1,6 @@
 //! Iterative occurrence-aware class saturation over one demanded root.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::sync::RwLock;
 
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{ExpressionTag, OWL_NOTHING_IRI, OWL_THING_IRI, Ontology};
@@ -122,21 +121,6 @@ impl Context {
             Conclusion::Inconsistency(_) => self.inconsistent = true,
         }
     }
-
-    fn from_snapshot(snapshot: &ContextSnapshot) -> Self {
-        Self {
-            root: snapshot.root,
-            initialized: true,
-            inconsistent: snapshot.inconsistent,
-            composed_subsumers: snapshot.composed_subsumers.clone(),
-            decomposed_subsumers: snapshot.decomposed_subsumers.clone(),
-            forward_links: snapshot.forward_links.clone(),
-            backward_links: snapshot.backward_links.clone(),
-            propagations: snapshot.propagations.clone(),
-            disjoint_positions: snapshot.disjoint_positions.clone(),
-            initialized_subcontexts: snapshot.initialized_subcontexts.clone(),
-        }
-    }
 }
 
 /// Immutable context facts consumed by taxonomy, realization, and query stages.
@@ -175,90 +159,6 @@ impl ContextSnapshot {
         values.insert(self.root);
         values
     }
-
-    fn seed_accepted(&self, accepted: &mut HashSet<Conclusion>) {
-        accepted.insert(Conclusion::ContextInitialization(self.root));
-        accepted.extend(
-            self.composed_subsumers
-                .iter()
-                .map(|&subsumer| Conclusion::Composed {
-                    destination: self.root,
-                    subsumer,
-                }),
-        );
-        accepted.extend(
-            self.decomposed_subsumers
-                .iter()
-                .map(|&subsumer| Conclusion::Decomposed {
-                    destination: self.root,
-                    subsumer,
-                }),
-        );
-        for (&chain, targets) in &self.forward_links {
-            accepted.extend(targets.iter().map(|&target| Conclusion::ForwardLink {
-                destination: self.root,
-                chain,
-                target,
-            }));
-        }
-        for (&relation, sources) in &self.backward_links {
-            accepted.extend(sources.iter().map(|&source| Conclusion::BackwardLink {
-                destination: self.root,
-                relation,
-                source,
-            }));
-        }
-        for (&relation, carries) in &self.propagations {
-            accepted.extend(carries.iter().map(|&carry| Conclusion::Propagation {
-                destination: self.root,
-                relation,
-                carry,
-            }));
-        }
-        for (&group, positions) in &self.disjoint_positions {
-            accepted.extend(
-                positions
-                    .iter()
-                    .map(|&position| Conclusion::DisjointSubsumer {
-                        destination: self.root,
-                        group,
-                        position,
-                    }),
-            );
-        }
-        accepted.extend(self.initialized_subcontexts.iter().map(|&relation| {
-            Conclusion::SubContextInitialization {
-                destination: self.root,
-                relation,
-            }
-        }));
-        if self.inconsistent {
-            accepted.insert(Conclusion::Inconsistency(self.root));
-        }
-    }
-
-    fn record_count(&self) -> usize {
-        1 + self.composed_subsumers.len()
-            + self.decomposed_subsumers.len()
-            + self
-                .forward_links
-                .values()
-                .map(BTreeSet::len)
-                .sum::<usize>()
-            + self
-                .backward_links
-                .values()
-                .map(BTreeSet::len)
-                .sum::<usize>()
-            + self.propagations.values().map(BTreeSet::len).sum::<usize>()
-            + self
-                .disjoint_positions
-                .values()
-                .map(BTreeSet::len)
-                .sum::<usize>()
-            + self.initialized_subcontexts.len()
-            + usize::from(self.inconsistent)
-    }
 }
 
 /// Deterministic scheduler counters retained for diagnostics and stress tests.
@@ -292,7 +192,6 @@ struct RuleDispatcher<'a> {
     positive_complements: Vec<Vec<u32>>,
     disjoint_by_member: Vec<Vec<(u32, u32)>>,
     told_super_properties: BTreeMap<u32, Vec<u32>>,
-    saturation_ranges: Vec<Vec<u32>>,
 }
 
 impl<'a> RuleDispatcher<'a> {
@@ -322,7 +221,6 @@ impl<'a> RuleDispatcher<'a> {
             positive_complements: vec![Vec::new(); expression_count],
             disjoint_by_member: vec![Vec::new(); expression_count],
             told_super_properties: BTreeMap::new(),
-            saturation_ranges: vec![Vec::new(); ontology.entities.len()],
         };
         for &(sub, super_expression) in &ontology.subclass_axioms {
             result.subclasses[sub as usize].push(super_expression);
@@ -378,12 +276,6 @@ impl<'a> RuleDispatcher<'a> {
                 .push(super_property);
         }
         result.sort_indices();
-        for property in 0..ontology.entities.len() {
-            let property = u32::try_from(property)
-                .map_err(|_| CoreError::capacity("entity namespace exhausted"))?;
-            result.saturation_ranges[property as usize] =
-                minimal_told_ranges(properties.ranges(property), &result.subclasses);
-        }
         Ok(result)
     }
 
@@ -587,7 +479,7 @@ impl<'a> RuleDispatcher<'a> {
                         target: destination,
                     });
                 }
-                for &range in &self.saturation_ranges[relation as usize] {
+                for &range in self.properties.ranges(relation) {
                     products.push(Conclusion::Decomposed {
                         destination,
                         subsumer: range,
@@ -756,7 +648,7 @@ impl<'a> RuleDispatcher<'a> {
         if state.inconsistent {
             products.push(Conclusion::Inconsistency(source));
         }
-        for &range in &self.saturation_ranges[relation as usize] {
+        for &range in self.properties.ranges(relation) {
             products.push(Conclusion::Decomposed {
                 destination,
                 subsumer: range,
@@ -817,65 +709,6 @@ impl<'a> RuleDispatcher<'a> {
     }
 }
 
-/// Remove range premises already entailed by another range through told subclass axioms.
-///
-/// Every retained range is introduced as a decomposed conclusion, becomes composed, and then
-/// follows `subclasses` to the ranges removed here.  This preserves the fixed point while
-/// avoiding a quadratic number of duplicate superclass products when one property declares an
-/// entire hierarchy as ranges.  Mutually reachable expressions retain their lowest numeric
-/// representative so cycles never remove every premise.
-fn minimal_told_ranges(ranges: &[u32], subclasses: &[Vec<u32>]) -> Vec<u32> {
-    if ranges.len() < 2
-        || !ranges
-            .iter()
-            .any(|&expression| !subclasses[expression as usize].is_empty())
-    {
-        return ranges.to_vec();
-    }
-
-    let candidate_indices = ranges
-        .iter()
-        .enumerate()
-        .map(|(index, &expression)| (expression, index))
-        .collect::<HashMap<_, _>>();
-    let mut reachable = vec![HashSet::<usize>::new(); ranges.len()];
-    let mut seen_at = vec![0_usize; subclasses.len()];
-    let mut agenda = Vec::new();
-
-    for (source_index, &source) in ranges.iter().enumerate() {
-        let stamp = source_index + 1;
-        seen_at[source as usize] = stamp;
-        agenda.push(source);
-        while let Some(current) = agenda.pop() {
-            for &super_expression in &subclasses[current as usize] {
-                if seen_at[super_expression as usize] == stamp {
-                    continue;
-                }
-                seen_at[super_expression as usize] = stamp;
-                if let Some(&target_index) = candidate_indices.get(&super_expression)
-                    && target_index != source_index
-                {
-                    reachable[source_index].insert(target_index);
-                }
-                agenda.push(super_expression);
-            }
-        }
-    }
-
-    ranges
-        .iter()
-        .enumerate()
-        .filter_map(|(target_index, &target)| {
-            let redundant = ranges.iter().enumerate().any(|(source_index, &source)| {
-                source_index != target_index
-                    && reachable[source_index].contains(&target_index)
-                    && (!reachable[target_index].contains(&source_index) || source < target)
-            });
-            (!redundant).then_some(target)
-        })
-        .collect()
-}
-
 /// Immutable ontology-wide rule indexes reusable by independent saturation runs.
 ///
 /// Classification deliberately saturates roots independently when range conclusions are
@@ -883,7 +716,6 @@ fn minimal_told_ranges(ranges: &[u32], subclasses: &[Vec<u32>]) -> Vec<u32> {
 /// they contain no mutable scheduling state and are safe to share across Rayon workers.
 pub(crate) struct PreparedSaturation<'ontology> {
     dispatcher: RuleDispatcher<'ontology>,
-    clean_templates: RwLock<BTreeMap<u32, (ContextSnapshot, usize)>>,
 }
 
 impl<'ontology> PreparedSaturation<'ontology> {
@@ -893,7 +725,6 @@ impl<'ontology> PreparedSaturation<'ontology> {
     ) -> CoreResult<Self> {
         Ok(Self {
             dispatcher: RuleDispatcher::new(ontology, properties)?,
-            clean_templates: RwLock::new(BTreeMap::new()),
         })
     }
 
@@ -901,68 +732,19 @@ impl<'ontology> PreparedSaturation<'ontology> {
         &self,
         roots: &[u32],
     ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
-        Saturator::new(&self.dispatcher, None).run(roots)
+        Saturator::new(&self.dispatcher).run(roots)
     }
 
     pub(crate) fn saturate_root(
         &self,
         root: u32,
     ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
-        let (context, counters) = self.saturate_root_against_templates(root)?;
-        self.retain_clean_template(&context)?;
-        Ok((context, counters))
-    }
-
-    pub(crate) fn saturate_root_against_templates(
-        &self,
-        root: u32,
-    ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
-        Saturator::new(&self.dispatcher, Some(&self.clean_templates)).run_root(root)
-    }
-
-    pub(crate) fn retain_clean_template(&self, context: &ContextSnapshot) -> CoreResult<()> {
-        // A root-only snapshot is a complete reusable local fixed point only when it has no
-        // forward links into auxiliary contexts.  Such links can depend on range facts stored at
-        // their targets and must therefore be recomputed with the complete context graph.  ABox
-        // individual roots can likewise participate in cyclic assertion graphs, so templates are
-        // deliberately limited to named class roots.
-        if self.dispatcher.ontology.expressions[context.root as usize].tag != ExpressionTag::Class
-            || !context.forward_links.is_empty()
-        {
-            return Ok(());
-        }
-        let records = context.record_count();
-        self.clean_templates
-            .write()
-            .map_err(|_| CoreError::internal("clean context template cache was poisoned"))?
-            .entry(context.root)
-            .or_insert_with(|| (context.clone(), records));
-        Ok(())
-    }
-
-    pub(crate) fn trim_clean_templates(
-        &self,
-        maximum_entries: usize,
-        maximum_records: usize,
-    ) -> CoreResult<()> {
-        let mut templates = self
-            .clean_templates
-            .write()
-            .map_err(|_| CoreError::internal("clean context template cache was poisoned"))?;
-        let mut records = templates.values().map(|(_, count)| count).sum::<usize>();
-        while templates.len() > maximum_entries || records > maximum_records {
-            let Some((_root, (_context, removed_records))) = templates.pop_last() else {
-                break;
-            };
-            records = records.saturating_sub(removed_records);
-        }
-        Ok(())
+        Saturator::new(&self.dispatcher).run_root(root)
     }
 }
 
 struct Saturator<'dispatcher, 'ontology> {
     dispatcher: &'dispatcher RuleDispatcher<'ontology>,
-    clean_templates: Option<&'dispatcher RwLock<BTreeMap<u32, (ContextSnapshot, usize)>>>,
     // Context lookup is keyed only by numeric identity during saturation. Boundary conversion
     // below restores canonical BTreeMap order before any snapshot can escape the engine.
     contexts: HashMap<u32, Context>,
@@ -974,13 +756,9 @@ struct Saturator<'dispatcher, 'ontology> {
 }
 
 impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
-    fn new(
-        dispatcher: &'dispatcher RuleDispatcher<'ontology>,
-        clean_templates: Option<&'dispatcher RwLock<BTreeMap<u32, (ContextSnapshot, usize)>>>,
-    ) -> Self {
+    fn new(dispatcher: &'dispatcher RuleDispatcher<'ontology>) -> Self {
         Self {
             dispatcher,
-            clean_templates,
             contexts: HashMap::new(),
             accepted: HashSet::new(),
             agenda: VecDeque::new(),
@@ -995,26 +773,9 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
             )));
         }
         if let std::collections::hash_map::Entry::Vacant(entry) = self.contexts.entry(root) {
+            entry.insert(Context::new(root));
             self.counters.contexts_created += 1;
-            let template = self
-                .clean_templates
-                .map(|templates| {
-                    templates
-                        .read()
-                        .map_err(|_| {
-                            CoreError::internal("clean context template cache was poisoned")
-                        })
-                        .map(|values| values.get(&root).map(|(context, _records)| context.clone()))
-                })
-                .transpose()?
-                .flatten();
-            if let Some(template) = template {
-                template.seed_accepted(&mut self.accepted);
-                entry.insert(Context::from_snapshot(&template));
-            } else {
-                entry.insert(Context::new(root));
-                self.enqueue_raw(Conclusion::ContextInitialization(root));
-            }
+            self.enqueue_raw(Conclusion::ContextInitialization(root));
         }
         Ok(())
     }
@@ -1103,24 +864,4 @@ pub fn saturate_root(
     root: u32,
 ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
     PreparedSaturation::new(ontology, properties)?.saturate_root(root)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::minimal_told_ranges;
-
-    #[test]
-    fn told_range_reduction_retains_minima_and_one_cycle_representative() {
-        let mut subclasses = vec![Vec::new(); 9];
-        subclasses[0].push(1);
-        subclasses[1].push(2);
-        subclasses[3].push(4);
-        subclasses[4].push(3);
-        subclasses[5].push(6);
-        subclasses[6].push(7);
-
-        assert_eq!(minimal_told_ranges(&[0, 1, 2], &subclasses), vec![0]);
-        assert_eq!(minimal_told_ranges(&[3, 4], &subclasses), vec![3]);
-        assert_eq!(minimal_told_ranges(&[5, 7, 8], &subclasses), vec![5, 8]);
-    }
 }

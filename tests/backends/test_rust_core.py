@@ -29,6 +29,11 @@ from tests.integration.test_pure_reasoner import (
 
 def _native_library() -> Path:
     root = Path(__file__).parents[2]
+    installed = importlib.util.find_spec("pyelk._native")
+    if installed is not None and installed.origin is not None:
+        candidate = Path(installed.origin).resolve()
+        if root not in candidate.parents and candidate.is_file():
+            return candidate
     candidates = (
         root / "target" / "release" / "lib_native.dylib",
         root / "target" / "release" / "lib_native.so",
@@ -36,11 +41,6 @@ def _native_library() -> Path:
         root / "target" / "debug" / "lib_native.so",
     )
     for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    installed = importlib.util.find_spec("pyelk._native")
-    if installed is not None and installed.origin is not None:
-        candidate = Path(installed.origin).resolve()
         if candidate.is_file():
             return candidate
     pytest.skip("build the pyelk-pyo3 crate before running native-backend tests")
