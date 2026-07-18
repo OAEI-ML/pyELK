@@ -104,6 +104,6 @@ required_fields = [
 ]
 entity_count_semantics = "unique signature entities excluding built-ins"
 alignment_semantics = "TSV SrcEntity/TgtEntity rows become EquivalentClasses bridge axioms"
-verification = "input hashes are checked before parsing; caller-pinned semantic/completeness digests are required for enforcement"
+verification = "all input hashes are checked before parsing; exact parsed bytes are captured and rechecked; caller-pinned semantic/completeness digests are required for enforcement"
 closure_policy = "source and target must be self-contained; unpinned imported documents fail"
 redistribution = "forbidden unless the corpus licence explicitly permits it"

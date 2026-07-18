@@ -102,8 +102,9 @@ def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None
         "expected_target_semantic_completeness_sha256",
         "expected_composite_semantic_completeness_sha256",
         (
-            'verification = "input hashes are checked before parsing; caller-pinned '
-            'semantic/completeness digests are required for enforcement"'
+            'verification = "all input hashes are checked before parsing; exact parsed bytes '
+            "are captured and rechecked; caller-pinned semantic/completeness digests are "
+            'required for enforcement"'
         ),
         'closure_policy = "source and target must be self-contained',
         (
@@ -212,17 +213,27 @@ def test_biomedical_runner_loads_each_ontology_once_and_preserves_views(
 ) -> None:
     arguments = _biomedical_fixture(tmp_path)
     original = bench_biomedical.owl.load_snapshot
-    loaded: list[Path] = []
+    loaded: list[tuple[str, str]] = []
 
-    def counting_load(path: Path, **kwargs: object) -> object:
-        loaded.append(Path(path).resolve())
-        return original(path, **kwargs)
+    def counting_load(source: object, **kwargs: object) -> object:
+        assert isinstance(source, bytes)
+        document_iri = kwargs.get("document_iri")
+        assert isinstance(document_iri, str)
+        loaded.append((hashlib.sha256(source).hexdigest(), document_iri))
+        return original(source, **kwargs)
 
     monkeypatch.setattr(bench_biomedical.owl, "load_snapshot", counting_load)
     payload = bench_biomedical.run(**arguments)
 
-    assert loaded == [arguments["source_path"], arguments["target_path"]]
-    assert payload["schema"] == "pyelk.biomedical-benchmark/1"
+    source_path = arguments["source_path"]
+    target_path = arguments["target_path"]
+    assert isinstance(source_path, Path)
+    assert isinstance(target_path, Path)
+    assert loaded == [
+        (arguments["source_sha256"], source_path.resolve().as_uri()),
+        (arguments["target_sha256"], target_path.resolve().as_uri()),
+    ]
+    assert payload["schema"] == "pyelk.biomedical-benchmark/2"
     assert payload["gate_eligible"] is False
     assert payload["protocol"]["allocation_tracing"] is False
     assert payload["load_and_compose"]["load_calls"] == {"source": 1, "target": 1}
@@ -243,6 +254,24 @@ def test_biomedical_runner_loads_each_ontology_once_and_preserves_views(
         assert "process_peak_rss_high_water_growth_bytes" in sample
         assert "process_peak_rss_increase_bytes" not in sample
     assert "process-lifetime ru_maxrss high-water marks" in payload["protocol"]["rss_observation"]
+
+
+def test_biomedical_rechecks_captured_bytes_before_parsing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arguments = _biomedical_fixture(tmp_path)
+    source_path = arguments["source_path"]
+    assert isinstance(source_path, Path)
+    original = bench_biomedical._read_verified_bytes
+
+    def mutate_before_capture(path: Path, expected_sha256: str, label: str) -> bytes:
+        if label == "source ontology":
+            path.write_bytes(path.read_bytes() + b"\n")
+        return original(path, expected_sha256, label)
+
+    monkeypatch.setattr(bench_biomedical, "_read_verified_bytes", mutate_before_capture)
+    with pytest.raises(ValueError, match="source ontology changed after initial verification"):
+        bench_biomedical.run(**arguments)
 
 
 @pytest.mark.parametrize(
@@ -298,7 +327,10 @@ def test_biomedical_semantic_expectations_are_pinned_and_fail_closed(tmp_path: P
         bench_biomedical.run(**arguments, **wrong)
 
 
-def test_integrated_enforcement_requires_and_forwards_semantic_digests(tmp_path: Path) -> None:
+def test_integrated_enforcement_requires_digests_and_rejects_ineligible_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     arguments = _biomedical_fixture(tmp_path)
     inputs = integrated_benchmark.BiomedicalInputs(
         source=arguments["source_path"],
@@ -357,6 +389,27 @@ def test_integrated_enforcement_requires_and_forwards_semantic_digests(tmp_path:
         "--expected-composite-semantic-completeness-sha256",
     ):
         assert flag in command_arguments
+    monkeypatch.setattr(
+        integrated_benchmark,
+        "_suite",
+        lambda *args, **kwargs: [("biomedical", ["biomedical"])],
+    )
+    monkeypatch.setattr(
+        integrated_benchmark,
+        "_run",
+        lambda *args, **kwargs: {"gate_eligible": False, "gate_blockers": ["review pending"]},
+    )
+    with pytest.raises(RuntimeError, match="biomedical benchmark evidence is not gate-eligible"):
+        integrated_benchmark.run(
+            suite="full",
+            native=True,
+            workers=1,
+            enforce=True,
+            java_report=None,
+            machine_label="test-runner",
+            native_path=None,
+            biomedical=pinned,
+        )
 
 
 def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(

@@ -44,8 +44,9 @@ absolute deviation, minimum, platform/CPU/RAM, Python, pyELK and pyowl-core revi
 count, semantic digests, context/conclusion counts where available, peak-memory observations,
 and the manifest hash. `--enforce` applies the native 5x throughput and 5% boundary thresholds
 and requires `--suite full`, `--native`, a machine label, the complete hash-pinned
-biomedical metadata above, and caller-approved semantic/completeness digests. Release approval
-and dedicated-runner eligibility remain separate evidence fields in the biomedical report.
+biomedical metadata above, and caller-approved semantic/completeness digests. It rejects an
+otherwise successful run when the biomedical report remains gate-ineligible; an integrated
+report can therefore never claim `enforced: true` while carrying blocked evidence.
 
 A pinned Java/ELK timing JSON can be attached with `--java-report`. Generate it on the same
 machine, with the same ontology bytes and operations, after Java warm-up; the integrated
@@ -54,12 +55,14 @@ benchmark tool. Java-relative and prior-release comparisons must use the ratios 
 `manifest.toml` on the labelled runner; results from unrelated hardware are not compared.
 
 External biomedical corpora are not committed unless their licence permits redistribution.
-`bench_biomedical.py` verifies source, target, and alignment hashes before parsing, loads each
-ontology once, retains source/target/composite identity, validates that every `SrcEntity` and
-`TgtEntity` TSV value names a class in the corresponding ontology, maps those rows to an
-`EquivalentClasses` bridge, and checks every backend against caller-pinned source, target, and
-composite taxonomy/completeness digests. Expected axiom and non-built-in entity counts are also
-fail-closed inputs.
+`bench_biomedical.py` verifies all source, target, and alignment hashes before parsing, then
+captures and rechecks the exact byte buffers it parses. It loads each ontology once, retains
+source/target/composite identity, validates that every `SrcEntity` and `TgtEntity` TSV value
+names a class in the corresponding ontology, maps those rows to an `EquivalentClasses` bridge,
+and checks every backend against caller-pinned source, target, and composite
+taxonomy/completeness digests. Only alignment-referenced class IRIs are retained during
+membership validation. Expected axiom and non-built-in entity counts are also fail-closed
+inputs. The standalone report schema is `pyelk.biomedical-benchmark/2`.
 A source or target with imports is rejected because the three-file contract cannot pin those
 additional bytes; use self-contained benchmark documents or extend the manifest first.
 A missing private corpus prevents performance sign-off but cannot weaken a semantic test or

@@ -16,6 +16,7 @@ import csv
 import gc
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import platform
@@ -42,6 +43,7 @@ from pyelk.result import ReasoningResult, Taxonomy
 
 T = TypeVar("T")
 BackendName: TypeAlias = Literal["python", "rust"]
+AlignmentRow: TypeAlias = tuple[int, str, str]
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -99,6 +101,19 @@ def _verified_file(path: Path, expected_sha256: str, label: str) -> tuple[Path, 
     if actual != expected_sha256:
         raise ValueError(f"{label} SHA-256 mismatch: expected {expected_sha256}, observed {actual}")
     return resolved, size
+
+
+def _read_verified_bytes(path: Path, expected_sha256: str, label: str) -> bytes:
+    """Capture the exact bytes that will be parsed and recheck their pinned identity."""
+
+    data = path.read_bytes()
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected_sha256:
+        raise ValueError(
+            f"{label} changed after initial verification: expected {expected_sha256}, "
+            f"observed {actual}"
+        )
+    return data
 
 
 def _peak_rss_bytes() -> int | None:
@@ -178,12 +193,17 @@ def _require_count(value: int, label: str) -> None:
 
 def _view_counts_and_named_classes(
     view: owl.OntologyView,
+    requested_classes: frozenset[str],
 ) -> tuple[dict[str, int], frozenset[str]]:
     signature = view.signature(include_builtins=False)
     return {
         "axioms": sum(1 for _ in view.iter_axioms()),
         "entities_excluding_builtins": len(signature),
-    }, frozenset(entity.iri.value for entity in signature if isinstance(entity, owl.Class))
+    }, frozenset(
+        entity.iri.value
+        for entity in signature
+        if isinstance(entity, owl.Class) and entity.iri.value in requested_classes
+    )
 
 
 def _require_self_contained(snapshot: owl.OntologySnapshot, label: str) -> None:
@@ -207,45 +227,55 @@ def _verify_counts(
         raise ValueError(f"{label} count mismatch: expected {expected}, observed {observed}")
 
 
+def _alignment_rows(payload: bytes) -> tuple[AlignmentRow, ...]:
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("alignment must be valid UTF-8") from error
+    rows: list[AlignmentRow] = []
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter="\t")
+    required = {"SrcEntity", "TgtEntity"}
+    if reader.fieldnames is None or not required.issubset(reader.fieldnames):
+        raise ValueError("alignment must contain SrcEntity and TgtEntity TSV columns")
+    for row_number, row in enumerate(reader, start=2):
+        source = (row.get("SrcEntity") or "").strip()
+        target = (row.get("TgtEntity") or "").strip()
+        if not source or not target:
+            raise ValueError(f"alignment row {row_number} has an empty entity IRI")
+        rows.append((row_number, source, target))
+    if not rows:
+        raise ValueError("alignment must contain at least one correspondence")
+    return tuple(rows)
+
+
 def _bridge_axioms(
-    path: Path,
+    rows: Sequence[AlignmentRow],
     *,
     source_classes: frozenset[str],
     target_classes: frozenset[str],
 ) -> owl.CanonicalSet[owl.EquivalentClasses]:
     axioms: list[owl.EquivalentClasses] = []
-    with path.open("r", encoding="utf-8", newline="") as stream:
-        reader = csv.DictReader(stream, delimiter="\t")
-        required = {"SrcEntity", "TgtEntity"}
-        if reader.fieldnames is None or not required.issubset(reader.fieldnames):
-            raise ValueError("alignment must contain SrcEntity and TgtEntity TSV columns")
-        for row_number, row in enumerate(reader, start=2):
-            source = (row.get("SrcEntity") or "").strip()
-            target = (row.get("TgtEntity") or "").strip()
-            if not source or not target:
-                raise ValueError(f"alignment row {row_number} has an empty entity IRI")
-            if source not in source_classes:
-                raise ValueError(
-                    f"alignment row {row_number} SrcEntity {source!r} is not a named class "
-                    "in the source ontology"
-                )
-            if target not in target_classes:
-                raise ValueError(
-                    f"alignment row {row_number} TgtEntity {target!r} is not a named class "
-                    "in the target ontology"
-                )
-            axioms.append(
-                owl.EquivalentClasses(
-                    owl.CanonicalSet(
-                        (
-                            owl.Class(owl.IRI(source)),
-                            owl.Class(owl.IRI(target)),
-                        )
+    for row_number, source, target in rows:
+        if source not in source_classes:
+            raise ValueError(
+                f"alignment row {row_number} SrcEntity {source!r} is not a named class "
+                "in the source ontology"
+            )
+        if target not in target_classes:
+            raise ValueError(
+                f"alignment row {row_number} TgtEntity {target!r} is not a named class "
+                "in the target ontology"
+            )
+        axioms.append(
+            owl.EquivalentClasses(
+                owl.CanonicalSet(
+                    (
+                        owl.Class(owl.IRI(source)),
+                        owl.Class(owl.IRI(target)),
                     )
                 )
             )
-    if not axioms:
-        raise ValueError("alignment must contain at least one correspondence")
+        )
     return owl.CanonicalSet(axioms)
 
 
@@ -536,30 +566,46 @@ def run(
     target_file, target_bytes = _verified_file(target_path, target_sha256, "target ontology")
     alignment_file, alignment_bytes = _verified_file(alignment_path, alignment_sha256, "alignment")
 
+    alignment_payload = _read_verified_bytes(alignment_file, alignment_sha256, "alignment")
+    alignment_rows, alignment_parse = _observe(
+        partial(_alignment_rows, alignment_payload), trace_allocations=trace_allocations
+    )
+    del alignment_payload
+    source_requested = frozenset(row[1] for row in alignment_rows)
+    target_requested = frozenset(row[2] for row in alignment_rows)
+
     options = owl.LoadOptions(
-        imports=owl.ImportPolicy.RESOLVE_LOCAL,
+        imports=owl.ImportPolicy.IGNORE,
         backend=owl.BackendPreference.PYTHON,
         offline=True,
     )
     load_calls = {"source": 0, "target": 0}
 
-    def load(label: str, path: Path) -> owl.OntologySnapshot:
+    def load(label: str, payload: bytes, document_iri: str) -> owl.OntologySnapshot:
         load_calls[label] += 1
-        return owl.load_snapshot(path, options=options)
+        return owl.load_snapshot(payload, document_iri=document_iri, options=options)
 
+    source_payload = _read_verified_bytes(source_file, source_sha256, "source ontology")
     source, source_load = _observe(
-        lambda: load("source", source_file), trace_allocations=trace_allocations
+        partial(load, "source", source_payload, source_file.as_uri()),
+        trace_allocations=trace_allocations,
     )
+    del source_payload
+    target_payload = _read_verified_bytes(target_file, target_sha256, "target ontology")
     target, target_load = _observe(
-        lambda: load("target", target_file), trace_allocations=trace_allocations
+        partial(load, "target", target_payload, target_file.as_uri()),
+        trace_allocations=trace_allocations,
     )
+    del target_payload
     _require_self_contained(source, "source ontology")
     _require_self_contained(target, "target ontology")
     (source_counts, source_classes), source_counting = _observe(
-        lambda: _view_counts_and_named_classes(source), trace_allocations=trace_allocations
+        partial(_view_counts_and_named_classes, source, source_requested),
+        trace_allocations=trace_allocations,
     )
     (target_counts, target_classes), target_counting = _observe(
-        lambda: _view_counts_and_named_classes(target), trace_allocations=trace_allocations
+        partial(_view_counts_and_named_classes, target, target_requested),
+        trace_allocations=trace_allocations,
     )
     _verify_counts(
         source_counts,
@@ -573,14 +619,16 @@ def run(
         expected_entities=target_entity_count,
         label="target ontology",
     )
-    bridge_axioms, alignment_parse = _observe(
-        lambda: _bridge_axioms(
-            alignment_file,
+    bridge_axioms, bridge_create = _observe(
+        partial(
+            _bridge_axioms,
+            alignment_rows,
             source_classes=source_classes,
             target_classes=target_classes,
         ),
         trace_allocations=trace_allocations,
     )
+    del alignment_rows, source_classes, source_requested, target_classes, target_requested
     bridge_delta_axioms = cast(owl.CanonicalSet[owl.AxiomNode], bridge_axioms)
     composite, composite_create = _observe(
         lambda: owl.compose_views(
@@ -651,7 +699,7 @@ def run(
                 )
 
     return {
-        "schema": "pyelk.biomedical-benchmark/1",
+        "schema": "pyelk.biomedical-benchmark/2",
         "gate_eligible": False,
         "gate_blockers": [
             *(
@@ -734,6 +782,7 @@ def run(
             "source_counts": source_counts,
             "target_counts": target_counts,
             "alignment_parse": asdict(alignment_parse),
+            "bridge_create": asdict(bridge_create),
             "composite_create": asdict(composite_create),
             "source_retained_by_identity": True,
             "target_retained_by_identity": True,

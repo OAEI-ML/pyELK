@@ -412,6 +412,16 @@ def run(
             biomedical=biomedical,
         )
     }
+    if enforce:
+        biomedical_result = results.get("biomedical")
+        if not isinstance(biomedical_result, dict):
+            raise RuntimeError("enforcement did not produce a biomedical result")
+        if biomedical_result.get("gate_eligible") is not True:
+            blockers = biomedical_result.get("gate_blockers")
+            raise RuntimeError(
+                "biomedical benchmark evidence is not gate-eligible"
+                + (f": {blockers}" if blockers else "")
+            )
     java: dict[str, object] | None = None
     if java_report is not None:
         data = java_report.read_bytes()
