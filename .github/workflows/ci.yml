@@ -15,7 +15,6 @@ concurrency:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYELK_BUILD_PURE: "1"
-  PYELK_PURE_PYTHON: "1"
 
 jobs:
   foundation:

@@ -9,6 +9,16 @@ ROOT = Path(__file__).parents[2]
 pytestmark = pytest.mark.packaging
 
 
+def test_foundation_uses_compiler_free_auto_fallback_without_masking_backend_tests() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    global_configuration = workflow.split("jobs:", maxsplit=1)[0]
+
+    assert 'PYELK_BUILD_PURE: "1"' in global_configuration
+    assert "PYELK_PURE_PYTHON" not in global_configuration
+    assert "Verify external toolchains are absent" in workflow
+    assert "python -m pytest" in workflow
+
+
 def test_distribution_workflow_enforces_reproducibility_and_external_audits() -> None:
     workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
 
