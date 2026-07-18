@@ -11,6 +11,8 @@ use crate::properties::PropertyClosure;
 use crate::reasoning::ContextSnapshot;
 use crate::result::{RawRealization, RawTaxonomy};
 
+const BITSET_REDUCTION_MAX_BYTES: usize = 256 * 1024 * 1024;
+
 /// Build the class quotient from independently saturated named roots.
 pub fn class_taxonomy(
     ontology: &Ontology,
@@ -412,6 +414,17 @@ pub fn transitive_reduction(
     for (position, &node) in topological.iter().enumerate() {
         rank[node] = position;
     }
+    let words = node_count.div_ceil(u64::BITS as usize);
+    let bitset_bytes = node_count
+        .checked_mul(words)
+        .and_then(|cells| cells.checked_mul(std::mem::size_of::<u64>()));
+    if edges.len() > node_count.saturating_mul(2)
+        && bitset_bytes.is_some_and(|bytes| bytes <= BITSET_REDUCTION_MAX_BYTES)
+    {
+        if let Some(direct) = bitset_transitive_reduction(&adjacency, &topological, &rank, words) {
+            return Ok(direct);
+        }
+    }
     let mut direct = Vec::new();
     for (sub, successors) in adjacency.iter().enumerate() {
         if successors.len() <= 1 {
@@ -440,6 +453,59 @@ pub fn transitive_reduction(
     }
     direct.sort_unstable();
     Ok(direct)
+}
+
+fn bitset_transitive_reduction(
+    adjacency: &[Vec<usize>],
+    topological: &[usize],
+    rank: &[usize],
+    words: usize,
+) -> Option<Vec<(u32, u32)>> {
+    let cells = adjacency.len().checked_mul(words)?;
+    let mut reachable = Vec::new();
+    reachable.try_reserve_exact(cells).ok()?;
+    reachable.resize(cells, 0_u64);
+    for &node in topological.iter().rev() {
+        let row_start = node * words;
+        let mut ordered = adjacency[node].clone();
+        ordered.sort_by_key(|&successor| rank[successor]);
+        for successor in ordered {
+            let word = successor / u64::BITS as usize;
+            let bit = 1_u64 << (successor % u64::BITS as usize);
+            if reachable[row_start + word] & bit != 0 {
+                continue;
+            }
+            reachable[row_start + word] |= bit;
+            let successor_start = successor * words;
+            for offset in 0..words {
+                let inherited = reachable[successor_start + offset];
+                reachable[row_start + offset] |= inherited;
+            }
+        }
+    }
+
+    let mut covered = vec![0_u64; words];
+    let mut direct = Vec::new();
+    for (sub, successors) in adjacency.iter().enumerate() {
+        covered.fill(0);
+        let mut ordered = successors.clone();
+        ordered.sort_by_key(|&successor| rank[successor]);
+        for super_node in ordered {
+            let word = super_node / u64::BITS as usize;
+            let bit = 1_u64 << (super_node % u64::BITS as usize);
+            if covered[word] & bit != 0 {
+                continue;
+            }
+            direct.push((sub as u32, super_node as u32));
+            covered[word] |= bit;
+            let super_start = super_node * words;
+            for offset in 0..words {
+                covered[offset] |= reachable[super_start + offset];
+            }
+        }
+    }
+    direct.sort_unstable();
+    Some(direct)
 }
 
 /// Strict superclass closure by canonical taxonomy node index.
@@ -551,4 +617,110 @@ pub fn direct_type_indices(realization: &RawRealization, instance: u32) -> Vec<u
         .iter()
         .filter_map(|&(candidate, class_node)| (candidate == instance).then_some(class_node))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeSet, VecDeque};
+
+    use super::transitive_reduction;
+
+    #[test]
+    fn dense_transitive_closure_reduces_to_deep_chain() {
+        let node_count = 1_000;
+        let edges = (0..node_count as u32)
+            .flat_map(|sub| ((sub + 1)..node_count as u32).map(move |super_node| (sub, super_node)))
+            .collect::<BTreeSet<_>>();
+        let actual = transitive_reduction(node_count, &edges).unwrap();
+        let expected = (0..node_count as u32 - 1)
+            .map(|node| (node, node + 1))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn bitset_reduction_handles_dense_nonclosed_dag() {
+        let node_count = 128;
+        let edges = (0..node_count as u32)
+            .flat_map(|sub| {
+                (1..=3)
+                    .filter_map(move |distance| sub.checked_add(distance))
+                    .filter(move |&super_node| super_node < node_count as u32)
+                    .map(move |super_node| (sub, super_node))
+            })
+            .collect::<BTreeSet<_>>();
+        let actual = transitive_reduction(node_count, &edges).unwrap();
+        let expected = (0..node_count as u32 - 1)
+            .map(|node| (node, node + 1))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn bitset_reduction_matches_edge_removal_oracle() {
+        let node_count = 64;
+        let mut state = 0x9e37_79b9_u32;
+        for _case in 0..20 {
+            let mut edges = (0..node_count as u32 - 1)
+                .map(|node| (node, node + 1))
+                .collect::<BTreeSet<_>>();
+            for sub in 0..node_count as u32 {
+                for super_node in sub + 2..node_count as u32 {
+                    state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    if state.is_multiple_of(4) {
+                        edges.insert((sub, super_node));
+                    }
+                }
+            }
+            assert!(edges.len() > node_count * 2);
+            let actual = transitive_reduction(node_count, &edges).unwrap();
+            assert_eq!(actual, slow_reduction(node_count, &edges));
+        }
+    }
+
+    #[test]
+    fn bitset_reduction_handles_shuffled_disconnected_general_dag() {
+        let node_count = 96;
+        let labels = (0..node_count as u32)
+            .map(|position| position * 37 % node_count as u32)
+            .collect::<Vec<_>>();
+        let mut edges = BTreeSet::new();
+        for component in [0..48, 48..96] {
+            for sub_position in component.clone() {
+                for super_position in sub_position + 1..component.end {
+                    let distance = super_position - sub_position;
+                    if distance <= 3 || (sub_position * 17 + super_position * 13) % 5 == 0 {
+                        edges.insert((labels[sub_position], labels[super_position]));
+                    }
+                }
+            }
+        }
+        assert!(edges.len() > node_count * 2);
+        let actual = transitive_reduction(node_count, &edges).unwrap();
+        assert_eq!(actual, slow_reduction(node_count, &edges));
+    }
+
+    fn slow_reduction(node_count: usize, edges: &BTreeSet<(u32, u32)>) -> Vec<(u32, u32)> {
+        let mut retained = edges.clone();
+        for &edge in edges {
+            retained.remove(&edge);
+            let mut seen = vec![false; node_count];
+            let mut pending = VecDeque::from([edge.0]);
+            while let Some(node) = pending.pop_front() {
+                if seen[node as usize] {
+                    continue;
+                }
+                seen[node as usize] = true;
+                pending.extend(
+                    retained
+                        .range((node, 0)..=(node, u32::MAX))
+                        .map(|&(_sub, super_node)| super_node),
+                );
+            }
+            if !seen[edge.1 as usize] {
+                retained.insert(edge);
+            }
+        }
+        retained.into_iter().collect()
+    }
 }

@@ -13,7 +13,7 @@ use crate::ir::{
 };
 use crate::properties::PropertyClosure;
 use crate::query::{QueryEvaluation, decide_entailment, inconsistent_result, unindexed_result};
-use crate::reasoning::{ContextSnapshot, SaturationCounters, saturate_root, saturate_roots};
+use crate::reasoning::{ContextSnapshot, PreparedSaturation, SaturationCounters, saturate_roots};
 use crate::result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
 use crate::taxonomy::{class_taxonomy, named_expressions, object_property_taxonomy, realization};
 
@@ -408,12 +408,14 @@ impl NativeCoreSession {
         }
         let ontology = Arc::clone(&self.ontology);
         let properties = Arc::clone(&self.properties);
+        let prepared = PreparedSaturation::new(&ontology, &properties)?;
         let outcomes = if let Some(pool) = &self.pool {
             pool.install(|| {
                 missing
                     .par_iter()
                     .map(|&root| {
-                        saturate_root(&ontology, &properties, root)
+                        prepared
+                            .saturate_root(root)
                             .map(|(context, counters)| (root, context, counters))
                     })
                     .collect::<Vec<_>>()
@@ -422,7 +424,8 @@ impl NativeCoreSession {
             missing
                 .iter()
                 .map(|&root| {
-                    saturate_root(&ontology, &properties, root)
+                    prepared
+                        .saturate_root(root)
                         .map(|(context, counters)| (root, context, counters))
                 })
                 .collect::<Vec<_>>()

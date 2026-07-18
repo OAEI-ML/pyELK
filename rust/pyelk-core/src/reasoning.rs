@@ -705,8 +705,47 @@ impl<'a> RuleDispatcher<'a> {
     }
 }
 
-struct Saturator<'a> {
-    dispatcher: RuleDispatcher<'a>,
+/// Immutable ontology-wide rule indexes reusable by independent saturation runs.
+///
+/// Classification deliberately saturates roots independently when range conclusions are
+/// present.  Building these expression-sized indexes for every root is unnecessary, however:
+/// they contain no mutable scheduling state and are safe to share across Rayon workers.
+pub(crate) struct PreparedSaturation<'ontology> {
+    dispatcher: RuleDispatcher<'ontology>,
+}
+
+impl<'ontology> PreparedSaturation<'ontology> {
+    pub(crate) fn new(
+        ontology: &'ontology Ontology,
+        properties: &'ontology PropertyClosure,
+    ) -> CoreResult<Self> {
+        Ok(Self {
+            dispatcher: RuleDispatcher::new(ontology, properties)?,
+        })
+    }
+
+    pub(crate) fn saturate_roots(
+        &self,
+        roots: &[u32],
+    ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
+        Saturator::new(&self.dispatcher).run(roots)
+    }
+
+    pub(crate) fn saturate_root(
+        &self,
+        root: u32,
+    ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
+        let (contexts, counters) = self.saturate_roots(&[root])?;
+        let context = contexts
+            .get(&root)
+            .cloned()
+            .ok_or_else(|| CoreError::internal("saturation lost demanded root context"))?;
+        Ok((context, counters))
+    }
+}
+
+struct Saturator<'dispatcher, 'ontology> {
+    dispatcher: &'dispatcher RuleDispatcher<'ontology>,
     contexts: BTreeMap<u32, Context>,
     seen: BTreeSet<Conclusion>,
     pending: BTreeSet<Conclusion>,
@@ -714,16 +753,16 @@ struct Saturator<'a> {
     counters: SaturationCounters,
 }
 
-impl<'a> Saturator<'a> {
-    fn new(ontology: &'a Ontology, properties: &'a PropertyClosure) -> CoreResult<Self> {
-        Ok(Self {
-            dispatcher: RuleDispatcher::new(ontology, properties)?,
+impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
+    fn new(dispatcher: &'dispatcher RuleDispatcher<'ontology>) -> Self {
+        Self {
+            dispatcher,
             contexts: BTreeMap::new(),
             seen: BTreeSet::new(),
             pending: BTreeSet::new(),
             agenda: VecDeque::new(),
             counters: SaturationCounters::default(),
-        })
+        }
     }
 
     fn ensure_context(&mut self, root: u32) -> CoreResult<()> {
@@ -801,7 +840,7 @@ pub fn saturate_roots(
     properties: &PropertyClosure,
     roots: &[u32],
 ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
-    Saturator::new(ontology, properties)?.run(roots)
+    PreparedSaturation::new(ontology, properties)?.saturate_roots(roots)
 }
 
 /// Saturate a root in isolation, which is safe to execute concurrently with other roots.
@@ -810,10 +849,5 @@ pub fn saturate_root(
     properties: &PropertyClosure,
     root: u32,
 ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
-    let (contexts, counters) = saturate_roots(ontology, properties, &[root])?;
-    let context = contexts
-        .get(&root)
-        .cloned()
-        .ok_or_else(|| CoreError::internal("saturation lost demanded root context"))?;
-    Ok((context, counters))
+    PreparedSaturation::new(ontology, properties)?.saturate_root(root)
 }
