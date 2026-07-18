@@ -732,18 +732,27 @@ impl<'ontology> PreparedSaturation<'ontology> {
         &self,
         roots: &[u32],
     ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
-        Saturator::new(&self.dispatcher).run(roots)
+        self.workspace().run(roots)
     }
 
     pub(crate) fn saturate_root(
         &self,
         root: u32,
     ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
-        Saturator::new(&self.dispatcher).run_root(root)
+        self.workspace().run_root(root)
+    }
+
+    /// Create one empty, reusable scheduler workspace.
+    ///
+    /// Reusing a workspace retains only allocation capacity. Every reasoning fact and counter is
+    /// cleared before the next demanded root, so independent-root semantics are unchanged.
+    pub(crate) fn workspace(&self) -> SaturationWorkspace<'_, 'ontology> {
+        SaturationWorkspace::new(&self.dispatcher)
     }
 }
 
-struct Saturator<'dispatcher, 'ontology> {
+/// Cleared worker-local storage for independent saturation runs.
+pub(crate) struct SaturationWorkspace<'dispatcher, 'ontology> {
     dispatcher: &'dispatcher RuleDispatcher<'ontology>,
     // Context lookup is keyed only by numeric identity during saturation. Boundary conversion
     // below restores canonical BTreeMap order before any snapshot can escape the engine.
@@ -755,7 +764,7 @@ struct Saturator<'dispatcher, 'ontology> {
     counters: SaturationCounters,
 }
 
-impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
+impl<'dispatcher, 'ontology> SaturationWorkspace<'dispatcher, 'ontology> {
     fn new(dispatcher: &'dispatcher RuleDispatcher<'ontology>) -> Self {
         Self {
             dispatcher,
@@ -795,7 +804,15 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
         Ok(())
     }
 
-    fn saturate(mut self, roots: &[u32]) -> CoreResult<Self> {
+    fn reset(&mut self) {
+        self.contexts.clear();
+        self.accepted.clear();
+        self.agenda.clear();
+        self.counters = SaturationCounters::default();
+    }
+
+    fn saturate(&mut self, roots: &[u32]) -> CoreResult<()> {
+        self.reset();
         let roots = roots.iter().copied().collect::<BTreeSet<_>>();
         for root in roots {
             self.ensure_context(root)?;
@@ -820,27 +837,30 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
                 self.enqueue(product)?;
             }
         }
-        Ok(self)
+        Ok(())
     }
 
-    fn run(
-        self,
+    pub(crate) fn run(
+        &mut self,
         roots: &[u32],
     ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
-        let completed = self.saturate(roots)?;
-        let counters = completed.counters;
-        let contexts = completed
+        self.saturate(roots)?;
+        let counters = self.counters;
+        let contexts = self
             .contexts
-            .into_iter()
+            .drain()
             .map(|(root, context)| (root, ContextSnapshot::from_context(context)))
             .collect();
         Ok((contexts, counters))
     }
 
-    fn run_root(self, root: u32) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
-        let mut completed = self.saturate(&[root])?;
-        let counters = completed.counters;
-        let context = completed
+    pub(crate) fn run_root(
+        &mut self,
+        root: u32,
+    ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
+        self.saturate(&[root])?;
+        let counters = self.counters;
+        let context = self
             .contexts
             .remove(&root)
             .ok_or_else(|| CoreError::internal("saturation lost demanded root context"))?;

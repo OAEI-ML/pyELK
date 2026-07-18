@@ -271,3 +271,25 @@ def test_worker_count_does_not_change_results(workers: int) -> None:
         assert candidate.classify() == baseline.classify()
         assert candidate.classify_object_properties() == baseline.classify_object_properties()
         assert candidate.realize() == baseline.realize()
+
+
+def test_reused_worker_workspace_drops_root_local_range_facts() -> None:
+    import pyowl_core as owl
+
+    from tests.unit.indexing._support import load_functional
+
+    snapshot = load_functional(
+        "SubClassOf(:A ObjectSomeValuesFrom(:p :X)) "
+        "ObjectPropertyRange(:p :R) "
+        "SubClassOf(:B ObjectSomeValuesFrom(:q :X)) "
+        "SubClassOf(ObjectSomeValuesFrom(:q ObjectIntersectionOf(:X :R)) :Leaked)",
+        ontology_iri="urn:worker-workspace-isolation",
+    )
+    python, rust = _reasoners(snapshot, workers=1)
+    with python, rust:
+        assert rust.classify() == python.classify()
+        leaked = owl.Class(owl.IRI("urn:test#Leaked"))
+        assert all(
+            leaked not in node.members
+            for node in rust.superclasses(owl.Class(owl.IRI("urn:test#B"))).value
+        )

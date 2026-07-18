@@ -413,19 +413,23 @@ impl NativeCoreSession {
             pool.install(|| {
                 missing
                     .par_iter()
-                    .map(|&root| {
-                        prepared
-                            .saturate_root(root)
-                            .map(|(context, counters)| (root, context, counters))
-                    })
+                    .map_init(
+                        || prepared.workspace(),
+                        |workspace, &root| {
+                            workspace
+                                .run_root(root)
+                                .map(|(context, counters)| (root, context, counters))
+                        },
+                    )
                     .collect::<Vec<_>>()
             })
         } else {
+            let mut workspace = prepared.workspace();
             missing
                 .iter()
                 .map(|&root| {
-                    prepared
-                        .saturate_root(root)
+                    workspace
+                        .run_root(root)
                         .map(|(context, counters)| (root, context, counters))
                 })
                 .collect::<Vec<_>>()
