@@ -1,13 +1,13 @@
 //! Iterative occurrence-aware class saturation over one demanded root.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{ExpressionTag, OWL_NOTHING_IRI, OWL_THING_IRI, Ontology};
 use crate::properties::PropertyClosure;
 
 /// Structural conclusion identities used for duplicate suppression.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum Conclusion {
     ContextInitialization(u32),
     SubContextInitialization {
@@ -138,17 +138,17 @@ pub struct ContextSnapshot {
 }
 
 impl ContextSnapshot {
-    fn from_context(context: &Context) -> Self {
+    fn from_context(context: Context) -> Self {
         Self {
             root: context.root,
             inconsistent: context.inconsistent,
-            composed_subsumers: context.composed_subsumers.clone(),
-            decomposed_subsumers: context.decomposed_subsumers.clone(),
-            forward_links: context.forward_links.clone(),
-            backward_links: context.backward_links.clone(),
-            propagations: context.propagations.clone(),
-            disjoint_positions: context.disjoint_positions.clone(),
-            initialized_subcontexts: context.initialized_subcontexts.clone(),
+            composed_subsumers: context.composed_subsumers,
+            decomposed_subsumers: context.decomposed_subsumers,
+            forward_links: context.forward_links,
+            backward_links: context.backward_links,
+            propagations: context.propagations,
+            disjoint_positions: context.disjoint_positions,
+            initialized_subcontexts: context.initialized_subcontexts,
         }
     }
 
@@ -735,20 +735,18 @@ impl<'ontology> PreparedSaturation<'ontology> {
         &self,
         root: u32,
     ) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
-        let (contexts, counters) = self.saturate_roots(&[root])?;
-        let context = contexts
-            .get(&root)
-            .cloned()
-            .ok_or_else(|| CoreError::internal("saturation lost demanded root context"))?;
-        Ok((context, counters))
+        Saturator::new(&self.dispatcher).run_root(root)
     }
 }
 
 struct Saturator<'dispatcher, 'ontology> {
     dispatcher: &'dispatcher RuleDispatcher<'ontology>,
     contexts: BTreeMap<u32, Context>,
-    seen: BTreeSet<Conclusion>,
-    pending: BTreeSet<Conclusion>,
+    // These sets are queried only for membership. Their iteration order cannot affect the
+    // deterministic FIFO agenda, so hashing avoids logarithmic tree work without changing
+    // inference order or snapshot ordering.
+    seen: HashSet<Conclusion>,
+    pending: HashSet<Conclusion>,
     agenda: VecDeque<Conclusion>,
     counters: SaturationCounters,
 }
@@ -758,8 +756,8 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
         Self {
             dispatcher,
             contexts: BTreeMap::new(),
-            seen: BTreeSet::new(),
-            pending: BTreeSet::new(),
+            seen: HashSet::new(),
+            pending: HashSet::new(),
             agenda: VecDeque::new(),
             counters: SaturationCounters::default(),
         }
@@ -794,10 +792,7 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
         Ok(())
     }
 
-    fn run(
-        mut self,
-        roots: &[u32],
-    ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
+    fn saturate(mut self, roots: &[u32]) -> CoreResult<Self> {
         let roots = roots.iter().copied().collect::<BTreeSet<_>>();
         for root in roots {
             self.ensure_context(root)?;
@@ -824,13 +819,31 @@ impl<'dispatcher, 'ontology> Saturator<'dispatcher, 'ontology> {
                 self.enqueue(product)?;
             }
         }
-        Ok((
-            self.contexts
-                .iter()
-                .map(|(&root, context)| (root, ContextSnapshot::from_context(context)))
-                .collect(),
-            self.counters,
-        ))
+        Ok(self)
+    }
+
+    fn run(
+        self,
+        roots: &[u32],
+    ) -> CoreResult<(BTreeMap<u32, ContextSnapshot>, SaturationCounters)> {
+        let completed = self.saturate(roots)?;
+        let counters = completed.counters;
+        let contexts = completed
+            .contexts
+            .into_iter()
+            .map(|(root, context)| (root, ContextSnapshot::from_context(context)))
+            .collect();
+        Ok((contexts, counters))
+    }
+
+    fn run_root(self, root: u32) -> CoreResult<(ContextSnapshot, SaturationCounters)> {
+        let mut completed = self.saturate(&[root])?;
+        let counters = completed.counters;
+        let context = completed
+            .contexts
+            .remove(&root)
+            .ok_or_else(|| CoreError::internal("saturation lost demanded root context"))?;
+        Ok((ContextSnapshot::from_context(context), counters))
     }
 }
 
