@@ -8,15 +8,87 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "benchmarks" / "manifest.toml"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True, slots=True)
+class BiomedicalInputs:
+    source: Path
+    source_sha256: str
+    source_axiom_count: int
+    source_entity_count: int
+    target: Path
+    target_sha256: str
+    target_axiom_count: int
+    target_entity_count: int
+    alignment: Path
+    alignment_sha256: str
+    name: str
+    origin: str
+    license: str
+
+    def __post_init__(self) -> None:
+        for name in ("source", "target", "alignment"):
+            if not isinstance(getattr(self, name), Path):
+                raise TypeError(f"biomedical {name} must be a path")
+        for name in ("source_sha256", "target_sha256", "alignment_sha256"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+                raise ValueError(f"biomedical {name} must be 64 lowercase hexadecimal characters")
+        for name in (
+            "source_axiom_count",
+            "source_entity_count",
+            "target_axiom_count",
+            "target_entity_count",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"biomedical {name} must be a nonnegative integer")
+        for name in ("name", "origin", "license"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"biomedical {name} must be nonempty")
+
+    def command_arguments(self) -> list[str]:
+        return [
+            "--source",
+            str(self.source),
+            "--source-sha256",
+            self.source_sha256,
+            "--source-axiom-count",
+            str(self.source_axiom_count),
+            "--source-entity-count",
+            str(self.source_entity_count),
+            "--target",
+            str(self.target),
+            "--target-sha256",
+            self.target_sha256,
+            "--target-axiom-count",
+            str(self.target_axiom_count),
+            "--target-entity-count",
+            str(self.target_entity_count),
+            "--alignment",
+            str(self.alignment),
+            "--alignment-sha256",
+            self.alignment_sha256,
+            "--corpus-name",
+            self.name,
+            "--corpus-source",
+            self.origin,
+            "--corpus-license",
+            self.license,
+        ]
 
 
 def _git_state(path: Path) -> dict[str, object]:
@@ -65,6 +137,7 @@ def _suite(
     workers: int,
     enforce: bool,
     native_path: Path | None,
+    biomedical: BiomedicalInputs | None,
 ) -> list[tuple[str, list[str]]]:
     if name == "quick":
         repeats, warmups = "1", "0"
@@ -202,6 +275,22 @@ def _suite(
         if native_path is not None:
             boundary.extend(("--native-path", str(native_path)))
         commands.append(("native-boundary", boundary))
+    if biomedical is not None:
+        biomedical_command = _command(
+            "bench_biomedical.py",
+            *biomedical.command_arguments(),
+            "--backends",
+            "both" if native else "python",
+            "--workers",
+            str(workers),
+            "--warmups",
+            warmups,
+            "--repeats",
+            repeats,
+        )
+        if native and native_path is not None:
+            biomedical_command.extend(("--native-path", str(native_path)))
+        commands.append(("biomedical", biomedical_command))
     return commands
 
 
@@ -233,9 +322,24 @@ def run(
     java_report: Path | None,
     machine_label: str | None,
     native_path: Path | None,
+    biomedical: BiomedicalInputs | None = None,
 ) -> dict[str, object]:
-    if workers < 1:
-        raise ValueError("workers must be positive")
+    if suite not in {"quick", "full"}:
+        raise ValueError("suite must be 'quick' or 'full'")
+    if not isinstance(native, bool) or not isinstance(enforce, bool):
+        raise TypeError("native and enforce must be bool")
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
+    if biomedical is not None and not isinstance(biomedical, BiomedicalInputs):
+        raise TypeError("biomedical must be BiomedicalInputs or None")
+    if enforce and not native:
+        raise ValueError("enforce requires native")
+    if enforce and suite != "full":
+        raise ValueError("enforce requires the full suite")
+    if enforce and not machine_label:
+        raise ValueError("enforce requires a machine label")
+    if enforce and biomedical is None:
+        raise ValueError("enforce requires hash-pinned biomedical inputs")
     environment = os.environ.copy()
     source_paths = [str(ROOT / "src")]
     sibling_core = ROOT.parent / "pyOWLCore" / "src"
@@ -258,6 +362,7 @@ def run(
             workers=workers,
             enforce=enforce,
             native_path=native_path,
+            biomedical=biomedical,
         )
     }
     java: dict[str, object] | None = None
@@ -313,14 +418,64 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--java-report", type=Path, help="attach a pinned external Java report")
     parser.add_argument("--machine-label", help="stable label for a dedicated performance runner")
     parser.add_argument("--native-path", type=Path, help="workspace native library to benchmark")
+    parser.add_argument("--biomedical-source", type=Path)
+    parser.add_argument("--biomedical-source-sha256")
+    parser.add_argument("--biomedical-source-axiom-count", type=int)
+    parser.add_argument("--biomedical-source-entity-count", type=int)
+    parser.add_argument("--biomedical-target", type=Path)
+    parser.add_argument("--biomedical-target-sha256")
+    parser.add_argument("--biomedical-target-axiom-count", type=int)
+    parser.add_argument("--biomedical-target-entity-count", type=int)
+    parser.add_argument("--biomedical-alignment", type=Path)
+    parser.add_argument("--biomedical-alignment-sha256")
+    parser.add_argument("--biomedical-name")
+    parser.add_argument("--biomedical-origin")
+    parser.add_argument("--biomedical-license")
     parser.add_argument("--output", type=Path, help="write the canonical JSON report here")
     return parser.parse_args()
+
+
+def _biomedical_options(arguments: argparse.Namespace) -> BiomedicalInputs | None:
+    names = (
+        "source",
+        "source_sha256",
+        "source_axiom_count",
+        "source_entity_count",
+        "target",
+        "target_sha256",
+        "target_axiom_count",
+        "target_entity_count",
+        "alignment",
+        "alignment_sha256",
+        "name",
+        "origin",
+        "license",
+    )
+    values = {name: getattr(arguments, f"biomedical_{name}") for name in names}
+    if all(value is None for value in values.values()):
+        return None
+    missing = [name for name, value in values.items() if value is None]
+    if missing:
+        raise ValueError(
+            "biomedical corpus options are all-or-nothing; missing: " + ", ".join(missing)
+        )
+    return BiomedicalInputs(**values)
 
 
 def main() -> int:
     arguments = _arguments()
     if arguments.enforce and not arguments.native:
         raise SystemExit("--enforce requires --native")
+    if arguments.enforce and arguments.suite != "full":
+        raise SystemExit("--enforce requires --suite full")
+    if arguments.enforce and not arguments.machine_label:
+        raise SystemExit("--enforce requires --machine-label")
+    try:
+        biomedical = _biomedical_options(arguments)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    if arguments.enforce and biomedical is None:
+        raise SystemExit("--enforce requires the hash-pinned biomedical corpus options")
     payload = run(
         suite=arguments.suite,
         native=arguments.native,
@@ -329,6 +484,7 @@ def main() -> int:
         java_report=arguments.java_report,
         machine_label=arguments.machine_label,
         native_path=arguments.native_path,
+        biomedical=biomedical,
     )
     encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if arguments.output is not None:

@@ -86,5 +86,21 @@ name = "representative-biomedical"
 kind = "owner-supplied-by-hash"
 source = "not redistributed; configure on the labelled performance runner"
 license = "corpus-specific"
-required_fields = ["name", "source", "license", "sha256", "axiom_count", "entity_count"]
+runner = "benchmarks/bench_biomedical.py"
+required_fields = [
+  "name",
+  "source",
+  "license",
+  "source_sha256",
+  "target_sha256",
+  "alignment_sha256",
+  "source_axiom_count",
+  "source_entity_count",
+  "target_axiom_count",
+  "target_entity_count",
+]
+entity_count_semantics = "unique signature entities excluding built-ins"
+alignment_semantics = "TSV SrcEntity/TgtEntity rows become EquivalentClasses bridge axioms"
+verification = "all three hashes are checked before either ontology is parsed"
+closure_policy = "source and target must be self-contained; unpinned imported documents fail"
 redistribution = "forbidden unless the corpus licence explicitly permits it"
