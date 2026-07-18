@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -33,3 +34,50 @@ def test_every_supported_later_cpython_exercises_glibc_musl_macos_and_windows() 
     ):
         assert lane in workflow
     assert "PYTHON_IMAGE: python:${{ matrix.python }}-alpine" in workflow
+
+
+def test_rust_workflow_pins_toolchains_and_enforces_quality_gates() -> None:
+    workflow = (ROOT / ".github/workflows/rust.yml").read_text(encoding="utf-8")
+
+    assert "  push:" in workflow
+    assert "  pull_request:" in workflow
+    assert "  schedule:" in workflow
+    assert "  workflow_dispatch:" in workflow
+    assert "permissions:\n  contents: read" in workflow
+    assert 'RUST_TOOLCHAIN: "1.97.1"' in workflow
+    assert 'FUZZ_TOOLCHAIN: "nightly-2026-07-14"' in workflow
+    assert 'CARGO_FUZZ_VERSION: "0.12.0"' in workflow
+    assert (
+        workflow.count(
+            'cargo +"$FUZZ_TOOLCHAIN" install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked'
+        )
+        == 2
+    )
+    assert "cargo fmt --all -- --check" in workflow
+    assert (
+        "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings" in workflow
+    )
+    assert "cargo test --locked --workspace --all-features" in workflow
+
+    action_references = re.findall(r"^\s*-?\s*uses:\s*([^\s#]+)", workflow, flags=re.MULTILINE)
+    assert action_references
+    assert all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", item) for item in action_references)
+    assert workflow.count("persist-credentials: false") == 3
+
+
+def test_rust_workflow_fuzzes_both_decoders_with_bounded_pr_and_scheduled_runs() -> None:
+    workflow = (ROOT / ".github/workflows/rust.yml").read_text(encoding="utf-8")
+
+    assert "target: [ir_decoder, query_decoder]" in workflow
+    assert workflow.count("target: [ir_decoder, query_decoder]") == 2
+    assert "if: github.event_name != 'schedule'" in workflow
+    assert "if: github.event_name == 'schedule'" in workflow
+    assert workflow.count('cargo +"$FUZZ_TOOLCHAIN" fuzz run --fuzz-dir rust/fuzz') == 2
+    assert "-runs=256" in workflow
+    assert "-seed=424242" in workflow
+    assert "-max_len=65536" in workflow
+    assert "-max_total_time=900" in workflow
+    assert "-timeout=10" in workflow
+    assert "timeout-minutes: 20" in workflow
+    assert "timeout-minutes: 30" in workflow
+    assert "rust/fuzz/artifacts/${{ matrix.target }}/" in workflow

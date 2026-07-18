@@ -1,0 +1,116 @@
+name: Rust verification
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.97.1"
+  FUZZ_TOOLCHAIN: "nightly-2026-07-14"
+  CARGO_FUZZ_VERSION: "0.12.0"
+
+jobs:
+  rust-quality:
+    name: Rust format, lint, and tests
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --locked --workspace --all-features
+
+  fuzz-smoke:
+    name: Fuzz smoke / ${{ matrix.target }}
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ir_decoder, query_decoder]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned nightly and cargo-fuzz
+        run: |
+          rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal
+          cargo +"$FUZZ_TOOLCHAIN" install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
+
+      - name: Run deterministic bounded smoke fuzzing
+        run: >-
+          cargo +"$FUZZ_TOOLCHAIN" fuzz run --fuzz-dir rust/fuzz
+          "${{ matrix.target }}" --
+          -runs=256 -seed=424242 -max_len=65536 -timeout=10
+          -rss_limit_mb=2048 -print_final_stats=1
+
+      - name: Retain smoke crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-smoke-${{ matrix.target }}
+          path: rust/fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  fuzz-scheduled:
+    name: Scheduled fuzz / ${{ matrix.target }}
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ir_decoder, query_decoder]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned nightly and cargo-fuzz
+        run: |
+          rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal
+          cargo +"$FUZZ_TOOLCHAIN" install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
+
+      - name: Run bounded scheduled fuzzing
+        run: >-
+          cargo +"$FUZZ_TOOLCHAIN" fuzz run --fuzz-dir rust/fuzz
+          "${{ matrix.target }}" --
+          -max_total_time=900 -seed=424242 -max_len=1048576 -timeout=10
+          -rss_limit_mb=4096 -print_final_stats=1
+
+      - name: Retain scheduled crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-scheduled-${{ matrix.target }}
+          path: rust/fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 14
