@@ -2,9 +2,11 @@
 """Benchmark an external biomedical source/target/alignment without redistributing it.
 
 The runner verifies every caller-supplied hash before parsing, loads each ontology exactly
-once, turns the tab-separated reference alignment into an ``EquivalentClasses`` bridge, and
-then reasons over the two snapshots and their zero-copy composite through the public facade.
-It never serializes a resident view or reaches into private reasoner/session state.
+once, validates the direction and class membership of the tab-separated reference alignment,
+turns it into an ``EquivalentClasses`` bridge, and then reasons over the two snapshots and
+their zero-copy composite through the public facade. Optional caller-pinned semantic digests
+make those observations fail closed. The runner never serializes a resident view or reaches
+into private reasoner/session state.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ import tracemalloc
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
+from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from types import ModuleType
@@ -46,9 +49,9 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 class PhaseSample:
     wall_seconds: float
     peak_traced_bytes: int | None
-    process_peak_rss_before_bytes: int | None
-    process_peak_rss_after_bytes: int | None
-    process_peak_rss_increase_bytes: int | None
+    process_peak_rss_high_water_before_bytes: int | None
+    process_peak_rss_high_water_after_bytes: int | None
+    process_peak_rss_high_water_growth_bytes: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +62,7 @@ class PhaseSummary:
     minimum_seconds: float
     maximum_seconds: float
     maximum_peak_traced_bytes: int | None
-    maximum_process_peak_rss_increase_bytes: int | None
+    maximum_process_peak_rss_high_water_growth_bytes: int | None
 
 
 class _CountingProvider:
@@ -123,15 +126,15 @@ def _observe(callback: Callable[[], T], *, trace_allocations: bool) -> tuple[T, 
         if trace_allocations:
             tracemalloc.stop()
     rss_after = _peak_rss_bytes()
-    rss_increment = (
+    rss_high_water_growth = (
         None if rss_before is None or rss_after is None else max(0, rss_after - rss_before)
     )
     return result, PhaseSample(
         wall_seconds=wall_seconds,
         peak_traced_bytes=peak,
-        process_peak_rss_before_bytes=rss_before,
-        process_peak_rss_after_bytes=rss_after,
-        process_peak_rss_increase_bytes=rss_increment,
+        process_peak_rss_high_water_before_bytes=rss_before,
+        process_peak_rss_high_water_after_bytes=rss_after,
+        process_peak_rss_high_water_growth_bytes=rss_high_water_growth,
     )
 
 
@@ -141,9 +144,9 @@ def _summarize(samples: list[PhaseSample]) -> PhaseSummary:
     values = [sample.wall_seconds for sample in samples]
     median = statistics.median(values)
     rss_values = [
-        sample.process_peak_rss_increase_bytes
+        sample.process_peak_rss_high_water_growth_bytes
         for sample in samples
-        if sample.process_peak_rss_increase_bytes is not None
+        if sample.process_peak_rss_high_water_growth_bytes is not None
     ]
     allocation_values = [
         sample.peak_traced_bytes for sample in samples if sample.peak_traced_bytes is not None
@@ -157,7 +160,7 @@ def _summarize(samples: list[PhaseSample]) -> PhaseSummary:
         minimum_seconds=min(values),
         maximum_seconds=max(values),
         maximum_peak_traced_bytes=max(allocation_values) if allocation_values else None,
-        maximum_process_peak_rss_increase_bytes=max(rss_values) if rss_values else None,
+        maximum_process_peak_rss_high_water_growth_bytes=max(rss_values) if rss_values else None,
     )
 
 
@@ -173,11 +176,14 @@ def _require_count(value: int, label: str) -> None:
         raise ValueError(f"{label} must be a nonnegative integer")
 
 
-def _view_counts(view: owl.OntologyView) -> dict[str, int]:
+def _view_counts_and_named_classes(
+    view: owl.OntologyView,
+) -> tuple[dict[str, int], frozenset[str]]:
+    signature = view.signature(include_builtins=False)
     return {
         "axioms": sum(1 for _ in view.iter_axioms()),
-        "entities_excluding_builtins": len(view.signature(include_builtins=False)),
-    }
+        "entities_excluding_builtins": len(signature),
+    }, frozenset(entity.iri.value for entity in signature if isinstance(entity, owl.Class))
 
 
 def _require_self_contained(snapshot: owl.OntologySnapshot, label: str) -> None:
@@ -201,7 +207,12 @@ def _verify_counts(
         raise ValueError(f"{label} count mismatch: expected {expected}, observed {observed}")
 
 
-def _bridge_axioms(path: Path) -> owl.CanonicalSet[owl.EquivalentClasses]:
+def _bridge_axioms(
+    path: Path,
+    *,
+    source_classes: frozenset[str],
+    target_classes: frozenset[str],
+) -> owl.CanonicalSet[owl.EquivalentClasses]:
     axioms: list[owl.EquivalentClasses] = []
     with path.open("r", encoding="utf-8", newline="") as stream:
         reader = csv.DictReader(stream, delimiter="\t")
@@ -213,6 +224,16 @@ def _bridge_axioms(path: Path) -> owl.CanonicalSet[owl.EquivalentClasses]:
             target = (row.get("TgtEntity") or "").strip()
             if not source or not target:
                 raise ValueError(f"alignment row {row_number} has an empty entity IRI")
+            if source not in source_classes:
+                raise ValueError(
+                    f"alignment row {row_number} SrcEntity {source!r} is not a named class "
+                    "in the source ontology"
+                )
+            if target not in target_classes:
+                raise ValueError(
+                    f"alignment row {row_number} TgtEntity {target!r} is not a named class "
+                    "in the target ontology"
+                )
             axioms.append(
                 owl.EquivalentClasses(
                     owl.CanonicalSet(
@@ -295,11 +316,13 @@ def _run_backend(
         for name, view in views.items():
             provider = providers[name]
             before_calls = provider.calls
+            create_reasoner = partial(
+                Reasoner,
+                provider,
+                ReasonerConfig(backend=backend, workers=workers),
+            )
             reasoner, construction = _observe(
-                lambda provider=provider: Reasoner(
-                    provider,
-                    ReasonerConfig(backend=backend, workers=workers),
-                ),
+                create_reasoner,
                 trace_allocations=trace_allocations,
             )
             if provider.calls != before_calls + 1:
@@ -374,8 +397,9 @@ def _run_backend(
             "observable": False,
             "reason": (
                 "The public facade deliberately does not expose private compiled IR bytes "
-                "or native copy counters; construction wall/process-peak-RSS evidence is "
-                "recorded, with allocation tracing available only as an opt-in diagnostic."
+                "or native copy counters; construction wall time and process-lifetime RSS "
+                "high-water growth are recorded, with allocation tracing available only as "
+                "an opt-in diagnostic."
             ),
         }
         if backend == "rust"
@@ -394,6 +418,31 @@ def _backend_digest(result: dict[str, object], name: str) -> str:
     if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
         raise TypeError(f"backend result for {name!r} has an invalid semantic digest")
     return digest
+
+
+def _expected_semantic_digests(
+    source: str | None,
+    target: str | None,
+    composite: str | None,
+) -> dict[str, str] | None:
+    values = {"source": source, "target": target, "composite": composite}
+    if all(value is None for value in values.values()):
+        return None
+    missing = [name for name, value in values.items() if value is None]
+    if missing:
+        raise ValueError(
+            "expected semantic-completeness digests are all-or-nothing; missing: "
+            + ", ".join(missing)
+        )
+    result: dict[str, str] = {}
+    for name, value in values.items():
+        if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+            raise ValueError(
+                f"expected {name} semantic-completeness SHA-256 must be 64 lowercase "
+                "hexadecimal characters"
+            )
+        result[name] = value
+    return result
 
 
 @contextmanager
@@ -442,6 +491,9 @@ def run(
     workers: int,
     warmups: int,
     repeats: int,
+    expected_source_semantic_completeness_sha256: str | None = None,
+    expected_target_semantic_completeness_sha256: str | None = None,
+    expected_composite_semantic_completeness_sha256: str | None = None,
     native_path: Path | None = None,
     trace_allocations: bool = False,
 ) -> dict[str, object]:
@@ -466,6 +518,11 @@ def run(
     _require_count(source_entity_count, "source_entity_count")
     _require_count(target_axiom_count, "target_axiom_count")
     _require_count(target_entity_count, "target_entity_count")
+    expected_digests = _expected_semantic_digests(
+        expected_source_semantic_completeness_sha256,
+        expected_target_semantic_completeness_sha256,
+        expected_composite_semantic_completeness_sha256,
+    )
     raw_selected = tuple(backends)
     if (
         not raw_selected
@@ -498,11 +555,11 @@ def run(
     )
     _require_self_contained(source, "source ontology")
     _require_self_contained(target, "target ontology")
-    source_counts, source_counting = _observe(
-        lambda: _view_counts(source), trace_allocations=trace_allocations
+    (source_counts, source_classes), source_counting = _observe(
+        lambda: _view_counts_and_named_classes(source), trace_allocations=trace_allocations
     )
-    target_counts, target_counting = _observe(
-        lambda: _view_counts(target), trace_allocations=trace_allocations
+    (target_counts, target_classes), target_counting = _observe(
+        lambda: _view_counts_and_named_classes(target), trace_allocations=trace_allocations
     )
     _verify_counts(
         source_counts,
@@ -517,13 +574,19 @@ def run(
         label="target ontology",
     )
     bridge_axioms, alignment_parse = _observe(
-        lambda: _bridge_axioms(alignment_file), trace_allocations=trace_allocations
+        lambda: _bridge_axioms(
+            alignment_file,
+            source_classes=source_classes,
+            target_classes=target_classes,
+        ),
+        trace_allocations=trace_allocations,
     )
+    bridge_delta_axioms = cast(owl.CanonicalSet[owl.AxiomNode], bridge_axioms)
     composite, composite_create = _observe(
         lambda: owl.compose_views(
             source,
             target,
-            delta=owl.OntologyDelta(add_axioms=bridge_axioms),
+            delta=owl.OntologyDelta(add_axioms=bridge_delta_axioms),
             roles=("source", "target"),
         ),
         trace_allocations=trace_allocations,
@@ -574,10 +637,28 @@ def run(
         if not parity[name]:
             raise AssertionError(f"backend semantic/completeness mismatch for {name}")
 
+    expectation_matches: dict[str, bool] | None = None
+    if expected_digests is not None:
+        expectation_matches = {}
+        for name, expected_digest in expected_digests.items():
+            actual_digest = _backend_digest(reference, name)
+            matched = actual_digest == expected_digest
+            expectation_matches[name] = matched
+            if not matched:
+                raise AssertionError(
+                    f"{name} semantic/completeness digest mismatch: expected "
+                    f"{expected_digest}, observed {actual_digest}"
+                )
+
     return {
         "schema": "pyelk.biomedical-benchmark/1",
         "gate_eligible": False,
         "gate_blockers": [
+            *(
+                ["caller-pinned semantic/completeness digests were not supplied"]
+                if expected_digests is None
+                else []
+            ),
             "owner review and a clean labelled dedicated-runner record are still required",
             "Java-relative and prior-release RSS thresholds are evaluated outside this runner",
             "exact private IR transfer bytes/copy count are not exposed by the public facade",
@@ -627,6 +708,15 @@ def run(
                 else None
             ),
             "dedicated_protocol_sample_count_met": warmups >= 2 and repeats >= 5,
+            "rss_observation": (
+                "process-lifetime ru_maxrss high-water marks; reported growth is "
+                "order-dependent diagnostic evidence, not per-phase peak RSS"
+            ),
+        },
+        "semantic_expectations": {
+            "provided": expected_digests is not None,
+            "digests": expected_digests,
+            "matched": expectation_matches,
         },
         "environment": {
             "implementation": platform.python_implementation(),
@@ -678,6 +768,9 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--corpus-name", required=True)
     parser.add_argument("--corpus-source", required=True)
     parser.add_argument("--corpus-license", required=True)
+    parser.add_argument("--expected-source-semantic-completeness-sha256")
+    parser.add_argument("--expected-target-semantic-completeness-sha256")
+    parser.add_argument("--expected-composite-semantic-completeness-sha256")
     parser.add_argument("--backends", choices=("python", "rust", "both"), default="python")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--warmups", type=int, default=2)
@@ -712,6 +805,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         workers=args.workers,
         warmups=args.warmups,
         repeats=args.repeats,
+        expected_source_semantic_completeness_sha256=(
+            args.expected_source_semantic_completeness_sha256
+        ),
+        expected_target_semantic_completeness_sha256=(
+            args.expected_target_semantic_completeness_sha256
+        ),
+        expected_composite_semantic_completeness_sha256=(
+            args.expected_composite_semantic_completeness_sha256
+        ),
         native_path=args.native_path,
         trace_allocations=args.trace_allocations,
     )

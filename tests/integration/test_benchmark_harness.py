@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from benchmarks import bench_biomedical
+from tools import benchmark as integrated_benchmark
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "benchmarks" / "manifest.toml"
@@ -67,6 +68,21 @@ Ontology(<https://example.org/target>
     }
 
 
+def _semantic_expectations(payload: dict[str, object]) -> dict[str, str]:
+    backends = payload["backends"]
+    assert isinstance(backends, dict)
+    python = backends["python"]
+    assert isinstance(python, dict)
+    views = python["views"]
+    assert isinstance(views, dict)
+    return {
+        f"expected_{name}_semantic_completeness_sha256": str(
+            views[name]["semantic_completeness_sha256"]
+        )
+        for name in ("source", "target", "composite")
+    }
+
+
 def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None:
     text = MANIFEST.read_text(encoding="utf-8")
     assert text.startswith('schema = "pyelk.performance-corpus/1"')
@@ -82,7 +98,13 @@ def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None
         "native_boundary_fraction_max = 0.05",
         "release_regression_fraction_max = 0.10",
         'runner = "benchmarks/bench_biomedical.py"',
-        'verification = "all three hashes are checked before either ontology is parsed"',
+        "expected_source_semantic_completeness_sha256",
+        "expected_target_semantic_completeness_sha256",
+        "expected_composite_semantic_completeness_sha256",
+        (
+            'verification = "input hashes are checked before parsing; caller-pinned '
+            'semantic/completeness digests are required for enforcement"'
+        ),
         'closure_policy = "source and target must be self-contained',
         (
             'alignment_semantics = "TSV SrcEntity/TgtEntity rows become '
@@ -216,7 +238,125 @@ def test_biomedical_runner_loads_each_ontology_once_and_preserves_views(
         assert row["identity_preserved"] is True
         assert row["provider_calls"] == row["provider_calls_expected"] == 1
         assert len(row["semantic_completeness_sha256"]) == 64
-        assert row["session_construction"]["samples"][0]["peak_traced_bytes"] is None
+        sample = row["session_construction"]["samples"][0]
+        assert sample["peak_traced_bytes"] is None
+        assert "process_peak_rss_high_water_growth_bytes" in sample
+        assert "process_peak_rss_increase_bytes" not in sample
+    assert "process-lifetime ru_maxrss high-water marks" in payload["protocol"]["rss_observation"]
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    (
+        (
+            "https://example.org/source#Missing\thttps://example.org/target#C\n",
+            "SrcEntity .* is not a named class in the source ontology",
+        ),
+        (
+            "https://example.org/source#A\thttps://example.org/target#Missing\n",
+            "TgtEntity .* is not a named class in the target ontology",
+        ),
+        (
+            "https://example.org/target#C\thttps://example.org/source#A\n",
+            "SrcEntity .* is not a named class in the source ontology",
+        ),
+    ),
+)
+def test_biomedical_alignment_must_reference_classes_in_the_declared_direction(
+    tmp_path: Path,
+    row: str,
+    message: str,
+) -> None:
+    arguments = _biomedical_fixture(tmp_path)
+    alignment = arguments["alignment_path"]
+    assert isinstance(alignment, Path)
+    alignment.write_text("SrcEntity\tTgtEntity\n" + row, encoding="utf-8")
+    arguments["alignment_sha256"] = _sha256(alignment)
+
+    with pytest.raises(ValueError, match=message):
+        bench_biomedical.run(**arguments)
+
+
+def test_biomedical_semantic_expectations_are_pinned_and_fail_closed(tmp_path: Path) -> None:
+    arguments = _biomedical_fixture(tmp_path)
+    baseline = bench_biomedical.run(**arguments)
+    expectations = _semantic_expectations(baseline)
+
+    verified = bench_biomedical.run(**arguments, **expectations)
+    assert verified["semantic_expectations"] == {
+        "provided": True,
+        "digests": {
+            name: expectations[f"expected_{name}_semantic_completeness_sha256"]
+            for name in ("source", "target", "composite")
+        },
+        "matched": {"source": True, "target": True, "composite": True},
+    }
+
+    wrong = dict(expectations)
+    wrong["expected_composite_semantic_completeness_sha256"] = "0" * 64
+    with pytest.raises(AssertionError, match="composite semantic/completeness digest mismatch"):
+        bench_biomedical.run(**arguments, **wrong)
+
+
+def test_integrated_enforcement_requires_and_forwards_semantic_digests(tmp_path: Path) -> None:
+    arguments = _biomedical_fixture(tmp_path)
+    inputs = integrated_benchmark.BiomedicalInputs(
+        source=arguments["source_path"],
+        source_sha256=arguments["source_sha256"],
+        source_axiom_count=arguments["source_axiom_count"],
+        source_entity_count=arguments["source_entity_count"],
+        target=arguments["target_path"],
+        target_sha256=arguments["target_sha256"],
+        target_axiom_count=arguments["target_axiom_count"],
+        target_entity_count=arguments["target_entity_count"],
+        alignment=arguments["alignment_path"],
+        alignment_sha256=arguments["alignment_sha256"],
+        name=arguments["corpus_name"],
+        origin=arguments["corpus_source"],
+        license=arguments["corpus_license"],
+    )
+    with pytest.raises(ValueError, match="caller-pinned biomedical semantic digests"):
+        integrated_benchmark.run(
+            suite="full",
+            native=True,
+            workers=1,
+            enforce=True,
+            java_report=None,
+            machine_label="test-runner",
+            native_path=None,
+            biomedical=inputs,
+        )
+
+    pinned = integrated_benchmark.BiomedicalInputs(
+        **{
+            field: getattr(inputs, field)
+            for field in (
+                "source",
+                "source_sha256",
+                "source_axiom_count",
+                "source_entity_count",
+                "target",
+                "target_sha256",
+                "target_axiom_count",
+                "target_entity_count",
+                "alignment",
+                "alignment_sha256",
+                "name",
+                "origin",
+                "license",
+            )
+        },
+        expected_source_semantic_completeness_sha256="1" * 64,
+        expected_target_semantic_completeness_sha256="2" * 64,
+        expected_composite_semantic_completeness_sha256="3" * 64,
+    )
+    command_arguments = pinned.command_arguments()
+    for flag in (
+        "--expected-source-semantic-completeness-sha256",
+        "--expected-target-semantic-completeness-sha256",
+        "--expected-composite-semantic-completeness-sha256",
+    ):
+        assert flag in command_arguments
 
 
 def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(

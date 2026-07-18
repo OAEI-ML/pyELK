@@ -98,9 +98,12 @@ required_fields = [
   "source_entity_count",
   "target_axiom_count",
   "target_entity_count",
+  "expected_source_semantic_completeness_sha256",
+  "expected_target_semantic_completeness_sha256",
+  "expected_composite_semantic_completeness_sha256",
 ]
 entity_count_semantics = "unique signature entities excluding built-ins"
 alignment_semantics = "TSV SrcEntity/TgtEntity rows become EquivalentClasses bridge axioms"
-verification = "all three hashes are checked before either ontology is parsed"
+verification = "input hashes are checked before parsing; caller-pinned semantic/completeness digests are required for enforcement"
 closure_policy = "source and target must be self-contained; unpinned imported documents fail"
 redistribution = "forbidden unless the corpus licence explicitly permits it"

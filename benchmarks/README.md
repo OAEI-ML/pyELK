@@ -33,6 +33,9 @@ python tools/benchmark.py \
   --biomedical-name CORPUS_NAME \
   --biomedical-origin CORPUS_SOURCE_URL_OR_CITATION \
   --biomedical-license CORPUS_LICENSE \
+  --biomedical-expected-source-semantic-completeness-sha256 SOURCE_RESULT_SHA256 \
+  --biomedical-expected-target-semantic-completeness-sha256 TARGET_RESULT_SHA256 \
+  --biomedical-expected-composite-semantic-completeness-sha256 COMPOSITE_RESULT_SHA256 \
   --output benchmarks/results/linux-x86_64-release.json
 ```
 
@@ -40,8 +43,9 @@ The full protocol uses two warm-ups and five measured samples. Reports include m
 absolute deviation, minimum, platform/CPU/RAM, Python, pyELK and pyowl-core revisions, worker
 count, semantic digests, context/conclusion counts where available, peak-memory observations,
 and the manifest hash. `--enforce` applies the native 5x throughput and 5% boundary thresholds
-and requires `--suite full`, `--native`, a machine label, and the complete hash-pinned
-biomedical metadata above.
+and requires `--suite full`, `--native`, a machine label, the complete hash-pinned
+biomedical metadata above, and caller-approved semantic/completeness digests. Release approval
+and dedicated-runner eligibility remain separate evidence fields in the biomedical report.
 
 A pinned Java/ELK timing JSON can be attached with `--java-report`. Generate it on the same
 machine, with the same ontology bytes and operations, after Java warm-up; the integrated
@@ -51,9 +55,11 @@ benchmark tool. Java-relative and prior-release comparisons must use the ratios 
 
 External biomedical corpora are not committed unless their licence permits redistribution.
 `bench_biomedical.py` verifies source, target, and alignment hashes before parsing, loads each
-ontology once, retains source/target/composite identity, maps `SrcEntity`/`TgtEntity` TSV rows
-to an `EquivalentClasses` bridge, and checks exact taxonomy/completeness digests for every
-requested backend. Expected axiom and non-built-in entity counts are also fail-closed inputs.
+ontology once, retains source/target/composite identity, validates that every `SrcEntity` and
+`TgtEntity` TSV value names a class in the corresponding ontology, maps those rows to an
+`EquivalentClasses` bridge, and checks every backend against caller-pinned source, target, and
+composite taxonomy/completeness digests. Expected axiom and non-built-in entity counts are also
+fail-closed inputs.
 A source or target with imports is rejected because the three-file contract cannot pin those
 additional bytes; use self-contained benchmark documents or extend the manifest first.
 A missing private corpus prevents performance sign-off but cannot weaken a semantic test or
@@ -61,9 +67,10 @@ create a compatibility exception.
 
 Normal benchmark timing does not enable `tracemalloc`, because it materially distorts large
 ontology runs. The standalone biomedical runner offers `--trace-allocations` for diagnostic
-allocation peaks and marks those wall timings as non-gating. The public `Reasoner` facade does
-not expose private compiled-IR byte or native-copy counters, so the report records that limit
-explicitly and uses constructor wall/process-peak-RSS observations at the public boundary.
+allocation peaks and marks those wall timings as non-gating. `ru_maxrss` is a process-lifetime
+high-water mark, so its before/after growth is labelled as order-dependent diagnostic evidence,
+not per-phase peak RSS. The public `Reasoner` facade does not expose private compiled-IR byte or
+native-copy counters, so the report records that limit explicitly.
 
 `results/` distinguishes smoke evidence from release baselines. Regenerate reports with the
 commands recorded there; do not hand-edit timing values.

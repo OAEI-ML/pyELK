@@ -37,6 +37,9 @@ class BiomedicalInputs:
     name: str
     origin: str
     license: str
+    expected_source_semantic_completeness_sha256: str | None = None
+    expected_target_semantic_completeness_sha256: str | None = None
+    expected_composite_semantic_completeness_sha256: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("source", "target", "alignment"):
@@ -59,9 +62,31 @@ class BiomedicalInputs:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"biomedical {name} must be nonempty")
+        semantic_names = (
+            "expected_source_semantic_completeness_sha256",
+            "expected_target_semantic_completeness_sha256",
+            "expected_composite_semantic_completeness_sha256",
+        )
+        semantic_values = {name: getattr(self, name) for name in semantic_names}
+        if any(value is not None for value in semantic_values.values()):
+            missing = [name for name, value in semantic_values.items() if value is None]
+            if missing:
+                raise ValueError(
+                    "biomedical semantic expectations are all-or-nothing; missing: "
+                    + ", ".join(missing)
+                )
+            for name, value in semantic_values.items():
+                if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+                    raise ValueError(
+                        f"biomedical {name} must be 64 lowercase hexadecimal characters"
+                    )
+
+    @property
+    def has_semantic_expectations(self) -> bool:
+        return self.expected_source_semantic_completeness_sha256 is not None
 
     def command_arguments(self) -> list[str]:
-        return [
+        arguments = [
             "--source",
             str(self.source),
             "--source-sha256",
@@ -89,6 +114,26 @@ class BiomedicalInputs:
             "--corpus-license",
             self.license,
         ]
+        if self.has_semantic_expectations:
+            expectations = (
+                (
+                    "--expected-source-semantic-completeness-sha256",
+                    self.expected_source_semantic_completeness_sha256,
+                ),
+                (
+                    "--expected-target-semantic-completeness-sha256",
+                    self.expected_target_semantic_completeness_sha256,
+                ),
+                (
+                    "--expected-composite-semantic-completeness-sha256",
+                    self.expected_composite_semantic_completeness_sha256,
+                ),
+            )
+            for flag, value in expectations:
+                if value is None:  # pragma: no cover - guarded by post-init
+                    raise AssertionError("semantic expectation unexpectedly missing")
+                arguments.extend((flag, value))
+        return arguments
 
 
 def _git_state(path: Path) -> dict[str, object]:
@@ -340,6 +385,8 @@ def run(
         raise ValueError("enforce requires a machine label")
     if enforce and biomedical is None:
         raise ValueError("enforce requires hash-pinned biomedical inputs")
+    if enforce and biomedical is not None and not biomedical.has_semantic_expectations:
+        raise ValueError("enforce requires caller-pinned biomedical semantic digests")
     environment = os.environ.copy()
     source_paths = [str(ROOT / "src")]
     sibling_core = ROOT.parent / "pyOWLCore" / "src"
@@ -431,6 +478,9 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--biomedical-name")
     parser.add_argument("--biomedical-origin")
     parser.add_argument("--biomedical-license")
+    parser.add_argument("--biomedical-expected-source-semantic-completeness-sha256")
+    parser.add_argument("--biomedical-expected-target-semantic-completeness-sha256")
+    parser.add_argument("--biomedical-expected-composite-semantic-completeness-sha256")
     parser.add_argument("--output", type=Path, help="write the canonical JSON report here")
     return parser.parse_args()
 
@@ -452,14 +502,30 @@ def _biomedical_options(arguments: argparse.Namespace) -> BiomedicalInputs | Non
         "license",
     )
     values = {name: getattr(arguments, f"biomedical_{name}") for name in names}
-    if all(value is None for value in values.values()):
+    semantic_values = {
+        "expected_source_semantic_completeness_sha256": (
+            arguments.biomedical_expected_source_semantic_completeness_sha256
+        ),
+        "expected_target_semantic_completeness_sha256": (
+            arguments.biomedical_expected_target_semantic_completeness_sha256
+        ),
+        "expected_composite_semantic_completeness_sha256": (
+            arguments.biomedical_expected_composite_semantic_completeness_sha256
+        ),
+    }
+    if all(value is None for value in values.values()) and all(
+        value is None for value in semantic_values.values()
+    ):
         return None
     missing = [name for name, value in values.items() if value is None]
     if missing:
         raise ValueError(
             "biomedical corpus options are all-or-nothing; missing: " + ", ".join(missing)
         )
-    return BiomedicalInputs(**values)
+    return BiomedicalInputs(
+        **values,
+        **semantic_values,
+    )
 
 
 def main() -> int:
@@ -476,6 +542,8 @@ def main() -> int:
         raise SystemExit(str(error)) from error
     if arguments.enforce and biomedical is None:
         raise SystemExit("--enforce requires the hash-pinned biomedical corpus options")
+    if arguments.enforce and biomedical is not None and not biomedical.has_semantic_expectations:
+        raise SystemExit("--enforce requires caller-pinned biomedical semantic digests")
     payload = run(
         suite=arguments.suite,
         native=arguments.native,
