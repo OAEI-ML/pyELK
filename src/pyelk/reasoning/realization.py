@@ -102,9 +102,8 @@ def build_realization(
         first_subsumers = _subsumers(contexts, first_expression)
         for second in individuals[position + 1 :]:
             second_expression = individual_expressions[second]
-            if (
-                second_expression in first_subsumers
-                and first_expression in _subsumers(contexts, second_expression)
+            if second_expression in first_subsumers and first_expression in _subsumers(
+                contexts, second_expression
             ):
                 union(first, second)
 
@@ -207,8 +206,7 @@ def instances(
     selected = {
         instance_index
         for instance_index, direct_type in value.direct_types
-        if direct_type == class_index
-        or (not direct and class_index in strict_supers[direct_type])
+        if direct_type == class_index or (not direct and class_index in strict_supers[direct_type])
     }
     return tuple(value.instance_nodes[index] for index in sorted(selected))
 
@@ -339,11 +337,7 @@ def _minimal_nodes(
         sorted(
             node
             for node in values
-            if not any(
-                node in strict_supers[other]
-                for other in values
-                if other != node
-            )
+            if not any(node in strict_supers[other] for other in values if other != node)
         )
     )
 
@@ -389,9 +383,7 @@ def _instance_index(value: RawRealization, individual: int) -> int | None:
 
 def _entity_ids(compiled: CompiledOntology, kind: EntityKind) -> tuple[EntityId, ...]:
     return tuple(
-        EntityId(index)
-        for index, record in enumerate(compiled.entities)
-        if record.kind is kind
+        EntityId(index) for index, record in enumerate(compiled.entities) if record.kind is kind
     )
 
 

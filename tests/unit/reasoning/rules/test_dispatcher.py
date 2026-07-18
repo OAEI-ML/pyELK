@@ -148,9 +148,7 @@ def test_initialization_subclass_definitions_and_occurrence_linked_decomposition
     assert SubClassInclusionDecomposed(root, root) in initialized
     assert SubClassInclusionComposed(root, dispatcher.owl_thing) in initialized
 
-    subclass_products = set(
-        _dispatch(dispatcher, state, SubClassInclusionComposed(root, root))
-    )
+    subclass_products = set(_dispatch(dispatcher, state, SubClassInclusionComposed(root, root)))
     assert SubClassInclusionDecomposed(root, class_b) in subclass_products
     definition_products = set(
         _dispatch(dispatcher, state, SubClassInclusionDecomposed(root, defined))
@@ -167,8 +165,7 @@ def test_initialization_subclass_definitions_and_occurrence_linked_decomposition
 
 def test_intersection_complement_and_disjoint_joins_cover_both_arrival_orders() -> None:
     compiled, properties, _dispatcher = _compiled(
-        "SubClassOf(ObjectIntersectionOf(:A :B) :C) "
-        "SubClassOf(:C ObjectComplementOf(:A))"
+        "SubClassOf(ObjectIntersectionOf(:A :B) :C) SubClassOf(:C ObjectComplementOf(:A))"
     )
     root = _class(compiled, "C")
     class_a = _class(compiled, "A")
@@ -217,9 +214,7 @@ def test_intersection_complement_and_disjoint_joins_cover_both_arrival_orders() 
 
 
 def test_union_and_duplicate_disjoint_member_positions_are_not_lost() -> None:
-    compiled, properties, _dispatcher = _compiled(
-        "SubClassOf(ObjectUnionOf(:A :B) :C)"
-    )
+    compiled, properties, _dispatcher = _compiled("SubClassOf(ObjectUnionOf(:A :B) :C)")
     root = _class(compiled, "C")
     class_a = _class(compiled, "A")
     class_b = _class(compiled, "B")
@@ -231,15 +226,9 @@ def test_union_and_duplicate_disjoint_member_positions_are_not_lost() -> None:
     compiled = replace(compiled, disjoint_groups=((class_a, class_b, class_a),))
     dispatcher = RuleDispatcher(compiled, properties)
     state = ContextState(root)
-    products = set(
-        _dispatch(dispatcher, state, SubClassInclusionComposed(root, class_a))
-    )
+    products = set(_dispatch(dispatcher, state, SubClassInclusionComposed(root, class_a)))
     assert SubClassInclusionComposed(root, union) in products
-    positions = {
-        value.position
-        for value in products
-        if isinstance(value, DisjointSubsumer)
-    }
+    positions = {value.position for value in products if isinstance(value, DisjointSubsumer)}
     assert positions == {0, 2}
 
 
@@ -328,9 +317,7 @@ def test_existential_self_ranges_and_inconsistency_propagation() -> None:
     )
     assert BackwardLink(target, relation, root) in existential_products
 
-    self_products = set(
-        _dispatch(dispatcher, state, SubClassInclusionDecomposed(root, has_self))
-    )
+    self_products = set(_dispatch(dispatcher, state, SubClassInclusionDecomposed(root, has_self)))
     assert BackwardLink(root, relation, root) in self_products
     assert SubClassInclusionDecomposed(root, range_expression) in self_products
 
@@ -412,9 +399,7 @@ def test_composition_produces_an_extendable_forward_link() -> None:
         (property_r, target),
     )
     state = ContextState(source)
-    products = set(
-        _dispatch(dispatcher, state, SubClassInclusionDecomposed(source, existential))
-    )
+    products = set(_dispatch(dispatcher, state, SubClassInclusionDecomposed(source, existential)))
     assert ForwardLink(source, singleton_r, target) in products
 
     property_p = _entity(compiled, "p")

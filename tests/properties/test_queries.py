@@ -59,30 +59,20 @@ def test_tiny_complex_queries_match_entailment_based_slow_selector(seed: int) ->
                 rows.append(f"SubClassOf(:{sub} :{super_name})")
     asserted_name = randomizer.choice(names)
     rows.append(f"ClassAssertion(:{asserted_name} :i)")
-    source = (
-        "Prefix(:=<urn:property-query#>) Ontology(" + " ".join(rows) + ")"
-    ).encode()
+    source = ("Prefix(:=<urn:property-query#>) Ontology(" + " ".join(rows) + ")").encode()
     compiled = compile_ontology(owl.load_snapshot(source, options=_OPTIONS))
     session = SaturationSession(compiled)
     taxonomy = class_taxonomy(session)
     realized = realization(session, taxonomy)
     query_engine = ClassQueryEngine(session, taxonomy, realized)
-    classes = {
-        name: owl.Class(owl.IRI(f"urn:property-query#{name}")) for name in names
-    }
+    classes = {name: owl.Class(owl.IRI(f"urn:property-query#{name}")) for name in names}
     first, second = randomizer.sample(names, 2)
-    expression = owl.ObjectIntersectionOf(
-        owl.CanonicalSet((classes[first], classes[second]))
-    )
+    expression = owl.ObjectIntersectionOf(owl.CanonicalSet((classes[first], classes[second])))
     compiled_query = compile_query_expression(expression, compiled)
 
-    entity_ids = {
-        record.iri: EntityId(index) for index, record in enumerate(compiled.entities)
-    }
+    entity_ids = {record.iri: EntityId(index) for index, record in enumerate(compiled.entities)}
     entity_nodes = {
-        member: node_index
-        for node_index, node in enumerate(taxonomy.nodes)
-        for member in node
+        member: node_index for node_index, node in enumerate(taxonomy.nodes) for member in node
     }
     outgoing: list[list[int]] = [[] for _ in taxonomy.nodes]
     for sub_node, super_node in taxonomy.direct_edges:
@@ -121,12 +111,14 @@ def test_tiny_complex_queries_match_entailment_based_slow_selector(seed: int) ->
         QueryKind.EQUIVALENT_CLASSES,
     ).nodes
     assert actual_equivalent == (() if expected_equivalent is None else (expected_equivalent,))
-    assert set(
-        query_engine.query(compiled_query.encoded, QueryKind.SUPERCLASSES, False).nodes
-    ) == expected_supers
-    assert set(
-        query_engine.query(compiled_query.encoded, QueryKind.SUBCLASSES, False).nodes
-    ) == expected_subs
+    assert (
+        set(query_engine.query(compiled_query.encoded, QueryKind.SUPERCLASSES, False).nodes)
+        == expected_supers
+    )
+    assert (
+        set(query_engine.query(compiled_query.encoded, QueryKind.SUBCLASSES, False).nodes)
+        == expected_subs
+    )
 
     asserted_node = entity_nodes[entity_ids[f"urn:property-query#{asserted_name}"]]
     asserted_ancestors = ancestors(asserted_node)

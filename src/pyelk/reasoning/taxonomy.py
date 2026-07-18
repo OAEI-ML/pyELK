@@ -198,9 +198,7 @@ def _from_relation(
     bottom: EntityId,
 ) -> RawTaxonomy:
     reduced = quotient_and_reduce((int(member) for member in members), edges)
-    nodes = tuple(
-        tuple(EntityId(member) for member in node) for node in reduced.nodes
-    )
+    nodes = tuple(tuple(EntityId(member) for member in node) for node in reduced.nodes)
     top_node = reduced.node_for(int(top))
     bottom_node = reduced.node_for(int(bottom))
     if top_node is None or bottom_node is None:  # pragma: no cover - members validated by IR
@@ -229,9 +227,7 @@ def _collapsed_taxonomy(
 
 def _entity_ids(compiled: CompiledOntology, kind: EntityKind) -> tuple[EntityId, ...]:
     return tuple(
-        EntityId(index)
-        for index, record in enumerate(compiled.entities)
-        if record.kind is kind
+        EntityId(index) for index, record in enumerate(compiled.entities) if record.kind is kind
     )
 
 

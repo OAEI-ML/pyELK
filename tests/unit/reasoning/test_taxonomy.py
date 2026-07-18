@@ -55,9 +55,7 @@ def _class_expression(compiled: CompiledOntology, name: str) -> ExpressionId:
 
 
 def _node_iris(compiled: CompiledOntology, taxonomy: RawTaxonomy) -> tuple[tuple[str, ...], ...]:
-    return tuple(
-        tuple(compiled.entities[member].iri for member in node) for node in taxonomy.nodes
-    )
+    return tuple(tuple(compiled.entities[member].iri for member in node) for node in taxonomy.nodes)
 
 
 def _edge_iris(
@@ -94,26 +92,17 @@ def test_class_cycles_diamonds_top_equivalence_and_unsatisfiability() -> None:
     taxonomy = class_taxonomy(SaturationSession(compiled))
     nodes = _node_iris(compiled, taxonomy)
     class_a_node = next(
-        index
-        for index, node in enumerate(taxonomy.nodes)
-        if _entity(compiled, "A") in node
+        index for index, node in enumerate(taxonomy.nodes) if _entity(compiled, "A") in node
     )
-    assert {"urn:test#A", "urn:test#B"} <= set(
-        nodes[class_a_node]
-    )
-    assert {"urn:test#E", "http://www.w3.org/2002/07/owl#Thing"} <= set(
-        nodes[taxonomy.top]
-    )
-    assert {"urn:test#Dead", "http://www.w3.org/2002/07/owl#Nothing"} <= set(
-        nodes[taxonomy.bottom]
-    )
+    assert {"urn:test#A", "urn:test#B"} <= set(nodes[class_a_node])
+    assert {"urn:test#E", "http://www.w3.org/2002/07/owl#Thing"} <= set(nodes[taxonomy.top])
+    assert {"urn:test#Dead", "http://www.w3.org/2002/07/owl#Nothing"} <= set(nodes[taxonomy.bottom])
     assert len(taxonomy.direct_edges) == 5
 
 
 def test_inconsistent_ontology_collapses_every_class_and_property_once() -> None:
     compiled = _compiled(
-        "SubClassOf(owl:Thing owl:Nothing) Declaration(Class(:A)) "
-        "Declaration(ObjectProperty(:p))"
+        "SubClassOf(owl:Thing owl:Nothing) Declaration(Class(:A)) Declaration(ObjectProperty(:p))"
     )
     session = SaturationSession(compiled)
     classes = class_taxonomy(session)
@@ -148,9 +137,7 @@ def test_property_cycles_bottom_and_top_equivalences_exclude_complex_chains() ->
     )
     actual = {member for node in nodes for member in node}
     expected = {
-        record.iri
-        for record in compiled.entities
-        if record.kind is EntityKind.OBJECT_PROPERTY
+        record.iri for record in compiled.entities if record.kind is EntityKind.OBJECT_PROPERTY
     }
     assert actual == expected
 
@@ -177,8 +164,7 @@ def test_range_filler_isolation_preserves_source_inference_without_filler_leakag
 
 def test_ignored_only_entities_never_enter_taxonomy_coverage() -> None:
     compiled = _compiled(
-        "Declaration(Class(:Visible)) "
-        "SubClassOf(ObjectAllValuesFrom(:p :Ghost) :IgnoredTarget)"
+        "Declaration(Class(:Visible)) SubClassOf(ObjectAllValuesFrom(:p :Ghost) :IgnoredTarget)"
     )
     taxonomy = class_taxonomy(SaturationSession(compiled))
     iris = {iri for node in _node_iris(compiled, taxonomy) for iri in node}
@@ -202,9 +188,7 @@ def test_validator_rejects_coverage_kind_and_transitive_redundancy() -> None:
     taxonomy = class_taxonomy(SaturationSession(compiled))
     redundant = RawTaxonomy(
         nodes=taxonomy.nodes,
-        direct_edges=tuple(
-            sorted((*taxonomy.direct_edges, (taxonomy.bottom, taxonomy.top)))
-        ),
+        direct_edges=tuple(sorted((*taxonomy.direct_edges, (taxonomy.bottom, taxonomy.top)))),
         top=taxonomy.top,
         bottom=taxonomy.bottom,
     )
@@ -253,7 +237,7 @@ def _oracle_class_compiled(name: str) -> CompiledOntology:
                     for first, second, target in pair_rows
                 ),
                 *(
-                    "SubClassOf(ObjectIntersectionOf(:B :C :D) " f":{target})"
+                    f"SubClassOf(ObjectIntersectionOf(:B :C :D) :{target})"
                     for target in triple_targets
                 ),
             )
@@ -319,6 +303,4 @@ def test_frozen_object_property_taxonomy_values(name: str) -> None:
     source = _DATA / "upstream" / "classification" / "object_property" / f"{name}.owl"
     compiled = compile_ontology(owl.load_snapshot(source, options=_LOAD_OPTIONS))
     actual = object_property_taxonomy(SaturationSession(compiled))
-    assert _actual_value(compiled, actual) == _expected_value(
-        _PROPERTY_EXPECTED / f"{name}.json"
-    )
+    assert _actual_value(compiled, actual) == _expected_value(_PROPERTY_EXPECTED / f"{name}.json")

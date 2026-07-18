@@ -388,10 +388,8 @@ def _select_query(
     if equivalent_index is None:
         for node_index, node in enumerate(taxonomy.nodes):
             representative = class_expressions[node[0]]
-            if (
-                representative in root_subsumers
-                and evaluation.root
-                in _context_subsumers(evaluation.contexts[representative])
+            if representative in root_subsumers and evaluation.root in _context_subsumers(
+                evaluation.contexts[representative]
             ):
                 equivalent_index = node_index
                 break
@@ -401,8 +399,7 @@ def _select_query(
             candidate
             for candidate in fresh_classes
             if candidate.expression in root_subsumers
-            and evaluation.root
-            in _context_subsumers(evaluation.contexts[candidate.expression])
+            and evaluation.root in _context_subsumers(evaluation.contexts[candidate.expression])
         ),
         None,
     )
@@ -452,9 +449,7 @@ def _select_query(
             )
         node_candidates = [
             _NodeCandidate(
-                members=tuple(
-                    QueryResultEntityId(int(member)) for member in taxonomy.nodes[index]
-                ),
+                members=tuple(QueryResultEntityId(int(member)) for member in taxonomy.nodes[index]),
                 expression=class_expressions[taxonomy.nodes[index][0]],
                 taxonomy_index=index,
             )
@@ -494,17 +489,13 @@ def _select_query(
     if equivalent_index is not None:
         matching_class_nodes = {equivalent_index}
         matching_class_nodes.update(
-            node
-            for node in range(len(taxonomy.nodes))
-            if equivalent_index in strict_supers[node]
+            node for node in range(len(taxonomy.nodes)) if equivalent_index in strict_supers[node]
         )
         selected = {
             instance_index
             for instance_index in range(len(realized.instance_nodes))
             if any(
-                direct_type == equivalent_index
-                if direct
-                else direct_type in matching_class_nodes
+                direct_type == equivalent_index if direct else direct_type in matching_class_nodes
                 for direct_type in direct_type_indices(realized, instance_index)
             )
         }
@@ -540,9 +531,7 @@ def _select_query(
                 for class_node in selected_direct_types
                 if evaluation.root
                 in _context_subsumers(
-                    evaluation.contexts[
-                        class_expressions[taxonomy.nodes[class_node][0]]
-                    ]
+                    evaluation.contexts[class_expressions[taxonomy.nodes[class_node][0]]]
                 )
             )
             selected = {
@@ -851,10 +840,7 @@ def _query_nodes(
     nodes: tuple[tuple[EntityId, ...], ...],
 ) -> tuple[tuple[QueryResultEntityId, ...], ...]:
     return tuple(
-        sorted(
-            tuple(QueryResultEntityId(int(member)) for member in node)
-            for node in nodes
-        )
+        sorted(tuple(QueryResultEntityId(int(member)) for member in node) for node in nodes)
     )
 
 

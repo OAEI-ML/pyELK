@@ -122,11 +122,7 @@ def test_generated_class_taxonomy_matches_slow_semantic_selector(
     size, told_edges, unsatisfiable, top_equivalent = case
     axioms = (
         *(f"Declaration(Class(:C{index}))" for index in range(size)),
-        *(
-            f"SubClassOf(:C{sub} :C{super_})"
-            for sub, super_ in sorted(told_edges)
-            if sub != super_
-        ),
+        *(f"SubClassOf(:C{sub} :C{super_})" for sub, super_ in sorted(told_edges) if sub != super_),
         *(f"SubClassOf(:C{index} owl:Nothing)" for index in sorted(unsatisfiable)),
         *(f"SubClassOf(owl:Thing :C{index})" for index in sorted(top_equivalent)),
     )
@@ -143,12 +139,8 @@ def test_generated_class_taxonomy_matches_slow_semantic_selector(
         for index, entity in enumerate(compiled.entities)
         if entity.kind is EntityKind.CLASS and entity.iri.startswith("urn:test#C")
     }
-    top = next(
-        index for index in members if compiled.entities[index].iri == OWL_THING_IRI
-    )
-    bottom = next(
-        index for index in members if compiled.entities[index].iri == OWL_NOTHING_IRI
-    )
+    top = next(index for index in members if compiled.entities[index].iri == OWL_THING_IRI)
+    bottom = next(index for index in members if compiled.entities[index].iri == OWL_NOTHING_IRI)
     relation: set[tuple[int, int]] = {(bottom, member) for member in members}
     relation.update((member, top) for member in members)
     relation.update((generated[sub], generated[super_]) for sub, super_ in told_edges)

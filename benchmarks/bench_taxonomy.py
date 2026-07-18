@@ -96,11 +96,7 @@ def run(*, sparse_nodes: int, dense_nodes: int, repeats: int) -> dict[str, objec
     dense_measurements, dense_result = _measure(
         lambda: quotient_and_reduce(
             range(dense_nodes),
-            (
-                (sub, super_)
-                for sub in range(dense_nodes)
-                for super_ in range(sub + 1, dense_nodes)
-            ),
+            ((sub, super_) for sub in range(dense_nodes) for super_ in range(sub + 1, dense_nodes)),
         ),
         repeats=repeats,
     )

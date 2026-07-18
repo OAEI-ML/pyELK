@@ -44,10 +44,7 @@ class _Case:
         return (
             *(f"Declaration(Class(:C{index}))" for index in range(self.class_count)),
             "Declaration(ObjectProperty(:p))",
-            *(
-                f"SubClassOf(:C{sub} :C{super_})"
-                for sub, super_ in sorted(self.subclass_edges)
-            ),
+            *(f"SubClassOf(:C{sub} :C{super_})" for sub, super_ in sorted(self.subclass_edges)),
             *(
                 f"SubClassOf(:C{sub} ObjectIntersectionOf(:C{first} :C{second}))"
                 for sub, first, second in sorted(self.intersection_supers)
@@ -77,26 +74,18 @@ def _cases(draw: st.DrawFn) -> _Case:
     class_count = draw(st.integers(min_value=1, max_value=5))
     index = st.integers(min_value=0, max_value=class_count - 1)
     pairs = st.tuples(index, index)
-    intersection_supers = st.tuples(index, index, index).filter(
-        lambda row: row[1] != row[2]
-    )
-    intersection_subs = st.tuples(index, index, index).filter(
-        lambda row: row[0] != row[1]
-    )
+    intersection_supers = st.tuples(index, index, index).filter(lambda row: row[1] != row[2])
+    intersection_subs = st.tuples(index, index, index).filter(lambda row: row[0] != row[1])
     disjoint = (
         frozenset()
         if class_count == 1
         else draw(st.frozensets(pairs.filter(lambda pair: pair[0] < pair[1]), max_size=3))
     )
     positive_intersections = (
-        frozenset()
-        if class_count == 1
-        else draw(st.frozensets(intersection_supers, max_size=4))
+        frozenset() if class_count == 1 else draw(st.frozensets(intersection_supers, max_size=4))
     )
     negative_intersections = (
-        frozenset()
-        if class_count == 1
-        else draw(st.frozensets(intersection_subs, max_size=4))
+        frozenset() if class_count == 1 else draw(st.frozensets(intersection_subs, max_size=4))
     )
     return _Case(
         class_count=class_count,

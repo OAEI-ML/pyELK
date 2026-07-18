@@ -72,9 +72,7 @@ class EntailmentEngine:
             overlay = replace(overlay, property_ranges=())
         properties = saturate_properties(overlay)
         roots = {sub_expression for sub_expression, _ in obligations}
-        contexts = dict(
-            SaturationEngine(overlay, properties).run(tuple(sorted(roots))).contexts
-        )
+        contexts = dict(SaturationEngine(overlay, properties).run(tuple(sorted(roots))).contexts)
         result = all(
             contexts[sub_expression].inconsistent
             or super_expression in _context_subsumers(contexts[sub_expression])

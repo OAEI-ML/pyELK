@@ -72,15 +72,11 @@ def _compiled_deep_hierarchy(class_count: int) -> CompiledOntology:
         EntityRecord(EntityKind.OBJECT_PROPERTY, OWL_TOP_OBJECT_PROPERTY_IRI),
     )
     expressions = tuple(
-        ExpressionRecord(ExpressionTag.CLASS, (entity,))
-        for entity in range(len(class_entities))
+        ExpressionRecord(ExpressionTag.CLASS, (entity,)) for entity in range(len(class_entities))
     )
-    occurrences: list[ExpressionOccurrence] = [
-        ExpressionOccurrence(0, 0) for _ in expressions
-    ]
+    occurrences: list[ExpressionOccurrence] = [ExpressionOccurrence(0, 0) for _ in expressions]
     subclass_axioms = tuple(
-        (ExpressionId(index), ExpressionId(index + 1))
-        for index in range(2, class_count + 1)
+        (ExpressionId(index), ExpressionId(index + 1)) for index in range(2, class_count + 1)
     )
     for sub, super_ in subclass_axioms:
         previous_sub = occurrences[sub]
@@ -122,8 +118,7 @@ def _assert_result(
     expected_conclusions = 1 + 2 * class_count
     if diagnostics.conclusions_inserted != expected_conclusions:
         raise AssertionError(
-            f"expected {expected_conclusions} conclusions, "
-            f"got {diagnostics.conclusions_inserted}"
+            f"expected {expected_conclusions} conclusions, got {diagnostics.conclusions_inserted}"
         )
     if diagnostics.rule_dispatches != diagnostics.conclusions_inserted:
         raise AssertionError("a novel conclusion was skipped or processed more than once")

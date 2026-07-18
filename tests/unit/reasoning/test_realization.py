@@ -41,20 +41,17 @@ def test_all_five_frozen_realization_values(name: str) -> None:
     session = SaturationSession(compiled)
     taxonomy = class_taxonomy(session)
     actual = realization(session, taxonomy)
-    expected = json.loads(
-        (_DATA / "expected" / "realization" / f"{name}.json").read_text()
-    )["result"]["value"]
+    expected = json.loads((_DATA / "expected" / "realization" / f"{name}.json").read_text())[
+        "result"
+    ]["value"]
     assert {
         "bottom": taxonomy.bottom,
         "direct_edges": [list(edge) for edge in taxonomy.direct_edges],
         "direct_types": [list(row) for row in actual.direct_types],
         "instance_nodes": [
-            [compiled.entities[member].iri for member in node]
-            for node in actual.instance_nodes
+            [compiled.entities[member].iri for member in node] for node in actual.instance_nodes
         ],
-        "nodes": [
-            [compiled.entities[member].iri for member in node] for node in taxonomy.nodes
-        ],
+        "nodes": [[compiled.entities[member].iri for member in node] for node in taxonomy.nodes],
         "top": taxonomy.top,
     } == expected
 

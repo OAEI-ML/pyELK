@@ -106,9 +106,7 @@ class SaturationSnapshot:
             raise TypeError("contexts must be a mapping")
         if not isinstance(self.inconsistent_ontology, bool):
             raise TypeError("inconsistent_ontology must be a boolean")
-        frozen = {
-            ExpressionId(root): context for root, context in sorted(self.contexts.items())
-        }
+        frozen = {ExpressionId(root): context for root, context in sorted(self.contexts.items())}
         if any(not isinstance(context, FrozenContext) for context in frozen.values()):
             raise TypeError("snapshot contexts must contain FrozenContext values")
         if any(root != context.root for root, context in frozen.items()):
@@ -349,9 +347,7 @@ class SaturationEngine:
             self.properties.ranges(EntityId(entity))
             for entity in range(len(self.compiled.entities))
         )
-        contexts = {
-            root: self._contexts[root].freeze() for root in sorted(self._contexts)
-        }
+        contexts = {root: self._contexts[root].freeze() for root in sorted(self._contexts)}
         return SaturationSnapshot(
             property_subsumers=property_subsumers,
             property_ranges=property_ranges,

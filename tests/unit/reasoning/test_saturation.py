@@ -57,8 +57,7 @@ def _expression(
 
 def test_scheduler_reaches_one_stable_duplicate_suppressed_fixed_point() -> None:
     compiled = _compiled(
-        "SubClassOf(:A :B) SubClassOf(:B :C) SubClassOf(:A :C) "
-        "SubClassOf(:C :D) SubClassOf(:B :D)"
+        "SubClassOf(:A :B) SubClassOf(:B :C) SubClassOf(:A :C) SubClassOf(:C :D) SubClassOf(:B :D)"
     )
     roots = tuple(_class(compiled, name) for name in "ABCD")
     engine = SaturationEngine(compiled)
@@ -105,9 +104,7 @@ def test_cross_context_writes_reactivate_sources_without_lost_work() -> None:
 
 
 def test_budget_and_monitor_interruptions_resume_to_the_same_snapshot() -> None:
-    axioms = " ".join(
-        f"SubClassOf(:C{index:03d} :C{index + 1:03d})" for index in range(80)
-    )
+    axioms = " ".join(f"SubClassOf(:C{index:03d} :C{index + 1:03d})" for index in range(80))
     compiled = _compiled(axioms)
     root = _class(compiled, "C000")
     expected = SaturationEngine(compiled).run((root,))
@@ -182,16 +179,13 @@ def test_seed_order_and_long_cycles_do_not_change_results_or_recurse() -> None:
     forward_snapshot = forward.run(roots)
     reverse_snapshot = reverse.run(reversed(roots))
     assert forward_snapshot == reverse_snapshot
-    assert all(
-        len(forward_snapshot.contexts[root].decomposed_subsumers) == size for root in roots
-    )
+    assert all(len(forward_snapshot.contexts[root].decomposed_subsumers) == size for root in roots)
     assert forward.diagnostics() == reverse.diagnostics()
 
 
 def test_session_stages_are_monotone_idempotent_and_query_roots_are_cache_safe() -> None:
     compiled = _compiled(
-        "SubClassOf(ObjectIntersectionOf(:A :B) :C) "
-        "Declaration(NamedIndividual(:unused))"
+        "SubClassOf(ObjectIntersectionOf(:A :B) :C) Declaration(NamedIndividual(:unused))"
     )
     session = SaturationSession(compiled)
     assert int(session.stage) == int(Stage.COMPILED)

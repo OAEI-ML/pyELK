@@ -26,9 +26,9 @@ def test_unsatisfiable_unused_named_class_does_not_make_ontology_inconsistent() 
         root
         for root, context in classified.contexts.items()
         if session.compiled.expressions[root].tag is ExpressionTag.CLASS
-        and session.compiled.entities[
-            session.compiled.expressions[root].arguments[0]
-        ].iri.endswith("#Dead")
+        and session.compiled.entities[session.compiled.expressions[root].arguments[0]].iri.endswith(
+            "#Dead"
+        )
         and context.inconsistent
     )
     assert classified.contexts[dead].inconsistent
@@ -45,9 +45,7 @@ def test_inconsistent_top_context_makes_ontology_inconsistent() -> None:
 
 
 def test_asserted_inconsistent_individual_is_global_but_declaration_is_not_existence() -> None:
-    declared = _session(
-        "Declaration(NamedIndividual(:declared)) SubClassOf(:Dead owl:Nothing)"
-    )
+    declared = _session("Declaration(NamedIndividual(:declared)) SubClassOf(:Dead owl:Nothing)")
     assert occurring_individual_roots(declared.compiled) == ()
     roots = consistency_roots(declared.compiled)
     assert len(roots) == 1
@@ -62,8 +60,7 @@ def test_asserted_inconsistent_individual_is_global_but_declaration_is_not_exist
 
 def test_object_assertion_target_is_an_occurring_consistency_root() -> None:
     session = _session(
-        "ObjectPropertyAssertion(:p :source :target) "
-        "ObjectPropertyRange(:p owl:Nothing)"
+        "ObjectPropertyAssertion(:p :source :target) ObjectPropertyRange(:p owl:Nothing)"
     )
     state = session.ensure_consistency()
     assert len(state.individual_roots) == 2
@@ -72,9 +69,7 @@ def test_object_assertion_target_is_an_occurring_consistency_root() -> None:
 
 
 def test_top_object_property_below_bottom_is_a_global_inconsistency_condition() -> None:
-    session = _session(
-        "SubObjectPropertyOf(owl:topObjectProperty owl:bottomObjectProperty)"
-    )
+    session = _session("SubObjectPropertyOf(owl:topObjectProperty owl:bottomObjectProperty)")
     state = session.ensure_consistency()
     assert state.top_object_property_in_bottom
     assert state.inconsistent

@@ -1104,9 +1104,7 @@ class RuleDispatcher:
         producer: ConclusionProducer,
     ) -> None:
         conclusion: Conclusion | None
-        producer.produce(
-            subcontext_initialization_no_premises(state.root, premise.relation)
-        )
+        producer.produce(subcontext_initialization_no_premises(state.root, premise.relation))
         for carry in sorted(state.propagations.get(premise.relation, ())):
             conclusion = subclass_inclusion_composed_object_some_values_from(
                 premise,

@@ -49,9 +49,7 @@ _CASES = tuple(path.stem for path in sorted(_EXPECTED.glob("*.json")))
 def test_all_16_frozen_entailment_groups(name: str) -> None:
     compiled = compile_ontology(owl.load_snapshot(_UPSTREAM / f"{name}.owl", options=_OPTIONS))
     engine = EntailmentEngine(SaturationSession(compiled))
-    rows = json.loads((_EXPECTED / f"{name}.json").read_text())["result"]["value"][
-        "queries"
-    ]
+    rows = json.loads((_EXPECTED / f"{name}.json").read_text())["result"]["value"]["queries"]
     for row in rows:
         query = compile_entailment_query(_parse_axiom(row["axiom"]), compiled)
         assert engine.entails(query.encoded) is row["entailed"]

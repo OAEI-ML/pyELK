@@ -22,15 +22,10 @@ class ReducedGraph:
         ):
             raise ValueError("reduced graph nodes must be nonempty tuples")
         if any(
-            node[index - 1] >= node[index]
-            for node in self.nodes
-            for index in range(1, len(node))
+            node[index - 1] >= node[index] for node in self.nodes for index in range(1, len(node))
         ):
             raise ValueError("reduced graph node members must be strictly sorted")
-        if any(
-            self.nodes[index - 1] >= self.nodes[index]
-            for index in range(1, len(self.nodes))
-        ):
+        if any(self.nodes[index - 1] >= self.nodes[index] for index in range(1, len(self.nodes))):
             raise ValueError("reduced graph nodes must be strictly sorted")
         members = [member for node in self.nodes for member in node]
         if any(
@@ -81,8 +76,7 @@ def quotient_and_reduce(
     components = _strong_components(adjacency, reverse)
 
     member_components = tuple(
-        tuple(sorted(ordered_members[dense] for dense in component))
-        for component in components
+        tuple(sorted(ordered_members[dense] for dense in component)) for component in components
     )
     canonical_nodes = tuple(sorted(member_components))
     node_by_members = {node: index for index, node in enumerate(canonical_nodes)}
