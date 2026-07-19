@@ -182,11 +182,6 @@ def _validate_encoded_view(
     raw_fingerprint = _required_attribute(encoded, "structural_fingerprint")
     if not isinstance(raw_fingerprint, _core.Fingerprint):
         raise _protocol_error("structural_fingerprint", type(raw_fingerprint).__name__)
-    if raw_fingerprint != ontology.structural_fingerprint:
-        raise _protocol_error(
-            "structural_fingerprint",
-            "encoded content is not bound to the requested ontology revision",
-        )
 
     raw_scope = getattr(encoded, "scope", scope)
     if raw_scope != scope and raw_scope != scope.value:

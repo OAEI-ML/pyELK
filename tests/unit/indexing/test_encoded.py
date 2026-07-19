@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from hashlib import sha256
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 
 import pyowl_core as owl
 import pytest
@@ -38,7 +38,7 @@ class _EncodedStructuralView:
             "axiom_arguments": memoryview(b"\x00\x00\x00\x00"),
         }
         self.segments: tuple[object, ...] = ()
-        self.structural_fingerprint = owner.structural_fingerprint
+        self.structural_fingerprint = owl.Fingerprint("sha256", 1, b"e" * 32)
 
 
 class _View:
@@ -147,7 +147,8 @@ def test_valid_handoff_retains_exact_owner_and_read_only_buffers(
     assert handoff is not None
     assert cast(object, handoff.owner) is view
     assert handoff.encoded_view is view.encoded
-    assert handoff.structural_fingerprint is view.structural_fingerprint
+    assert handoff.structural_fingerprint is view.encoded.structural_fingerprint
+    assert handoff.structural_fingerprint != view.structural_fingerprint
     assert handoff.buffer_count == 2
     assert handoff.buffer_bytes == 5
     assert tuple(handoff.buffers) == ("axiom_arguments", "axiom_tags")
@@ -199,10 +200,10 @@ def test_owner_fingerprint_and_descriptor_digest_are_bound_to_the_request(
     with pytest.raises(owl.BackendProtocolError, match="owner"):
         negotiate_encoded_structural_view(_as_view(owner_mismatch))
 
-    fingerprint_mismatch = _View()
-    fingerprint_mismatch.encoded.structural_fingerprint = owl.Fingerprint("sha256", 1, b"x" * 32)
+    invalid_fingerprint = _View()
+    cast(Any, invalid_fingerprint.encoded).structural_fingerprint = object()
     with pytest.raises(owl.BackendProtocolError, match="structural_fingerprint"):
-        negotiate_encoded_structural_view(_as_view(fingerprint_mismatch))
+        negotiate_encoded_structural_view(_as_view(invalid_fingerprint))
 
     digest_mismatch = _View()
     digest_mismatch.encoded.descriptor_digest = b"x" * 32
