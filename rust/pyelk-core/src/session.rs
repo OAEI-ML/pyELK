@@ -45,7 +45,17 @@ pub struct NativeCoreSession {
 impl NativeCoreSession {
     /// Decode one ontology transfer and prepare the immutable property stage.
     pub fn create(encoded: &[u8], workers: usize) -> CoreResult<Self> {
-        let ontology = Arc::new(Ontology::decode(encoded)?);
+        Self::from_ontology(Ontology::decode(encoded)?, workers)
+    }
+
+    /// Prepare a session from an already validated, Rust-owned compiled ontology.
+    ///
+    /// The encoded structural compiler uses this constructor so it does not serialize its
+    /// private ELK IR merely to invoke the permanent reasoning session.  Validation belongs
+    /// to that compiler before publication; the scalar-wire constructor above retains the
+    /// defensive IR decoder for compatibility.
+    pub fn from_ontology(ontology: Ontology, workers: usize) -> CoreResult<Self> {
+        let ontology = Arc::new(ontology);
         let properties = Arc::new(PropertyClosure::build(&ontology)?);
         let effective_workers = if workers == 0 {
             std::thread::available_parallelism().map_or(1, usize::from)

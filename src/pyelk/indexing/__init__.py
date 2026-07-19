@@ -6,6 +6,13 @@ to import the OWL model dependency merely to decode backend data.
 
 from typing import TYPE_CHECKING, Any
 
+from pyelk.indexing.encoded import (
+    ENCODED_SCHEMA_NAME,
+    ENCODED_SCHEMA_VERSION,
+    EncodedStructuralHandoff,
+    EncodedViewNegotiation,
+    negotiate_encoded_structural_view,
+)
 from pyelk.indexing.ir import (
     FEATURE_VECTOR_LENGTH,
     FINGERPRINT_SIZE,
@@ -75,6 +82,8 @@ __all__ = [
     "COMPILER_SCHEMA_VERSION",
     "DEFAULT_MAX_NODES_PER_AXIOM",
     "ELK_COMPATIBILITY_ID",
+    "ENCODED_SCHEMA_NAME",
+    "ENCODED_SCHEMA_VERSION",
     "FEATURE_VECTOR_LENGTH",
     "FINGERPRINT_SIZE",
     "REGISTRATION_BY_KEY",
@@ -83,6 +92,8 @@ __all__ = [
     "CompiledQuery",
     "CompiledSymbolTable",
     "DisjointGroupId",
+    "EncodedStructuralHandoff",
+    "EncodedViewNegotiation",
     "EntityId",
     "EntityKind",
     "EntityRecord",
@@ -103,6 +114,7 @@ __all__ = [
     "compile_entailment_query",
     "compile_ontology",
     "compile_query_expression",
+    "negotiate_encoded_structural_view",
     "registrations_for",
     "symbol_table",
 ]

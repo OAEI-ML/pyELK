@@ -197,6 +197,38 @@ fn self_check() -> bool {
     IR_MAJOR == 1 && IR_MINOR == 0 && !IMPLEMENTATION_VERSION.is_empty()
 }
 
+/// Encoded structural schemas compiled into this extension.
+///
+/// The registration seam intentionally advertises nothing until the generated pyowl-core
+/// schema ledger and the complete structural compiler are present.  Python therefore keeps
+/// using scalar-wire ingestion rather than inferring support from this function's existence.
+#[pyfunction]
+fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
+    PyDict::new(py).unbind()
+}
+
+/// Fail-closed placeholder for the future coarse encoded-view compiler entry point.
+#[pyfunction]
+fn create_session_from_encoded(
+    _encoded_view: &Bound<'_, PyAny>,
+    workers: isize,
+    unsupported: &str,
+) -> PyResult<NativeSession> {
+    if workers < 0 {
+        return Err(PyValueError::new_err(
+            "workers must be a nonnegative integer",
+        ));
+    }
+    if !matches!(unsupported, "ignore" | "error") {
+        return Err(PyValueError::new_err(
+            "unsupported must be 'ignore' or 'error'",
+        ));
+    }
+    Err(PyValueError::new_err(
+        "this extension advertises no encoded structural schema",
+    ))
+}
+
 #[pyfunction]
 fn create_session(
     py: Python<'_>,
@@ -257,6 +289,8 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(ir_version, module)?)?;
     module.add_function(wrap_pyfunction!(abi_version, module)?)?;
     module.add_function(wrap_pyfunction!(self_check, module)?)?;
+    module.add_function(wrap_pyfunction!(encoded_view_schemas, module)?)?;
+    module.add_function(wrap_pyfunction!(create_session_from_encoded, module)?)?;
     module.add_function(wrap_pyfunction!(create_session, module)?)?;
     Ok(())
 }

@@ -158,6 +158,7 @@ class PythonBackendSession:
             0 if self._entailments is None else self._entailments.cached_query_count
         )
         values["class_taxonomy_cached"] = self._class_taxonomy is not None
+        values["ingestion_path"] = "scalar-python"
         values["object_property_taxonomy_cached"] = self._object_taxonomy is not None
         values["realization_cached"] = self._realization is not None
         return MappingProxyType(dict(sorted(values.items())))
