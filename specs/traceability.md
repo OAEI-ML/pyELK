@@ -115,6 +115,7 @@ compiler counts, monitor conditions, and canonical issues. The separate
 | Rust workspace and adapter | WP11 |
 | build/release workflows and packaging tests | WP12 |
 | cross-system parity/performance/integration fixes | WP13 |
+| encoded core-view adapter, Rust structural compiler, and successor performance evidence | WP14 |
 
 Shared-file changes after the owning WP merges are made by WP13 or sent as a small dependent
 PR to the owner. Same-wave agents do not edit each other's paths.
@@ -148,6 +149,7 @@ are confined to the explicit scope table in §2.
 | Distribution and Java/compiler exclusion | `native-packaging.md` §§9–11 | build configuration, reproducible-sdist hook, and artifact auditor | byte-rebuilt source/fallback artifacts, pinned external ABI/platform audits, Python 3.10–3.14 installed lanes | implemented |
 | Performance corpus and semantic timing guard | `verification.md` §9 | `benchmarks/`, `tools/benchmark.py` | manifest validation plus Java-free generated and hash-pinned biomedical harness tests | implemented |
 | User examples and attribution | WP13 deliverables 7–8 | `README.md`, `NOTICE.pyelk` | verbatim README execution and artifact notice audit | implemented |
+| Encoded structural ingestion | `native-structural-ingestion.md` | WP14-owned adapter/compiler paths | scalar/encoded compiler parity, hostile descriptor, shared-consumer, and end-to-end performance suites | specified, not implemented |
 
 ## 7. Release evidence routing
 

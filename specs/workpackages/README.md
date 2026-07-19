@@ -61,6 +61,7 @@ WP0 -> {WP1 core contract, WP3 completeness/oracle}
 {WP2, WP3, WP4, WP8, WP9} -> WP10 facade
 {WP10, WP11} -> WP12 packaging
 WP0..WP12 -> WP13 integration
+WP13 + pyowl-core WP17 -> WP14 encoded structural compiler
 ```
 
 Parallel waves:
@@ -76,6 +77,7 @@ Parallel waves:
 7: WP10
 8: WP12
 9: WP13
+10: WP14 after the pyowl-core encoded-view candidate freezes
 ```
 
 WP11 starts only after the complete pure-Python saturation engine exists. It may implement
@@ -100,6 +102,7 @@ backend differential sign-off remains a WP13 gate.
 | [WP11](WP11-rust-backend.md) | complete Rust engine and thin PyO3 adapter | WP7 | Cargo workspace, Rust adapter |
 | [WP12](WP12-packaging.md) | paired wheels, sdist fallback, release CI/audits | WP10, WP11 | setup/build/release workflows |
 | [WP13](WP13-integration.md) | exact full parity, performance, final hardening | WP0–WP12 | cross-system fixes/benchmarks |
+| [WP14](WP14-native-structural-compiler.md) | direct encoded-view-to-Rust ELK compilation and release evidence | WP13, pyowl-core WP17 | native structural compiler, adapter, differential/performance evidence |
 
 ## 6. Contract change protocol
 
@@ -111,6 +114,8 @@ enum order. Public OWL structural identity is owned by pyowl-core, not frozen lo
 
 `pyproject.toml` is sequentially shared: WP0 owns the historical scaffold, WP1 owns only the
 pyowl-core runtime/import-boundary amendment, and WP12 owns final release/build metadata.
+WP14 may make the later coordinated core range/feature and compiler-schema change required by its
+encoded-view handoff; it does not otherwise reopen packaging ownership.
 
 A needed change requires:
 

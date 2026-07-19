@@ -67,6 +67,9 @@ in [`compatibility.md`](compatibility.md).
 7. **Parallel implementation.** Stable contracts, owned paths, dependency waves, and exact
    acceptance gates allow independent agents to implement work packages without editing
    the same files.
+8. **Bulk native compilation.** When the shared core advertises a compatible encoded structural
+   view, the optimized Rust path compiles it directly into ELK-private IR without scalar Python
+   axiom expansion or a serialized intermediate; scalar compilation remains complete.
 
 ## 3. In scope
 
@@ -302,6 +305,7 @@ availabilities, version/ABI information, and any fallback or selection error. A 
 | [`saturation.md`](saturation.md) | property closure, conclusions, rules, scheduling, consistency |
 | [`taxonomy-queries.md`](taxonomy-queries.md) | classification, realisation, directness, query semantics |
 | [`native-packaging.md`](native-packaging.md) | Rust design, dispatcher, wheels, compiler-free fallback |
+| [`native-structural-ingestion.md`](native-structural-ingestion.md) | encoded core-view negotiation, direct Rust compiler, copy budgets, and end-to-end performance gates |
 | [`verification.md`](verification.md) | Java oracle, canonicalisation, test corpus, benchmarks, release gates |
 | [`traceability.md`](traceability.md) | upstream-to-spec-to-work-package ownership |
 | [`workpackages/README.md`](workpackages/README.md) | parallel execution handout and dependency waves |
