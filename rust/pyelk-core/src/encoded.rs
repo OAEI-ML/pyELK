@@ -37,6 +37,7 @@ const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
 const RDF_PLAIN_LITERAL_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral";
+const RDF_LANG_STRING_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 
 // Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
 const FEATURE_ANONYMOUS_INDIVIDUAL: usize = 0;
@@ -674,6 +675,7 @@ pub fn validate_columns<B: ByteSource>(
     let canonical_lengths =
         validate_graph_and_lengths(&columns, root_count, node_count, &mut work, limits.max_work)?;
     validate_dense_node_order(&columns, &canonical_lengths, &mut work, limits.max_work)?;
+    validate_model_scalar_constraints(&columns, node_count)?;
     Ok(ValidatedEncodedColumns {
         root_count,
         node_count,
@@ -682,6 +684,241 @@ pub fn validate_columns<B: ByteSource>(
         scalar_bytes: columns.scalar_bytes.len(),
         work,
     })
+}
+
+fn validate_model_scalar_constraints<B: ByteSource>(
+    columns: &EncodedColumns<B>,
+    node_count: usize,
+) -> CoreResult<()> {
+    for node in 0..node_count {
+        match u16_at(columns.node_tags, node, "model scalar node tag")? {
+            1 => validate_absolute_iri(&text_field(node, 0, columns)?)?,
+            3 => {
+                let scope_length = field_scalar_length(node, 0, columns)?;
+                let local_length = field_scalar_length(node, 1, columns)?;
+                if scope_length != 32 || local_length == 0 {
+                    return Err(CoreError::protocol(
+                        "encoded anonymous individual has an invalid scope or local key",
+                    ));
+                }
+            }
+            4 => validate_literal_constraints(node, columns)?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn field_scalar_length<B: ByteSource>(
+    node: usize,
+    position: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<usize> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let field = start
+        .checked_add(position)
+        .ok_or_else(|| CoreError::capacity("encoded scalar field index overflow"))?;
+    usize_at(columns.field_lengths, field, "scalar field length")
+}
+
+fn validate_literal_constraints<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<()> {
+    let datatype = decode_entity(node_field(node, 1, columns)?, columns)?;
+    if datatype.kind != EntityKind::Datatype {
+        return Err(CoreError::internal(
+            "validated literal datatype has the wrong entity kind",
+        ));
+    }
+    if datatype.iri == RDF_LANG_STRING_IRI {
+        return Err(CoreError::protocol(
+            "encoded rdf:langString literal is not canonical model schema 1",
+        ));
+    }
+    if let Some(language) = optional_text_field(node, 2, columns)? {
+        if datatype.iri != RDF_PLAIN_LITERAL_IRI {
+            return Err(CoreError::protocol(
+                "encoded literal language requires rdf:PlainLiteral",
+            ));
+        }
+        if language.bytes().any(|byte| byte.is_ascii_uppercase()) || !valid_language_tag(&language)
+        {
+            return Err(CoreError::protocol(
+                "encoded literal language is not a canonical BCP 47 tag",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_absolute_iri(value: &str) -> CoreResult<()> {
+    let bytes = value.as_bytes();
+    let Some(colon) = bytes.iter().position(|byte| *byte == b':') else {
+        return Err(CoreError::protocol("encoded IRI is not absolute"));
+    };
+    if colon == 0
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1..colon]
+            .iter()
+            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'.' | b'-'))
+    {
+        return Err(CoreError::protocol(
+            "encoded IRI has an invalid absolute scheme",
+        ));
+    }
+    for character in value.chars() {
+        let codepoint = u32::from(character);
+        if matches!(
+            character,
+            '<' | '>' | '"' | '{' | '}' | '|' | '\\' | '^' | '`'
+        ) || codepoint <= 0x20
+            || (0x7f..=0x9f).contains(&codepoint)
+            || (0xfdd0..=0xfdef).contains(&codepoint)
+            || matches!(codepoint & 0xffff, 0xfffe | 0xffff)
+        {
+            return Err(CoreError::protocol(
+                "encoded IRI contains a forbidden Unicode scalar",
+            ));
+        }
+    }
+    let mut index = 0_usize;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len()
+            || !bytes[index + 1].is_ascii_hexdigit()
+            || !bytes[index + 2].is_ascii_hexdigit()
+        {
+            return Err(CoreError::protocol(
+                "encoded IRI contains an invalid percent escape",
+            ));
+        }
+        index += 3;
+    }
+    Ok(())
+}
+
+fn valid_language_tag(language: &str) -> bool {
+    const GRANDFATHERED: &[&str] = &[
+        "art-lojban",
+        "cel-gaulish",
+        "en-gb-oed",
+        "i-ami",
+        "i-bnn",
+        "i-default",
+        "i-enochian",
+        "i-hak",
+        "i-klingon",
+        "i-lux",
+        "i-mingo",
+        "i-navajo",
+        "i-pwn",
+        "i-tao",
+        "i-tay",
+        "i-tsu",
+        "no-bok",
+        "no-nyn",
+        "sgn-be-fr",
+        "sgn-be-nl",
+        "sgn-ch-de",
+        "zh-guoyu",
+        "zh-hakka",
+        "zh-min",
+        "zh-min-nan",
+        "zh-xiang",
+    ];
+    if language.is_empty()
+        || !language
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
+        return false;
+    }
+    let parts = language.split('-').collect::<Vec<_>>();
+    if parts.iter().any(|part| part.is_empty()) {
+        return false;
+    }
+    if GRANDFATHERED.contains(&language) {
+        return true;
+    }
+    if parts.first() == Some(&"x") {
+        return parts.len() > 1 && parts[1..].iter().all(|part| (1..=8).contains(&part.len()));
+    }
+
+    let primary = parts[0];
+    if !primary.bytes().all(|byte| byte.is_ascii_alphabetic()) || !(2..=8).contains(&primary.len())
+    {
+        return false;
+    }
+    let mut index = 1_usize;
+    if (2..=3).contains(&primary.len()) {
+        let mut extlangs = 0_usize;
+        while index < parts.len()
+            && parts[index].len() == 3
+            && parts[index].bytes().all(|byte| byte.is_ascii_alphabetic())
+            && extlangs < 3
+        {
+            index += 1;
+            extlangs += 1;
+        }
+    }
+    if index < parts.len()
+        && parts[index].len() == 4
+        && parts[index].bytes().all(|byte| byte.is_ascii_alphabetic())
+    {
+        index += 1;
+    }
+    if index < parts.len()
+        && ((parts[index].len() == 2
+            && parts[index].bytes().all(|byte| byte.is_ascii_alphabetic()))
+            || (parts[index].len() == 3 && parts[index].bytes().all(|byte| byte.is_ascii_digit())))
+    {
+        index += 1;
+    }
+
+    let mut variants = BTreeSet::new();
+    while index < parts.len()
+        && ((5..=8).contains(&parts[index].len())
+            || (parts[index].len() == 4
+                && parts[index]
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_digit)))
+    {
+        if !variants.insert(parts[index]) {
+            return false;
+        }
+        index += 1;
+    }
+
+    let mut singletons = BTreeSet::new();
+    while index < parts.len() && parts[index].len() == 1 && parts[index] != "x" {
+        if !singletons.insert(parts[index]) {
+            return false;
+        }
+        index += 1;
+        let start = index;
+        while index < parts.len() && (2..=8).contains(&parts[index].len()) {
+            index += 1;
+        }
+        if index == start {
+            return false;
+        }
+    }
+    if index < parts.len() && parts[index] == "x" {
+        index += 1;
+        let start = index;
+        while index < parts.len() && (1..=8).contains(&parts[index].len()) {
+            index += 1;
+        }
+        if index == start {
+            return false;
+        }
+    }
+    index == parts.len()
 }
 
 /// Compile the installed encoded-ontology slice with strict unsupported handling.
@@ -6045,6 +6282,47 @@ mod tests {
         let mut malformed = declaration();
         malformed.scalar_bytes[5] = 0xff;
         assert!(validate_columns(malformed.borrowed(), EncodedLimits::default()).is_err());
+    }
+
+    #[test]
+    fn encoded_model_scalars_obey_native_model_constraints() {
+        let mut malformed = declaration();
+        malformed.scalar_bytes[0] = b'1';
+        assert_protocol_contains(&malformed, "invalid absolute scheme");
+
+        let mut malformed = declaration();
+        malformed.scalar_bytes[4] = b'%';
+        assert_protocol_contains(&malformed, "invalid percent escape");
+
+        let mut malformed = data_has_value_subclass();
+        let language = malformed.scalar_bytes.len() - 2;
+        malformed.scalar_bytes[language..].copy_from_slice(b"EN");
+        assert_protocol_contains(&malformed, "canonical BCP 47 tag");
+    }
+
+    #[test]
+    fn language_tag_validation_matches_the_model_grammar() {
+        for language in [
+            "en",
+            "zh-hant-cn",
+            "de-CH-1901",
+            "sl-rozaj-biske-1994",
+            "en-gb-oed",
+            "x-private",
+        ] {
+            assert!(valid_language_tag(language), "rejected {language}");
+        }
+        for language in [
+            "",
+            "e",
+            "en-",
+            "en-1901-1901",
+            "en-a-foo-a-bar",
+            "x",
+            "en-x",
+        ] {
+            assert!(!valid_language_tag(language), "accepted {language}");
+        }
     }
 
     #[test]
