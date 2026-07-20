@@ -26,20 +26,43 @@ const COMPONENT_ENUM: u8 = 5;
 const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
-/// Borrowed public encoded-view columns, each exposed as read-only bytes.
+/// Minimal immutable byte-source contract used by both Rust slices and PyO3
+/// read-only buffer cells. Implementations must return one stable byte for the
+/// duration of a validation call.
+pub trait ByteSource: Copy {
+    fn len(self) -> usize;
+    fn byte(self, index: usize) -> Option<u8>;
+
+    fn is_empty(self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl ByteSource for &[u8] {
+    fn len(self) -> usize {
+        <[u8]>::len(self)
+    }
+
+    fn byte(self, index: usize) -> Option<u8> {
+        self.get(index).copied()
+    }
+}
+
+/// Borrowed public encoded-view columns, each exposed through one immutable
+/// byte-source type. No input column is copied by validation.
 #[derive(Clone, Copy, Debug)]
-pub struct EncodedColumns<'a> {
-    pub root_kinds: &'a [u8],
-    pub root_ids: &'a [u8],
-    pub node_tags: &'a [u8],
-    pub node_field_offsets: &'a [u8],
-    pub field_kinds: &'a [u8],
-    pub field_values: &'a [u8],
-    pub field_lengths: &'a [u8],
-    pub item_kinds: &'a [u8],
-    pub item_values: &'a [u8],
-    pub item_lengths: &'a [u8],
-    pub scalar_bytes: &'a [u8],
+pub struct EncodedColumns<B: ByteSource> {
+    pub root_kinds: B,
+    pub root_ids: B,
+    pub node_tags: B,
+    pub node_field_offsets: B,
+    pub field_kinds: B,
+    pub field_values: B,
+    pub field_lengths: B,
+    pub item_kinds: B,
+    pub item_values: B,
+    pub item_lengths: B,
+    pub scalar_bytes: B,
 }
 
 /// Consumer-side safety ceilings applied before permanent compilation.
@@ -60,7 +83,7 @@ impl Default for EncodedLimits {
             max_nodes: 100_000_000,
             max_fields: 400_000_000,
             max_items: 400_000_000,
-            max_scalar_bytes: 8 * 1024 * 1024 * 1024,
+            max_scalar_bytes: usize::try_from(8_589_934_592_u64).unwrap_or(usize::MAX),
             max_work: 2_000_000_000,
         }
     }
@@ -87,7 +110,7 @@ struct DfsFrame {
 }
 
 impl DfsFrame {
-    fn new(node: usize, columns: &EncodedColumns<'_>) -> CoreResult<Self> {
+    fn new<B: ByteSource>(node: usize, columns: &EncodedColumns<B>) -> CoreResult<Self> {
         let field_cursor = usize_at(columns.node_field_offsets, node, "node field offset")?;
         let field_end = usize_at(
             columns.node_field_offsets,
@@ -106,8 +129,8 @@ impl DfsFrame {
 }
 
 /// Validate structural-columns v1 before the private compiler consumes it.
-pub fn validate_columns(
-    columns: EncodedColumns<'_>,
+pub fn validate_columns<B: ByteSource>(
+    columns: EncodedColumns<B>,
     limits: EncodedLimits,
 ) -> CoreResult<ValidatedEncodedColumns> {
     let root_count = aligned_count(columns.root_ids, 4, "root_ids")?;
@@ -190,7 +213,7 @@ pub fn validate_columns(
     let mut scalar_cursor = 0_usize;
     for field in 0..field_count {
         claim_work(&mut work, 1, limits.max_work)?;
-        let kind = columns.field_kinds[field];
+        let kind = byte_at(columns.field_kinds, field, "field kind")?;
         let value = usize_at(columns.field_values, field, "field value")?;
         let length = usize_at(columns.field_lengths, field, "field length")?;
         match kind {
@@ -211,7 +234,7 @@ pub fn validate_columns(
                 for item in value..end {
                     claim_work(&mut work, 1, limits.max_work)?;
                     validate_leaf_component(
-                        columns.item_kinds[item],
+                        byte_at(columns.item_kinds, item, "item kind")?,
                         usize_at(columns.item_values, item, "item value")?,
                         usize_at(columns.item_lengths, item, "item length")?,
                         node_count,
@@ -245,7 +268,7 @@ pub fn validate_columns(
     let mut previous_root = None;
     for root in 0..root_count {
         claim_work(&mut work, 1, limits.max_work)?;
-        let kind = columns.root_kinds[root];
+        let kind = byte_at(columns.root_kinds, root, "root kind")?;
         let identifier = u32_at(columns.root_ids, root, "root ID")?;
         let node = node_index(identifier, node_count)?;
         let tag = u16_at(columns.node_tags, node, "root node tag")?;
@@ -273,8 +296,8 @@ pub fn validate_columns(
     })
 }
 
-fn validate_reachability(
-    columns: &EncodedColumns<'_>,
+fn validate_reachability<B: ByteSource>(
+    columns: &EncodedColumns<B>,
     root_count: usize,
     node_count: usize,
     work: &mut u64,
@@ -302,13 +325,13 @@ fn validate_reachability(
             let child = if frame.item_cursor < frame.item_end {
                 let item = frame.item_cursor;
                 frame.item_cursor += 1;
-                (columns.item_kinds[item] == COMPONENT_NODE)
+                (byte_at(columns.item_kinds, item, "item kind")? == COMPONENT_NODE)
                     .then(|| node_id_at(columns.item_values, item, "item node ID"))
                     .transpose()?
             } else if frame.field_cursor < frame.field_end {
                 let field = frame.field_cursor;
                 frame.field_cursor += 1;
-                match columns.field_kinds[field] {
+                match byte_at(columns.field_kinds, field, "field kind")? {
                     COMPONENT_NODE => {
                         Some(node_id_at(columns.field_values, field, "field node ID")?)
                     }
@@ -356,12 +379,12 @@ fn validate_reachability(
     Ok(())
 }
 
-fn validate_leaf_component(
+fn validate_leaf_component<B: ByteSource>(
     kind: u8,
     value: usize,
     length: usize,
     node_count: usize,
-    scalars: &[u8],
+    scalars: B,
     scalar_cursor: &mut usize,
 ) -> CoreResult<()> {
     match kind {
@@ -391,18 +414,16 @@ fn validate_leaf_component(
             let end = value
                 .checked_add(length)
                 .ok_or_else(|| CoreError::capacity("encoded scalar range overflow"))?;
-            let payload = scalars
-                .get(value..end)
-                .ok_or_else(|| CoreError::protocol("encoded scalar component is out of bounds"))?;
+            if end > scalars.len() {
+                return Err(CoreError::protocol(
+                    "encoded scalar component is out of bounds",
+                ));
+            }
             match kind {
-                COMPONENT_TEXT => {
-                    std::str::from_utf8(payload).map_err(|_| {
-                        CoreError::protocol("encoded text component is not valid UTF-8")
-                    })?;
-                }
+                COMPONENT_TEXT => validate_utf8(scalars, value, end)?,
                 COMPONENT_INTEGER => {
-                    if payload.is_empty()
-                        || (payload.len() > 1 && payload.last().copied() == Some(0))
+                    if length == 0
+                        || (length > 1 && byte_at(scalars, end - 1, "integer scalar")? == 0)
                     {
                         return Err(CoreError::protocol(
                             "encoded integer component is not minimal little-endian",
@@ -410,10 +431,17 @@ fn validate_leaf_component(
                     }
                 }
                 COMPONENT_ENUM => {
-                    if payload.is_empty() || !payload.is_ascii() {
+                    if length == 0 {
                         return Err(CoreError::protocol(
                             "encoded enum component must be nonempty ASCII",
                         ));
+                    }
+                    for index in value..end {
+                        if !byte_at(scalars, index, "enum scalar")?.is_ascii() {
+                            return Err(CoreError::protocol(
+                                "encoded enum component must be nonempty ASCII",
+                            ));
+                        }
                     }
                 }
                 COMPONENT_BYTES => {}
@@ -427,6 +455,93 @@ fn validate_leaf_component(
             ));
         }
         _ => return Err(CoreError::protocol("unknown encoded component kind")),
+    }
+    Ok(())
+}
+
+fn validate_utf8<B: ByteSource>(bytes: B, start: usize, end: usize) -> CoreResult<()> {
+    let mut cursor = start;
+    while cursor < end {
+        let first = byte_at(bytes, cursor, "text scalar")?;
+        cursor += 1;
+        match first {
+            0x00..=0x7f => {}
+            0xc2..=0xdf => {
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            0xe0 => {
+                let second = next_text_byte(bytes, &mut cursor, end)?;
+                if !(0xa0..=0xbf).contains(&second) {
+                    return Err(CoreError::protocol(
+                        "encoded text component is not valid UTF-8",
+                    ));
+                }
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            0xe1..=0xec | 0xee..=0xef => {
+                require_continuation(bytes, &mut cursor, end)?;
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            0xed => {
+                let second = next_text_byte(bytes, &mut cursor, end)?;
+                if !(0x80..=0x9f).contains(&second) {
+                    return Err(CoreError::protocol(
+                        "encoded text component is not valid UTF-8",
+                    ));
+                }
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            0xf0 => {
+                let second = next_text_byte(bytes, &mut cursor, end)?;
+                if !(0x90..=0xbf).contains(&second) {
+                    return Err(CoreError::protocol(
+                        "encoded text component is not valid UTF-8",
+                    ));
+                }
+                require_continuation(bytes, &mut cursor, end)?;
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            0xf1..=0xf3 => {
+                require_continuation(bytes, &mut cursor, end)?;
+                require_continuation(bytes, &mut cursor, end)?;
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            0xf4 => {
+                let second = next_text_byte(bytes, &mut cursor, end)?;
+                if !(0x80..=0x8f).contains(&second) {
+                    return Err(CoreError::protocol(
+                        "encoded text component is not valid UTF-8",
+                    ));
+                }
+                require_continuation(bytes, &mut cursor, end)?;
+                require_continuation(bytes, &mut cursor, end)?;
+            }
+            _ => {
+                return Err(CoreError::protocol(
+                    "encoded text component is not valid UTF-8",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn next_text_byte<B: ByteSource>(bytes: B, cursor: &mut usize, end: usize) -> CoreResult<u8> {
+    if *cursor >= end {
+        return Err(CoreError::protocol(
+            "encoded text component is not valid UTF-8",
+        ));
+    }
+    let byte = byte_at(bytes, *cursor, "text scalar")?;
+    *cursor += 1;
+    Ok(byte)
+}
+
+fn require_continuation<B: ByteSource>(bytes: B, cursor: &mut usize, end: usize) -> CoreResult<()> {
+    if !(0x80..=0xbf).contains(&next_text_byte(bytes, cursor, end)?) {
+        return Err(CoreError::protocol(
+            "encoded text component is not valid UTF-8",
+        ));
     }
     Ok(())
 }
@@ -492,7 +607,13 @@ fn node_index(identifier: u32, node_count: usize) -> CoreResult<usize> {
     Ok(index)
 }
 
-fn aligned_count(bytes: &[u8], width: usize, name: &str) -> CoreResult<usize> {
+fn byte_at<B: ByteSource>(bytes: B, index: usize, name: &str) -> CoreResult<u8> {
+    bytes
+        .byte(index)
+        .ok_or_else(|| CoreError::protocol(format!("encoded {name} is truncated")))
+}
+
+fn aligned_count<B: ByteSource>(bytes: B, width: usize, name: &str) -> CoreResult<usize> {
     if bytes.len() % width != 0 {
         return Err(CoreError::protocol(format!(
             "encoded {name} is not aligned to {width} bytes"
@@ -501,45 +622,53 @@ fn aligned_count(bytes: &[u8], width: usize, name: &str) -> CoreResult<usize> {
     Ok(bytes.len() / width)
 }
 
-fn u16_at(bytes: &[u8], index: usize, name: &str) -> CoreResult<u16> {
+fn u16_at<B: ByteSource>(bytes: B, index: usize, name: &str) -> CoreResult<u16> {
     let start = index
         .checked_mul(2)
         .ok_or_else(|| CoreError::capacity(format!("encoded {name} offset overflow")))?;
-    let raw: [u8; 2] = bytes
-        .get(start..start + 2)
-        .and_then(|value| value.try_into().ok())
-        .ok_or_else(|| CoreError::protocol(format!("encoded {name} is truncated")))?;
+    let raw = [
+        byte_at(bytes, start, name)?,
+        byte_at(bytes, start + 1, name)?,
+    ];
     Ok(u16::from_le_bytes(raw))
 }
 
-fn u32_at(bytes: &[u8], index: usize, name: &str) -> CoreResult<u32> {
+fn u32_at<B: ByteSource>(bytes: B, index: usize, name: &str) -> CoreResult<u32> {
     let start = index
         .checked_mul(4)
         .ok_or_else(|| CoreError::capacity(format!("encoded {name} offset overflow")))?;
-    let raw: [u8; 4] = bytes
-        .get(start..start + 4)
-        .and_then(|value| value.try_into().ok())
-        .ok_or_else(|| CoreError::protocol(format!("encoded {name} is truncated")))?;
+    let raw = [
+        byte_at(bytes, start, name)?,
+        byte_at(bytes, start + 1, name)?,
+        byte_at(bytes, start + 2, name)?,
+        byte_at(bytes, start + 3, name)?,
+    ];
     Ok(u32::from_le_bytes(raw))
 }
 
-fn u64_at(bytes: &[u8], index: usize, name: &str) -> CoreResult<u64> {
+fn u64_at<B: ByteSource>(bytes: B, index: usize, name: &str) -> CoreResult<u64> {
     let start = index
         .checked_mul(8)
         .ok_or_else(|| CoreError::capacity(format!("encoded {name} offset overflow")))?;
-    let raw: [u8; 8] = bytes
-        .get(start..start + 8)
-        .and_then(|value| value.try_into().ok())
-        .ok_or_else(|| CoreError::protocol(format!("encoded {name} is truncated")))?;
+    let raw = [
+        byte_at(bytes, start, name)?,
+        byte_at(bytes, start + 1, name)?,
+        byte_at(bytes, start + 2, name)?,
+        byte_at(bytes, start + 3, name)?,
+        byte_at(bytes, start + 4, name)?,
+        byte_at(bytes, start + 5, name)?,
+        byte_at(bytes, start + 6, name)?,
+        byte_at(bytes, start + 7, name)?,
+    ];
     Ok(u64::from_le_bytes(raw))
 }
 
-fn node_id_at(bytes: &[u8], index: usize, name: &str) -> CoreResult<u32> {
+fn node_id_at<B: ByteSource>(bytes: B, index: usize, name: &str) -> CoreResult<u32> {
     u32::try_from(u64_at(bytes, index, name)?)
         .map_err(|_| CoreError::protocol(format!("encoded {name} exceeds u32")))
 }
 
-fn usize_at(bytes: &[u8], index: usize, name: &str) -> CoreResult<usize> {
+fn usize_at<B: ByteSource>(bytes: B, index: usize, name: &str) -> CoreResult<usize> {
     usize::try_from(u64_at(bytes, index, name)?)
         .map_err(|_| CoreError::capacity(format!("encoded {name} exceeds usize")))
 }
@@ -569,6 +698,19 @@ fn claim_work(work: &mut u64, amount: u64, maximum: u64) -> CoreResult<()> {
 mod tests {
     use super::*;
 
+    #[derive(Clone, Copy)]
+    struct IndexedBytes<'a>(&'a [u8]);
+
+    impl ByteSource for IndexedBytes<'_> {
+        fn len(self) -> usize {
+            self.0.len()
+        }
+
+        fn byte(self, index: usize) -> Option<u8> {
+            self.0.get(index).copied()
+        }
+    }
+
     #[derive(Clone, Debug)]
     struct OwnedColumns {
         root_kinds: Vec<u8>,
@@ -585,19 +727,35 @@ mod tests {
     }
 
     impl OwnedColumns {
-        fn borrowed(&self) -> EncodedColumns<'_> {
+        fn borrowed(&self) -> EncodedColumns<&[u8]> {
             EncodedColumns {
-                root_kinds: &self.root_kinds,
-                root_ids: &self.root_ids,
-                node_tags: &self.node_tags,
-                node_field_offsets: &self.node_field_offsets,
-                field_kinds: &self.field_kinds,
-                field_values: &self.field_values,
-                field_lengths: &self.field_lengths,
-                item_kinds: &self.item_kinds,
-                item_values: &self.item_values,
-                item_lengths: &self.item_lengths,
-                scalar_bytes: &self.scalar_bytes,
+                root_kinds: self.root_kinds.as_slice(),
+                root_ids: self.root_ids.as_slice(),
+                node_tags: self.node_tags.as_slice(),
+                node_field_offsets: self.node_field_offsets.as_slice(),
+                field_kinds: self.field_kinds.as_slice(),
+                field_values: self.field_values.as_slice(),
+                field_lengths: self.field_lengths.as_slice(),
+                item_kinds: self.item_kinds.as_slice(),
+                item_values: self.item_values.as_slice(),
+                item_lengths: self.item_lengths.as_slice(),
+                scalar_bytes: self.scalar_bytes.as_slice(),
+            }
+        }
+
+        fn indexed(&self) -> EncodedColumns<IndexedBytes<'_>> {
+            EncodedColumns {
+                root_kinds: IndexedBytes(&self.root_kinds),
+                root_ids: IndexedBytes(&self.root_ids),
+                node_tags: IndexedBytes(&self.node_tags),
+                node_field_offsets: IndexedBytes(&self.node_field_offsets),
+                field_kinds: IndexedBytes(&self.field_kinds),
+                field_values: IndexedBytes(&self.field_values),
+                field_lengths: IndexedBytes(&self.field_lengths),
+                item_kinds: IndexedBytes(&self.item_kinds),
+                item_values: IndexedBytes(&self.item_values),
+                item_lengths: IndexedBytes(&self.item_lengths),
+                scalar_bytes: IndexedBytes(&self.scalar_bytes),
             }
         }
     }
@@ -683,6 +841,41 @@ mod tests {
         assert_eq!(declaration.node_count, 3);
         assert_eq!(declaration.field_count, 5);
         assert_eq!(declaration.scalar_bytes, 10);
+    }
+
+    #[test]
+    fn indexed_byte_sources_validate_without_materializing_slices() {
+        let owned = declaration();
+        assert_eq!(
+            validate_columns(owned.indexed(), EncodedLimits::default()).unwrap(),
+            validate_columns(owned.borrowed(), EncodedLimits::default()).unwrap()
+        );
+    }
+
+    #[test]
+    fn scalar_validation_accepts_unicode_and_rejects_invalid_utf8() {
+        for valid in ["", "plain", "é", "€", "𐍈"] {
+            validate_utf8(valid.as_bytes(), 0, valid.len()).unwrap();
+        }
+        for invalid in [
+            &[0x80][..],
+            &[0xc0, 0x80],
+            &[0xe0, 0x80, 0x80],
+            &[0xed, 0xa0, 0x80],
+            &[0xf0, 0x80, 0x80, 0x80],
+            &[0xf4, 0x90, 0x80, 0x80],
+            &[0xf5, 0x80, 0x80, 0x80],
+        ] {
+            assert!(validate_utf8(invalid, 0, invalid.len()).is_err());
+        }
+
+        let mut malformed = declaration();
+        malformed.scalar_bytes[0] = 0xff;
+        assert!(validate_columns(malformed.borrowed(), EncodedLimits::default()).is_err());
+
+        let mut malformed = declaration();
+        malformed.scalar_bytes[5] = 0xff;
+        assert!(validate_columns(malformed.borrowed(), EncodedLimits::default()).is_err());
     }
 
     #[test]
