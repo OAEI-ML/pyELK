@@ -210,6 +210,49 @@ def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleT
         native_module.create_session_from_encoded(encoded, 1, "error")
 
 
+def test_hidden_direct_encoded_general_class_axioms_match_scalar(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-general#>) Ontology(<urn:encoded-general>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        Declaration(Class(:D))
+        Declaration(Class(:E))
+        Declaration(ObjectProperty(:p))
+        Declaration(NamedIndividual(:i))
+        EquivalentClasses(
+          ObjectIntersectionOf(:A :B)
+          ObjectSomeValuesFrom(:p ObjectComplementOf(:C))
+          :D
+        )
+        DisjointClasses(ObjectUnionOf(:A :B) ObjectSomeValuesFrom(:p :C))
+        DisjointClasses(:A ObjectComplementOf(:B) ObjectSomeValuesFrom(:p :C))
+        DisjointUnion(
+          :E
+          ObjectIntersectionOf(:A :B)
+          ObjectSomeValuesFrom(:p :C)
+        )
+        ClassAssertion(ObjectUnionOf(:A ObjectHasSelf(:p)) :i)
+        ObjectPropertyDomain(:p ObjectIntersectionOf(:A :B))
+        ObjectPropertyRange(:p ObjectUnionOf(:C ObjectComplementOf(:D)))
+        )"""
+    )
+    direct = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(snapshot, unsupported="error").encode(),
+        1,
+    )
+    try:
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        direct.close()
+        scalar.close()
+
+
 def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
     native_module: ModuleType,
 ) -> None:

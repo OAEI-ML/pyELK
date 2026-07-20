@@ -649,32 +649,23 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
         let result = match tag {
             60 => compile_declaration(node, &columns, &mut transaction),
             61 => compile_named_subclass(node, &columns, &mut transaction),
-            62 => compile_named_equivalence(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            63 => compile_disjoint_named_classes(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            64 => compile_named_disjoint_union(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
+            62 => compile_named_equivalence(node, &columns, &mut transaction),
+            63 => compile_disjoint_named_classes(node, &columns, &mut transaction),
+            64 => compile_named_disjoint_union(node, &columns, &mut transaction),
             70 => compile_named_subproperty(node, &columns, &mut transaction)
                 .map_err(AxiomCompileError::from),
             71 => compile_equivalent_named_properties(node, &columns, &mut transaction)
                 .map_err(AxiomCompileError::from),
-            74 => compile_named_property_domain(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            75 => compile_named_property_range(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
+            74 => compile_named_property_domain(node, &columns, &mut transaction),
+            75 => compile_named_property_range(node, &columns, &mut transaction),
             78 => compile_reflexive_named_property(node, &columns, &mut transaction)
                 .map_err(AxiomCompileError::from),
             82 => compile_transitive_named_property(node, &columns, &mut transaction)
                 .map_err(AxiomCompileError::from),
-            110 => compile_same_named_individuals(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            111 => compile_different_named_individuals(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            112 => compile_named_class_assertion(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            113 => compile_named_object_property_assertion(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
+            110 => compile_same_named_individuals(node, &columns, &mut transaction),
+            111 => compile_different_named_individuals(node, &columns, &mut transaction),
+            112 => compile_named_class_assertion(node, &columns, &mut transaction),
+            113 => compile_named_object_property_assertion(node, &columns, &mut transaction),
             120..=123 => Ok(()),
             tag if unsupported_axiom_feature(tag).is_some() => {
                 let (feature, name) = unsupported_axiom_feature(tag).ok_or_else(|| {
@@ -885,17 +876,6 @@ impl NamedHierarchyBuilder {
         }
     }
 
-    fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
-        let nothing_positive = super_.kind == EntityKind::Class && super_.iri == OWL_NOTHING_IRI;
-        let sub = self.add_named_occurrence(&sub, true, false)?;
-        let super_ = self.add_named_occurrence(&super_, false, true)?;
-        if nothing_positive {
-            self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
-        }
-        self.subclass_axioms.insert((sub, super_));
-        Ok(())
-    }
-
     fn intern_expression(
         &mut self,
         expression: CompilerExpression,
@@ -961,14 +941,31 @@ impl NamedHierarchyBuilder {
         Ok(handle)
     }
 
-    fn add_equivalent_classes(&mut self, members: Vec<Entity>) -> CoreResult<()> {
-        let Some(first) = members.first() else {
+    fn add_equivalent_expressions(&mut self, members: Vec<usize>) -> CoreResult<()> {
+        let Some(first) = members.first().copied() else {
             return Ok(());
         };
-        let first = self.add_named_occurrence(first, true, true)?;
-        for member in members.iter().skip(1) {
-            let member = self.add_named_occurrence(member, true, true)?;
-            self.equivalent_class_axioms.insert((first, member));
+        let first_is_class = matches!(
+            self.expressions.get(first),
+            Some(CompilerExpression::Named(Entity {
+                kind: EntityKind::Class,
+                ..
+            }))
+        );
+        for member in members.into_iter().skip(1) {
+            let member_is_class = matches!(
+                self.expressions.get(member),
+                Some(CompilerExpression::Named(Entity {
+                    kind: EntityKind::Class,
+                    ..
+                }))
+            );
+            self.equivalent_class_axioms
+                .insert(if !first_is_class && member_is_class {
+                    (member, first)
+                } else {
+                    (first, member)
+                });
         }
         Ok(())
     }
@@ -986,19 +983,16 @@ impl NamedHierarchyBuilder {
         Ok(())
     }
 
-    fn add_disjoint(&mut self, members: Vec<Entity>, feature: Option<usize>) -> CoreResult<()> {
+    fn add_disjoint_expressions(
+        &mut self,
+        members: Vec<usize>,
+        feature: Option<usize>,
+    ) -> CoreResult<()> {
         if let Some(index) = feature {
             self.add_feature(index, 1)?;
         }
         if members.len() > 2 {
-            let mut group = Vec::new();
-            group
-                .try_reserve_exact(members.len())
-                .map_err(|_| CoreError::capacity("encoded disjoint group allocation failed"))?;
-            for member in &members {
-                group.push(self.add_named_occurrence(member, true, false)?);
-            }
-            self.disjoint_groups.insert(group);
+            self.disjoint_groups.insert(members);
             return Ok(());
         }
 
@@ -1008,46 +1002,17 @@ impl NamedHierarchyBuilder {
         };
         let bottom = self.add_named_occurrence(&bottom, false, true)?;
         self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
-        for (first_position, first) in members.iter().enumerate() {
-            let first = self.add_named_occurrence(first, true, false)?;
-            for second in members.iter().skip(first_position + 1) {
-                let second = self.add_named_occurrence(second, true, false)?;
+        if let [_, second] = members.as_slice() {
+            increment_occurrence(&mut self.expression_occurrences[*second], false)?;
+        }
+        for (first_position, first) in members.iter().copied().enumerate() {
+            for second in members.iter().copied().skip(first_position + 1) {
                 let intersection = self.intern_expression(
                     CompilerExpression::Intersection(first, second),
                     true,
                     false,
                 )?;
                 self.subclass_axioms.insert((intersection, bottom));
-            }
-        }
-        Ok(())
-    }
-
-    fn add_disjoint_union(&mut self, defined: Entity, members: Vec<Entity>) -> CoreResult<()> {
-        self.add_disjoint(members.clone(), None)?;
-        match members.as_slice() {
-            [] => {
-                let bottom = Entity {
-                    kind: EntityKind::Class,
-                    iri: OWL_NOTHING_IRI.to_owned(),
-                };
-                let defined = self.add_named_occurrence(&defined, false, true)?;
-                let bottom = self.add_named_occurrence(&bottom, false, true)?;
-                self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
-                self.equivalent_class_axioms.insert((defined, bottom));
-            }
-            [member] => {
-                let defined = self.add_named_occurrence(&defined, true, true)?;
-                let member = self.add_named_occurrence(member, true, true)?;
-                self.equivalent_class_axioms.insert((defined, member));
-            }
-            _ => {
-                self.add_feature(FEATURE_DISJOINT_UNION, 1)?;
-                let defined = self.add_named_occurrence(&defined, false, true)?;
-                for member in members {
-                    let member = self.add_named_occurrence(&member, true, false)?;
-                    self.subclass_axioms.insert((member, defined));
-                }
             }
         }
         Ok(())
@@ -1104,50 +1069,6 @@ impl NamedHierarchyBuilder {
         self.add_property_occurrence(&property, true, true)?;
         self.add_feature(FEATURE_OBJECT_PROPERTY_CHAIN, 1)?;
         self.insert_subproperty_rule(vec![property.clone(), property.clone()], property);
-        Ok(())
-    }
-
-    fn add_property_range(&mut self, property: Entity, range: Entity) -> CoreResult<()> {
-        self.add_property_occurrence(&property, true, false)?;
-        let range = self.add_named_occurrence(&range, false, true)?;
-        self.property_ranges.insert((property, range));
-        self.add_feature(FEATURE_OBJECT_PROPERTY_RANGE, 1)
-    }
-
-    fn add_property_domain(&mut self, property: Entity, domain: Entity) -> CoreResult<()> {
-        let thing = Entity {
-            kind: EntityKind::Class,
-            iri: OWL_THING_IRI.to_owned(),
-        };
-        self.add_property_occurrence(&property, true, false)?;
-        let thing = self.add_named_occurrence(&thing, true, false)?;
-        let domain = self.add_named_occurrence(&domain, false, true)?;
-        let existential = self.intern_expression(
-            CompilerExpression::Existential(property, thing),
-            true,
-            false,
-        )?;
-        self.subclass_axioms.insert((existential, domain));
-        Ok(())
-    }
-
-    fn add_object_property_assertion(
-        &mut self,
-        property: Entity,
-        source: Entity,
-        target: Entity,
-    ) -> CoreResult<()> {
-        self.add_feature(FEATURE_OBJECT_PROPERTY_ASSERTION, 1)?;
-        let source = self.add_named_occurrence(&source, true, false)?;
-        self.add_property_occurrence(&property, false, true)?;
-        let target = self.add_named_occurrence(&target, false, true)?;
-        let existential = self.intern_expression(
-            CompilerExpression::Existential(property, target),
-            false,
-            true,
-        )?;
-        self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
-        self.subclass_axioms.insert((source, existential));
         Ok(())
     }
 
@@ -1537,40 +1458,92 @@ fn compile_named_equivalence<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let members = node_collection(node, 0, columns)?
-        .into_iter()
-        .map(|identifier| decode_named_class(identifier, columns))
-        .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_equivalent_classes(members)
+    let identifiers = node_collection(node, 0, columns)?;
+    let mut members = Vec::new();
+    members
+        .try_reserve_exact(identifiers.len())
+        .map_err(|_| CoreError::capacity("encoded equivalent-class allocation failed"))?;
+    for identifier in identifiers {
+        members.push(decode_class_expression(
+            identifier, true, true, columns, builder,
+        )?);
+    }
+    Ok(builder.add_equivalent_expressions(members)?)
 }
 
 fn compile_disjoint_named_classes<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let members = node_collection(node, 0, columns)?
-        .into_iter()
-        .map(|identifier| decode_named_class(identifier, columns))
-        .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_disjoint(members, Some(FEATURE_DISJOINT_CLASSES))
+    let identifiers = node_collection(node, 0, columns)?;
+    let mut members = Vec::new();
+    members
+        .try_reserve_exact(identifiers.len())
+        .map_err(|_| CoreError::capacity("encoded disjoint-class allocation failed"))?;
+    for identifier in identifiers {
+        members.push(decode_class_expression(
+            identifier, true, false, columns, builder,
+        )?);
+    }
+    Ok(builder.add_disjoint_expressions(members, Some(FEATURE_DISJOINT_CLASSES))?)
 }
 
 fn compile_named_disjoint_union<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let defined = decode_named_class(node_field(node, 0, columns)?, columns)?;
-    let members = node_collection(node, 1, columns)?
-        .into_iter()
-        .map(|identifier| decode_named_class(identifier, columns))
-        .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_disjoint_union(defined, members)
+    let defined_identifier = node_field(node, 0, columns)?;
+    let member_identifiers = node_collection(node, 1, columns)?;
+    let mut disjoint_members = Vec::new();
+    disjoint_members
+        .try_reserve_exact(member_identifiers.len())
+        .map_err(|_| CoreError::capacity("encoded disjoint-union allocation failed"))?;
+    for identifier in &member_identifiers {
+        disjoint_members.push(decode_class_expression(
+            *identifier,
+            true,
+            false,
+            columns,
+            builder,
+        )?);
+    }
+    builder.add_disjoint_expressions(disjoint_members, None)?;
+
+    match member_identifiers.as_slice() {
+        [] => {
+            let defined =
+                decode_class_expression(defined_identifier, false, true, columns, builder)?;
+            let bottom = Entity {
+                kind: EntityKind::Class,
+                iri: OWL_NOTHING_IRI.to_owned(),
+            };
+            let bottom = builder.add_named_occurrence(&bottom, false, true)?;
+            builder.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+            builder.equivalent_class_axioms.insert((defined, bottom));
+        }
+        [member] => {
+            let defined =
+                decode_class_expression(defined_identifier, true, true, columns, builder)?;
+            let member = decode_class_expression(*member, true, true, columns, builder)?;
+            builder.add_equivalent_expressions(vec![defined, member])?;
+        }
+        _ => {
+            builder.add_feature(FEATURE_DISJOINT_UNION, 1)?;
+            let defined =
+                decode_class_expression(defined_identifier, false, true, columns, builder)?;
+            for member in member_identifiers {
+                let member = decode_class_expression(member, true, false, columns, builder)?;
+                builder.subclass_axioms.insert((member, defined));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn compile_named_subproperty<B: ByteSource>(
@@ -1601,22 +1574,38 @@ fn compile_named_property_domain<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-    let domain = decode_named_class(node_field(node, 1, columns)?, columns)?;
-    builder.add_property_domain(property, domain)
+    let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
+    builder.add_property_occurrence(&property, true, false)?;
+    let thing = Entity {
+        kind: EntityKind::Class,
+        iri: OWL_THING_IRI.to_owned(),
+    };
+    let thing = builder.add_named_occurrence(&thing, true, false)?;
+    let existential = builder.intern_expression(
+        CompilerExpression::Existential(property, thing),
+        true,
+        false,
+    )?;
+    let domain =
+        decode_class_expression(node_field(node, 1, columns)?, false, true, columns, builder)?;
+    builder.subclass_axioms.insert((existential, domain));
+    Ok(())
 }
 
 fn compile_named_property_range<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-    let range = decode_named_class(node_field(node, 1, columns)?, columns)?;
-    builder.add_property_range(property, range)
+    let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
+    builder.add_property_occurrence(&property, true, false)?;
+    let range =
+        decode_class_expression(node_field(node, 1, columns)?, false, true, columns, builder)?;
+    builder.property_ranges.insert((property, range));
+    Ok(builder.add_feature(FEATURE_OBJECT_PROPERTY_RANGE, 1)?)
 }
 
 fn compile_reflexive_named_property<B: ByteSource>(
@@ -1643,49 +1632,72 @@ fn compile_named_class_assertion<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let class = decode_named_class(node_field(node, 0, columns)?, columns)?;
-    let individual = decode_named_individual(node_field(node, 1, columns)?, columns)?;
-    builder.add_subclass(individual, class)
+    let individual = decode_individual_for_axiom(node_field(node, 1, columns)?, columns)?;
+    let individual = builder.add_named_occurrence(&individual, true, false)?;
+    let class =
+        decode_class_expression(node_field(node, 0, columns)?, false, true, columns, builder)?;
+    builder.subclass_axioms.insert((individual, class));
+    Ok(())
 }
 
 fn compile_named_object_property_assertion<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 3, columns)?;
-    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-    let source = decode_named_individual(node_field(node, 1, columns)?, columns)?;
-    let target = decode_named_individual(node_field(node, 2, columns)?, columns)?;
-    builder.add_object_property_assertion(property, source, target)
+    let source = decode_individual_for_axiom(node_field(node, 1, columns)?, columns)?;
+    let source = builder.add_named_occurrence(&source, true, false)?;
+    let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
+    builder.add_property_occurrence(&property, false, true)?;
+    let target = decode_individual_for_axiom(node_field(node, 2, columns)?, columns)?;
+    let target = builder.add_named_occurrence(&target, false, true)?;
+    let existential = builder.intern_expression(
+        CompilerExpression::Existential(property, target),
+        false,
+        true,
+    )?;
+    builder.add_feature(FEATURE_OBJECT_PROPERTY_ASSERTION, 1)?;
+    builder.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
+    builder.subclass_axioms.insert((source, existential));
+    Ok(())
 }
 
 fn compile_same_named_individuals<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let members = node_collection(node, 0, columns)?
-        .into_iter()
-        .map(|identifier| decode_named_individual(identifier, columns))
-        .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_same_individuals(members)
+    let identifiers = node_collection(node, 0, columns)?;
+    let mut members = Vec::new();
+    members
+        .try_reserve_exact(identifiers.len())
+        .map_err(|_| CoreError::capacity("encoded same-individual allocation failed"))?;
+    for identifier in identifiers {
+        members.push(decode_individual_for_axiom(identifier, columns)?);
+    }
+    Ok(builder.add_same_individuals(members)?)
 }
 
 fn compile_different_named_individuals<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let members = node_collection(node, 0, columns)?
-        .into_iter()
-        .map(|identifier| decode_named_individual(identifier, columns))
-        .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_disjoint(members, Some(FEATURE_DIFFERENT_INDIVIDUALS))
+    let identifiers = node_collection(node, 0, columns)?;
+    let mut members = Vec::new();
+    members
+        .try_reserve_exact(identifiers.len())
+        .map_err(|_| CoreError::capacity("encoded different-individual allocation failed"))?;
+    for identifier in identifiers {
+        let individual = decode_individual_for_axiom(identifier, columns)?;
+        members.push(builder.add_named_occurrence(&individual, true, false)?);
+    }
+    Ok(builder.add_disjoint_expressions(members, Some(FEATURE_DIFFERENT_INDIVIDUALS))?)
 }
 
 fn decode_named_class<B: ByteSource>(
