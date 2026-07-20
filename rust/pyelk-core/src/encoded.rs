@@ -41,6 +41,7 @@ const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
 const FEATURE_DISJOINT_CLASSES: usize = 16;
 const FEATURE_DISJOINT_UNION: usize = 19;
+const FEATURE_OBJECT_HAS_SELF_NEGATIVE: usize = 33;
 const FEATURE_OBJECT_HAS_VALUE_POSITIVE: usize = 34;
 const FEATURE_OBJECT_PROPERTY_ASSERTION: usize = 39;
 const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
@@ -677,12 +678,80 @@ impl NamedHierarchyBuilder {
     }
 
     fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
-        self.add_named_occurrence(&sub, true, false)?;
-        self.add_named_occurrence(&super_, false, true)?;
-        self.subclass_axioms.insert((
+        self.add_compiled_subclass(
             CompilerExpression::Named(sub),
             CompilerExpression::Named(super_),
-        ));
+        )
+    }
+
+    fn add_compiled_subclass(
+        &mut self,
+        sub: CompilerExpression,
+        super_: CompilerExpression,
+    ) -> CoreResult<()> {
+        self.add_compiler_expression_occurrence(&sub, true, false)?;
+        self.add_compiler_expression_occurrence(&super_, false, true)?;
+        self.subclass_axioms.insert((sub, super_));
+        Ok(())
+    }
+
+    fn add_compiler_expression_occurrence(
+        &mut self,
+        expression: &CompilerExpression,
+        negative: bool,
+        positive: bool,
+    ) -> CoreResult<()> {
+        match expression {
+            CompilerExpression::Named(entity) => {
+                self.add_named_occurrence(entity, negative, positive)?;
+                if positive && entity.kind == EntityKind::Class && entity.iri == OWL_NOTHING_IRI {
+                    self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+                }
+            }
+            CompilerExpression::Existential(property, filler) => {
+                self.add_property_occurrence(property, negative, positive)?;
+                self.add_named_occurrence(filler, negative, positive)?;
+                if positive && filler.kind == EntityKind::Class && filler.iri == OWL_NOTHING_IRI {
+                    self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+                }
+                if positive && filler.kind == EntityKind::NamedIndividual {
+                    self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
+                }
+                let occurrence = self
+                    .existential_occurrences
+                    .entry((property.clone(), filler.clone()))
+                    .or_default();
+                if negative {
+                    increment_occurrence(occurrence, false)?;
+                }
+                if positive {
+                    increment_occurrence(occurrence, true)?;
+                }
+            }
+            CompilerExpression::HasSelf(property) => {
+                self.add_property_occurrence(property, negative, positive)?;
+                {
+                    let occurrence = self
+                        .has_self_occurrences
+                        .entry(property.clone())
+                        .or_default();
+                    if negative {
+                        increment_occurrence(occurrence, false)?;
+                    }
+                    if positive {
+                        increment_occurrence(occurrence, true)?;
+                    }
+                }
+                if negative {
+                    self.add_feature(FEATURE_OBJECT_HAS_SELF_NEGATIVE, 1)?;
+                }
+            }
+            CompilerExpression::Intersection(_, _) => {
+                return Err(CoreError::internal(
+                    "general encoded intersection conversion is not installed",
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -1226,9 +1295,9 @@ fn compile_named_subclass<B: ByteSource>(
     builder: &mut NamedHierarchyBuilder,
 ) -> CoreResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let sub = decode_named_class(node_field(node, 0, columns)?, columns)?;
-    let super_ = decode_named_class(node_field(node, 1, columns)?, columns)?;
-    builder.add_subclass(sub, super_)
+    let sub = decode_simple_class_expression(node_field(node, 0, columns)?, columns)?;
+    let super_ = decode_simple_class_expression(node_field(node, 1, columns)?, columns)?;
+    builder.add_compiled_subclass(sub, super_)
 }
 
 fn compile_named_equivalence<B: ByteSource>(
@@ -1397,6 +1466,31 @@ fn decode_named_class<B: ByteSource>(
         ));
     }
     Ok(entity)
+}
+
+fn decode_simple_class_expression<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<CompilerExpression> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    match u16_at(columns.node_tags, node, "class-expression node tag")? {
+        2 => Ok(CompilerExpression::Named(decode_named_class(
+            identifier, columns,
+        )?)),
+        34 => {
+            let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+            let filler = decode_named_class(node_field(node, 1, columns)?, columns)?;
+            Ok(CompilerExpression::Existential(property, filler))
+        }
+        37 => {
+            let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+            Ok(CompilerExpression::HasSelf(property))
+        }
+        tag => Err(CoreError::invalid(format!(
+            "encoded named-hierarchy compiler does not support class-expression tag {tag}"
+        ))),
+    }
 }
 
 fn decode_named_individual<B: ByteSource>(
@@ -3146,6 +3240,64 @@ mod tests {
         }
     }
 
+    fn named_existential_superclass() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[8]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 34, 61]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 11, 14]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 1, 20, 2, 25, 3, 6, 5, 4, 7, 0]),
+            field_lengths: le64(&[5, 5, 5, 5, 0, 5, 0, 15, 0, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:Burn:pclassclassobject_property".to_vec(),
+        }
+    }
+
+    fn named_has_self_subclass() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[6]),
+            node_tags: le16(&[1, 1, 2, 2, 37, 61]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 7, 10]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 4, 5, 3, 0]),
+            field_lengths: le64(&[5, 5, 5, 0, 15, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:pclassobject_property".to_vec(),
+        }
+    }
+
     fn named_class_assertion() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -3916,6 +4068,45 @@ mod tests {
             .unwrap(),
             compiled
         );
+    }
+
+    #[test]
+    fn named_existential_superclass_propagates_positive_polarity() {
+        let compiled = compile_named_hierarchy(
+            named_existential_superclass().borrowed(),
+            EncodedLimits::default(),
+            [20; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[4].tag,
+            ExpressionTag::ObjectSomeValuesFrom
+        );
+        assert_eq!(compiled.expressions[4].arguments, [6, 3]);
+        assert_eq!(compiled.subclass_axioms, vec![(2, 4)]);
+        assert_eq!(compiled.expression_occurrences[2].negative, 1);
+        assert_eq!(compiled.expression_occurrences[3].positive, 1);
+        assert_eq!(compiled.expression_occurrences[4].positive, 1);
+        assert_eq!(compiled.property_occurrences[2].positive, 1);
+    }
+
+    #[test]
+    fn named_has_self_subclass_tracks_negative_incompleteness() {
+        let compiled = compile_named_hierarchy(
+            named_has_self_subclass().borrowed(),
+            EncodedLimits::default(),
+            [21; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.expressions[3].tag, ExpressionTag::ObjectHasSelf);
+        assert_eq!(compiled.expressions[3].arguments, [5]);
+        assert_eq!(compiled.subclass_axioms, vec![(3, 2)]);
+        assert_eq!(compiled.expression_occurrences[2].positive, 1);
+        assert_eq!(compiled.expression_occurrences[3].negative, 1);
+        assert_eq!(compiled.property_occurrences[2].negative, 1);
+        assert_eq!(compiled.feature_counts[FEATURE_OBJECT_HAS_SELF_NEGATIVE], 1);
     }
 
     #[test]
