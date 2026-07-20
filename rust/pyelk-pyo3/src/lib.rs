@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 use std::any::Any;
+use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex};
 
@@ -10,7 +11,7 @@ use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use pyelk_core::encoded::{
     ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedLimits, EncodedUnsupportedPolicy,
-    compile_encoded_hierarchy_with_policy,
+    compile_encoded_hierarchy_with_policy, validate_columns,
 };
 use pyelk_core::wire::{encode_query, encode_realization, encode_taxonomy};
 use pyelk_core::{
@@ -76,6 +77,15 @@ struct EncodedIngestionMetrics {
     buffer_count: u64,
     buffer_bytes: u64,
     zero_copy_buffers: u64,
+    segment_count: u64,
+    referenced_view_count: u64,
+}
+
+struct ValidatedEncodedInput<'py> {
+    bindings: EncodedBufferBindings<'py>,
+    source_parts: EncodedSourceParts,
+    segment_count: u64,
+    referenced_view_count: u64,
 }
 
 struct SessionState {
@@ -240,6 +250,11 @@ impl NativeSession {
             result.set_item("encoded_buffer_count", metrics.buffer_count)?;
             result.set_item("encoded_buffer_bytes", metrics.buffer_bytes)?;
             result.set_item("encoded_zero_copy_buffers", metrics.zero_copy_buffers)?;
+            result.set_item("encoded_segment_count", metrics.segment_count)?;
+            result.set_item(
+                "encoded_referenced_view_count",
+                metrics.referenced_view_count,
+            )?;
             result.set_item(
                 "encoded_indexed_buffer_count",
                 metrics.buffer_count - metrics.zero_copy_buffers,
@@ -293,7 +308,8 @@ fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
 
 /// Coarse encoded-view compiler entry point retained behind absent capability advertising.
 ///
-/// This first executable handoff accepts only a validated direct segment.  Overlay, composite,
+/// This executable handoff accepts validated direct segments and no-op overlay chains that retain
+/// one referenced source without flattening it.  Selected/delta overlays, composites,
 /// mmap-lifetime, exhaustive-constructor, and performance gates remain release blockers, so
 /// `encoded_view_schemas()` intentionally stays empty.
 #[pyfunction]
@@ -321,19 +337,20 @@ fn create_session_from_encoded(
         _ => unreachable!("unsupported policy was validated above"),
     };
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let (bindings, source_parts) = validate_direct_encoded_input(encoded_view)?;
-        let columns = bindings.columns()?;
-        let metrics = encoded_ingestion_metrics(columns)?;
+        let input = validate_encoded_input(encoded_view)?;
+        let columns = input.bindings.columns()?;
+        let metrics =
+            encoded_ingestion_metrics(columns, input.segment_count, input.referenced_view_count)?;
         let mut compilation =
             compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?;
         let compatibility_spelling =
             compatibility_spelling_digest(&compilation.compatibility_observations)?;
         compilation.ontology.source_fingerprint = encoded_source_fingerprint(
             py,
-            &source_parts.logical,
-            &source_parts.signature,
+            &input.source_parts.logical,
+            &input.source_parts.signature,
             unsupported,
-            source_parts.model_schema,
+            input.source_parts.model_schema,
             &compatibility_spelling,
         )?;
         Ok((
@@ -428,6 +445,8 @@ impl<'py> EncodedBufferBinding<'py> {
 
 fn encoded_ingestion_metrics(
     columns: EncodedColumns<BorrowedPyBytes<'_, '_>>,
+    segment_count: u64,
+    referenced_view_count: u64,
 ) -> CoreResult<EncodedIngestionMetrics> {
     let buffers = [
         columns.root_kinds,
@@ -457,12 +476,125 @@ fn encoded_ingestion_metrics(
         buffer_count: ENCODED_BUFFER_COUNT as u64,
         buffer_bytes,
         zero_copy_buffers,
+        segment_count,
+        referenced_view_count,
     })
 }
 
-fn validate_direct_encoded_input<'py>(
+fn validate_encoded_input<'py>(
     encoded_view: &Bound<'py, PyAny>,
-) -> CoreResult<(EncodedBufferBindings<'py>, EncodedSourceParts)> {
+) -> CoreResult<ValidatedEncodedInput<'py>> {
+    let (top_owner, model_schema) = validate_encoded_envelope(encoded_view)?;
+    let logical = read_fingerprint(&top_owner, "logical_fingerprint")?;
+    let signature = read_fingerprint(&top_owner, "signature_fingerprint")?;
+    let source_parts = EncodedSourceParts {
+        logical,
+        signature,
+        model_schema,
+    };
+
+    let mut current = encoded_view.clone();
+    let mut seen = BTreeSet::new();
+    let mut segment_count = 0_u64;
+    let mut referenced_view_count = 0_u64;
+    loop {
+        if !seen.insert(current.as_ptr() as usize) {
+            return Err(CoreError::protocol(
+                "encoded structural segment graph is cyclic",
+            ));
+        }
+        if seen.len() > 256 {
+            return Err(CoreError::capacity(
+                "encoded structural overlay depth exceeds the consumer limit",
+            ));
+        }
+        let (owner, current_model_schema) = validate_encoded_envelope(&current)?;
+        if current_model_schema != model_schema {
+            return Err(CoreError::protocol(
+                "referenced encoded view model schema differs from the top view",
+            ));
+        }
+        let bindings = EncodedBufferBindings::from_view(&current)?;
+        let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
+        let raw_segments = required_attribute(&current, "segments")?;
+        let segments = raw_segments.cast::<PyTuple>().map_err(|_| {
+            CoreError::protocol("encoded structural view segments must be an exact tuple")
+        })?;
+        segment_count =
+            segment_count
+                .checked_add(u64::try_from(segments.len()).map_err(|_| {
+                    CoreError::capacity("encoded structural segment count exceeds u64")
+                })?)
+                .ok_or_else(|| CoreError::capacity("encoded structural segment count overflow"))?;
+
+        if segments.len() != 1 {
+            return Err(CoreError::invalid(
+                "encoded compiler slice currently accepts direct or no-op overlay segments",
+            ));
+        }
+        let segment = segments
+            .get_item(0)
+            .map_err(|_| CoreError::protocol("encoded structural segment is inaccessible"))?;
+        let role = exact_nonnegative_integer(
+            &required_attribute(&segment, "role")?,
+            "encoded segment role",
+        )?;
+        let posting_mode = exact_nonnegative_integer(
+            &required_attribute(&segment, "posting_mode")?,
+            "encoded segment posting_mode",
+        )?;
+        match (role, posting_mode) {
+            (1, 0) => {
+                validate_direct_segment(&current, &owner)?;
+                return Ok(ValidatedEncodedInput {
+                    bindings,
+                    source_parts,
+                    segment_count,
+                    referenced_view_count,
+                });
+            }
+            (2, 0) => {
+                if validated.root_count != 0 {
+                    return Err(CoreError::protocol(
+                        "no-op overlay segment must not carry local roots",
+                    ));
+                }
+                validate_empty_segment_bytes(&segment, "root_ids")?;
+                validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
+                if !required_attribute(&segment, "member_token")?.is_none() {
+                    return Err(CoreError::protocol(
+                        "overlay base segment must not carry a member token",
+                    ));
+                }
+                let source = required_attribute(&segment, "source")?;
+                if source.is_none() {
+                    return Err(CoreError::protocol(
+                        "overlay base segment must reference a source view",
+                    ));
+                }
+                let source_owner = required_attribute(&source, "owner")?;
+                if !required_attribute(&segment, "owner")?.is(&source_owner) {
+                    return Err(CoreError::protocol(
+                        "overlay base segment owner differs from its source owner",
+                    ));
+                }
+                referenced_view_count = referenced_view_count
+                    .checked_add(1)
+                    .ok_or_else(|| CoreError::capacity("encoded referenced-view count overflow"))?;
+                current = source;
+            }
+            _ => {
+                return Err(CoreError::invalid(
+                    "encoded compiler slice currently accepts direct or no-op overlay segments",
+                ));
+            }
+        }
+    }
+}
+
+fn validate_encoded_envelope<'py>(
+    encoded_view: &Bound<'py, PyAny>,
+) -> CoreResult<(Bound<'py, PyAny>, u64)> {
     let schema_name = required_attribute(encoded_view, "schema_name")?
         .extract::<String>()
         .map_err(|_| CoreError::protocol("encoded view schema_name must be text"))?;
@@ -511,24 +643,10 @@ fn validate_direct_encoded_input<'py>(
         ));
     }
 
-    let structural = read_fingerprint(encoded_view, "structural_fingerprint")?;
+    let _structural = read_fingerprint(encoded_view, "structural_fingerprint")?;
     let owner = required_attribute(encoded_view, "owner")?;
     validate_owner_capabilities(&owner, model_schema)?;
-    validate_direct_segment(encoded_view, &owner)?;
-    let logical = read_fingerprint(&owner, "logical_fingerprint")?;
-    let signature = read_fingerprint(&owner, "signature_fingerprint")?;
-
-    // The encoded structural fingerprint is a required owner/segment identity even though the
-    // private semantic cache fingerprint intentionally follows the scalar logical/signature key.
-    let _ = structural;
-    Ok((
-        EncodedBufferBindings::from_view(encoded_view)?,
-        EncodedSourceParts {
-            logical,
-            signature,
-            model_schema,
-        },
-    ))
+    Ok((owner, model_schema))
 }
 
 fn validate_owner_capabilities(owner: &Bound<'_, PyAny>, model_schema: u64) -> CoreResult<()> {
@@ -596,6 +714,16 @@ fn validate_direct_segment(
                 "encoded direct segment {name} must be empty"
             )));
         }
+    }
+    Ok(())
+}
+
+fn validate_empty_segment_bytes(segment: &Bound<'_, PyAny>, name: &str) -> CoreResult<()> {
+    let value = required_attribute(segment, name)?;
+    if !borrowed_py_bytes(&value, None, name)?.is_empty() {
+        return Err(CoreError::protocol(format!(
+            "encoded segment {name} must be empty"
+        )));
     }
     Ok(())
 }

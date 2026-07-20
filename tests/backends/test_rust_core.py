@@ -114,6 +114,43 @@ def _encoded_wrapper(encoded: Any, **changes: object) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
+def _noop_overlay_encoded(source: Any, encoded_source: Any) -> tuple[Any, Any]:
+    import pyowl_core as owl
+    from pyowl_core.backends import native_views
+
+    _empty_snapshot, empty = _direct_encoded_snapshot(b"Ontology(<urn:encoded-empty>)")
+    overlay = owl.apply_delta(source, owl.OntologyDelta())
+    segment = native_views.EncodedStructuralSegmentV1(
+        2,
+        encoded_source.owner,
+        encoded_source,
+        0,
+        memoryview(b""),
+        memoryview(b""),
+        None,
+        encoded_source,
+    )
+    segments = (segment,)
+    candidate = SimpleNamespace(
+        schema_name=empty.schema_name,
+        schema_version=empty.schema_version,
+        model_schema=empty.model_schema,
+        owner=overlay,
+        buffers=empty.buffers,
+        descriptor=empty.descriptor,
+        structural_fingerprint=native_views._fingerprint(empty.buffers, segments),
+        segments=segments,
+        scope=empty.scope,
+        document_key=empty.document_key,
+    )
+    return overlay, native_views.validate_encoded_structural_view_v1(
+        candidate,
+        expected_owner=overlay,
+        expected_scope=empty.scope,
+        expected_document_key=empty.document_key,
+    )
+
+
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
     assert native_module.implementation_version() == "0.1.0.dev0"
@@ -174,6 +211,69 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
     finally:
         direct.close()
         scalar.close()
+
+
+def test_hidden_noop_overlay_chain_reuses_direct_source_without_flattening(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    snapshot, direct_encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-overlay#>) Ontology(<urn:encoded-overlay>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(ObjectProperty(:p))
+        SubClassOf(:A ObjectSomeValuesFrom(:p :B))
+        )"""
+    )
+    first_overlay, first_encoded = _noop_overlay_encoded(snapshot, direct_encoded)
+    second_overlay, second_encoded = _noop_overlay_encoded(first_overlay, first_encoded)
+    native = native_module.create_session_from_encoded(second_encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(second_overlay, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 3
+        assert diagnostics["encoded_referenced_view_count"] == 2
+        assert diagnostics["encoded_buffer_bytes"] == sum(
+            value.nbytes for value in direct_encoded.buffers.values()
+        )
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_private_ir_bytes"] == 0
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
+def test_hidden_overlay_slice_rejects_selected_or_local_base_segments(
+    native_module: ModuleType,
+) -> None:
+    snapshot, direct_encoded = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-overlay:A>)))"
+    )
+    _overlay, encoded = _noop_overlay_encoded(snapshot, direct_encoded)
+    base = encoded.segments[0]
+    selected = SimpleNamespace(
+        role=base.role,
+        owner=base.owner,
+        source=base.source,
+        posting_mode=2,
+        root_ids=memoryview((1).to_bytes(4, "little")),
+        anonymous_scope_map=base.anonymous_scope_map,
+        member_token=base.member_token,
+    )
+    with pytest.raises(ValueError, match=r"direct or no-op overlay"):
+        native_module.create_session_from_encoded(
+            _encoded_wrapper(encoded, segments=(selected,)), 1, "error"
+        )
+
+    with pytest.raises(ValueError, match=r"local roots"):
+        native_module.create_session_from_encoded(
+            _encoded_wrapper(encoded, buffers=direct_encoded.buffers), 1, "error"
+        )
 
 
 def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleType) -> None:
