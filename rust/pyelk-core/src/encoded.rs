@@ -349,6 +349,12 @@ impl From<CoreError> for AxiomCompileError {
 
 type AxiomCompileResult<T> = Result<T, AxiomCompileError>;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct AnnotatedAxiomState {
+    has_unannotated: bool,
+    compiled: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct DfsFrame {
     node: usize,
@@ -622,6 +628,8 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
     unsupported: EncodedUnsupportedPolicy,
 ) -> CoreResult<Ontology> {
     let validated = validate_columns(columns, limits)?;
+    let mut annotated_axioms = annotated_axiom_states(&columns, validated.root_count)?;
+    let mut observed_axiom_roots = BTreeSet::new();
     let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
     let mut transaction = NamedHierarchyBuilder::transaction();
     for root in 0..validated.root_count {
@@ -645,6 +653,19 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
             return Err(CoreError::internal(
                 "validated encoded root has an unexpected category",
             ));
+        }
+        if !observed_axiom_roots.insert(identifier) {
+            continue;
+        }
+        if !(120..=123).contains(&tag) && annotation_count(node, &columns)? != 0 {
+            let key = stripped_axiom_key(node, &columns)?;
+            let state = annotated_axioms.get_mut(&key).ok_or_else(|| {
+                CoreError::internal("annotated encoded axiom lost its deduplication state")
+            })?;
+            if state.has_unannotated || state.compiled {
+                continue;
+            }
+            state.compiled = true;
         }
         let result = match tag {
             60 => compile_declaration(node, &columns, &mut transaction),
@@ -683,6 +704,115 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
         }
     }
     builder.freeze(source_fingerprint)
+}
+
+fn annotated_axiom_states<B: ByteSource>(
+    columns: &EncodedColumns<B>,
+    root_count: usize,
+) -> CoreResult<BTreeMap<Vec<u64>, AnnotatedAxiomState>> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let mut states = BTreeMap::new();
+    for root in 0..root_count {
+        if byte_at(columns.root_kinds, root, "root kind")? != ROOT_AXIOM {
+            continue;
+        }
+        let identifier = u32_at(columns.root_ids, root, "root ID")?;
+        let node = node_index(identifier, node_count)?;
+        let tag = u16_at(columns.node_tags, node, "root node tag")?;
+        if (120..=123).contains(&tag) || annotation_count(node, columns)? == 0 {
+            continue;
+        }
+        states
+            .entry(stripped_axiom_key(node, columns)?)
+            .or_insert_with(AnnotatedAxiomState::default);
+    }
+    if states.is_empty() {
+        return Ok(states);
+    }
+    for root in 0..root_count {
+        if byte_at(columns.root_kinds, root, "root kind")? != ROOT_AXIOM {
+            continue;
+        }
+        let identifier = u32_at(columns.root_ids, root, "root ID")?;
+        let node = node_index(identifier, node_count)?;
+        let tag = u16_at(columns.node_tags, node, "root node tag")?;
+        if (120..=123).contains(&tag) || annotation_count(node, columns)? != 0 {
+            continue;
+        }
+        if let Some(state) = states.get_mut(&stripped_axiom_key(node, columns)?) {
+            state.has_unannotated = true;
+        }
+    }
+    Ok(states)
+}
+
+fn stripped_axiom_key<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Vec<u64>> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let annotation = annotation_field(node, columns)?;
+    let field_count = annotation
+        .checked_sub(start)
+        .ok_or_else(|| CoreError::internal("encoded axiom field range is reversed"))?;
+    let base_words = field_count
+        .checked_mul(3)
+        .and_then(|count| count.checked_add(2))
+        .ok_or_else(|| CoreError::capacity("encoded axiom key size overflow"))?;
+    let mut key = Vec::new();
+    key.try_reserve_exact(base_words)
+        .map_err(|_| CoreError::capacity("encoded axiom key allocation failed"))?;
+    key.push(u64::from(u16_at(
+        columns.node_tags,
+        node,
+        "axiom node tag",
+    )?));
+    key.push(
+        u64::try_from(field_count)
+            .map_err(|_| CoreError::capacity("encoded axiom field count exceeds u64"))?,
+    );
+    for field in start..annotation {
+        let kind = byte_at(columns.field_kinds, field, "axiom field kind")?;
+        let value = u64_at(columns.field_values, field, "axiom field value")?;
+        let length = usize_at(columns.field_lengths, field, "axiom field length")?;
+        key.push(u64::from(kind));
+        key.push(
+            u64::try_from(length)
+                .map_err(|_| CoreError::capacity("encoded axiom field length exceeds u64"))?,
+        );
+        match kind {
+            COMPONENT_NODE => key.push(value),
+            COMPONENT_SET | COMPONENT_SEQUENCE => {
+                let item_start = usize::try_from(value)
+                    .map_err(|_| CoreError::capacity("encoded axiom item offset exceeds usize"))?;
+                let item_end = item_start
+                    .checked_add(length)
+                    .ok_or_else(|| CoreError::capacity("encoded axiom item range overflow"))?;
+                let item_words = length
+                    .checked_mul(3)
+                    .ok_or_else(|| CoreError::capacity("encoded axiom item key size overflow"))?;
+                key.try_reserve(item_words)
+                    .map_err(|_| CoreError::capacity("encoded axiom item key allocation failed"))?;
+                for item in item_start..item_end {
+                    let item_kind = byte_at(columns.item_kinds, item, "axiom item kind")?;
+                    if item_kind != COMPONENT_NODE {
+                        return Err(CoreError::internal(
+                            "encoded logical axiom collection contains a scalar item",
+                        ));
+                    }
+                    key.push(u64::from(item_kind));
+                    key.push(u64_at(columns.item_values, item, "axiom item value")?);
+                    key.push(u64_at(columns.item_lengths, item, "axiom item length")?);
+                }
+            }
+            _ => {
+                return Err(CoreError::internal(
+                    "encoded logical axiom contains a scalar field",
+                ));
+            }
+        }
+    }
+    Ok(key)
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1432,7 +1562,7 @@ fn compile_declaration<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     builder.add_declaration(decode_entity(node_field(node, 0, columns)?, columns)?)
 }
 
@@ -1441,7 +1571,7 @@ fn compile_named_subclass<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 2, columns)?;
+    accept_annotations(node, 2, columns)?;
     let sub =
         decode_class_expression(node_field(node, 0, columns)?, true, false, columns, builder)?;
     let super_ =
@@ -1455,7 +1585,7 @@ fn compile_named_equivalence<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let identifiers = node_collection(node, 0, columns)?;
     let mut members = Vec::new();
     members
@@ -1474,7 +1604,7 @@ fn compile_disjoint_named_classes<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let identifiers = node_collection(node, 0, columns)?;
     let mut members = Vec::new();
     members
@@ -1493,7 +1623,7 @@ fn compile_named_disjoint_union<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 2, columns)?;
+    accept_annotations(node, 2, columns)?;
     let defined_identifier = node_field(node, 0, columns)?;
     let member_identifiers = node_collection(node, 1, columns)?;
     let mut disjoint_members = Vec::new();
@@ -1547,7 +1677,7 @@ fn compile_named_subproperty<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 2, columns)?;
+    accept_annotations(node, 2, columns)?;
     let chain = decode_property_chain_for_axiom(node_field(node, 0, columns)?, columns)?;
     let super_ = decode_object_property_for_axiom(node_field(node, 1, columns)?, columns)?;
     Ok(builder.add_subproperty(chain, super_)?)
@@ -1558,7 +1688,7 @@ fn compile_equivalent_named_properties<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let identifiers = node_collection(node, 0, columns)?;
     let mut members = Vec::new();
     members
@@ -1575,7 +1705,7 @@ fn compile_named_property_domain<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 2, columns)?;
+    accept_annotations(node, 2, columns)?;
     let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
     builder.add_property_occurrence(&property, true, false)?;
     let thing = Entity {
@@ -1599,7 +1729,7 @@ fn compile_named_property_range<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 2, columns)?;
+    accept_annotations(node, 2, columns)?;
     let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
     builder.add_property_occurrence(&property, true, false)?;
     let range =
@@ -1613,7 +1743,7 @@ fn compile_reflexive_named_property<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
     Ok(builder.add_reflexive_property(property)?)
 }
@@ -1623,7 +1753,7 @@ fn compile_transitive_named_property<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
     Ok(builder.add_transitive_property(property)?)
 }
@@ -1633,7 +1763,7 @@ fn compile_named_class_assertion<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 2, columns)?;
+    accept_annotations(node, 2, columns)?;
     let individual = decode_individual_for_axiom(node_field(node, 1, columns)?, columns)?;
     let individual = builder.add_named_occurrence(&individual, true, false)?;
     let class =
@@ -1647,7 +1777,7 @@ fn compile_named_object_property_assertion<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 3, columns)?;
+    accept_annotations(node, 3, columns)?;
     let source = decode_individual_for_axiom(node_field(node, 1, columns)?, columns)?;
     let source = builder.add_named_occurrence(&source, true, false)?;
     let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
@@ -1670,7 +1800,7 @@ fn compile_same_named_individuals<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let identifiers = node_collection(node, 0, columns)?;
     let mut members = Vec::new();
     members
@@ -1687,7 +1817,7 @@ fn compile_different_named_individuals<B: ByteSource>(
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
 ) -> AxiomCompileResult<()> {
-    require_empty_annotations(node, 1, columns)?;
+    accept_annotations(node, 1, columns)?;
     let identifiers = node_collection(node, 0, columns)?;
     let mut members = Vec::new();
     members
@@ -2151,21 +2281,50 @@ fn node_collection<B: ByteSource>(
     Ok(identifiers)
 }
 
-fn require_empty_annotations<B: ByteSource>(
+fn accept_annotations<B: ByteSource>(
     node: usize,
     position: usize,
     columns: &EncodedColumns<B>,
 ) -> CoreResult<()> {
     let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
-    let field = start
+    let expected = start
         .checked_add(position)
         .ok_or_else(|| CoreError::capacity("encoded compiler field index overflow"))?;
-    if usize_at(columns.field_lengths, field, "annotation count")? != 0 {
-        return Err(CoreError::invalid(
-            "encoded named-hierarchy compiler does not yet deduplicate annotated axioms",
+    if expected != annotation_field(node, columns)? {
+        return Err(CoreError::internal(
+            "encoded compiler annotation field is not in the frozen position",
         ));
     }
     Ok(())
+}
+
+fn annotation_count<B: ByteSource>(node: usize, columns: &EncodedColumns<B>) -> CoreResult<usize> {
+    usize_at(
+        columns.field_lengths,
+        annotation_field(node, columns)?,
+        "annotation count",
+    )
+}
+
+fn annotation_field<B: ByteSource>(node: usize, columns: &EncodedColumns<B>) -> CoreResult<usize> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let end = usize_at(
+        columns.node_field_offsets,
+        node.checked_add(1)
+            .ok_or_else(|| CoreError::capacity("encoded compiler node index overflow"))?,
+        "node field end",
+    )?;
+    let field = end
+        .checked_sub(1)
+        .ok_or_else(|| CoreError::internal("encoded axiom constructor has no annotation field"))?;
+    if field < start
+        || byte_at(columns.field_kinds, field, "annotation field kind")? != COMPONENT_SET
+    {
+        return Err(CoreError::internal(
+            "encoded axiom annotation field is not a canonical set",
+        ));
+    }
+    Ok(field)
 }
 
 fn text_field<B: ByteSource>(

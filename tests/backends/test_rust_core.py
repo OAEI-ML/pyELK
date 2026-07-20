@@ -257,6 +257,39 @@ def test_hidden_direct_encoded_general_class_axioms_match_scalar(
         scalar.close()
 
 
+def test_hidden_encoded_session_deduplicates_annotated_axioms(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+    from pyelk.indexing.conversion import FEATURE_INDEX
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-annotations#>) Ontology(<urn:encoded-annotations>
+        Declaration(AnnotationProperty(:ap))
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        Declaration(ObjectProperty(:p))
+        SubClassOf(Annotation(:ap "one") :A :B)
+        SubClassOf(Annotation(:ap "two") :A :B)
+        SubClassOf(:A :B)
+        EquivalentClasses(Annotation(:ap "one") :B :C)
+        EquivalentClasses(Annotation(:ap "two") :B :C)
+        FunctionalObjectProperty(Annotation(:ap "one") :p)
+        FunctionalObjectProperty(Annotation(:ap "two") :p)
+        )"""
+    )
+    compiled = compile_ontology(snapshot, unsupported="ignore")
+    assert compiled.feature_counts[FEATURE_INDEX["FUNCTIONAL_OBJECT_PROPERTY"]] == 1
+    direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    try:
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        direct.close()
+        scalar.close()
+
+
 def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
     native_module: ModuleType,
 ) -> None:
