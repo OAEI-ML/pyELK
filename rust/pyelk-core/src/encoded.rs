@@ -347,6 +347,14 @@ pub enum EncodedPostingMode {
     Exclude,
 }
 
+/// One borrowed structural table and its optional source-local root selection.
+#[derive(Clone, Copy, Debug)]
+pub struct EncodedCompilationSegment<B: ByteSource, P: ByteSource> {
+    pub columns: EncodedColumns<B>,
+    pub posting_mode: Option<EncodedPostingMode>,
+    pub postings: P,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct EncodedRootSelection<P: ByteSource> {
     mode: EncodedPostingMode,
@@ -1013,6 +1021,189 @@ pub fn compile_encoded_hierarchy_selected_with_policy<B: ByteSource, P: ByteSour
     compile_encoded_hierarchy_with_selection(columns, limits, unsupported, Some(selection))
 }
 
+/// Compile an arbitrary set of already-resolved structural segments through one canonical merge.
+///
+/// Segment tables remain borrowed and independent. Their source-local selections are applied
+/// before a k-way canonical root merge, exact structural/annotation duplicates compile once, and
+/// only the final ELK representation is retained.
+pub fn compile_encoded_segments_with_policy<B: ByteSource, P: ByteSource>(
+    segments: &[EncodedCompilationSegment<B, P>],
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+) -> CoreResult<EncodedCompilation> {
+    if segments.is_empty() {
+        return Err(CoreError::protocol(
+            "encoded segment compiler requires at least one structural table",
+        ));
+    }
+    if segments.len() > 256 {
+        return Err(CoreError::capacity(
+            "encoded segment compiler exceeds the table-count limit",
+        ));
+    }
+    validate_compilation_segment_limits(segments, limits)?;
+
+    let mut tables = Vec::new();
+    tables
+        .try_reserve_exact(segments.len())
+        .map_err(|_| CoreError::capacity("encoded segment table allocation failed"))?;
+    let mut root_iters = Vec::new();
+    root_iters
+        .try_reserve_exact(segments.len())
+        .map_err(|_| CoreError::capacity("encoded segment cursor allocation failed"))?;
+    let mut work = 0_u64;
+    for segment in segments {
+        let root_count = aligned_count(segment.columns.root_ids, 4, "segment root_ids")?;
+        let selection = if let Some(mode) = segment.posting_mode {
+            Some(EncodedRootSelection::validate(
+                mode,
+                segment.postings,
+                root_count,
+            )?)
+        } else {
+            if !segment.postings.is_empty() {
+                return Err(CoreError::protocol(
+                    "encoded ALL segment must not carry root postings",
+                ));
+            }
+            None
+        };
+        let (validated, canonical_lengths) =
+            validate_columns_with_lengths(segment.columns, limits)?;
+        work = work
+            .checked_add(validated.work)
+            .ok_or_else(|| CoreError::capacity("encoded segment validation work overflow"))?;
+        if work > limits.max_work {
+            return Err(CoreError::capacity(
+                "encoded segments exceed the combined validation work limit",
+            ));
+        }
+        tables.push(CompilableSegment {
+            columns: segment.columns,
+            canonical_lengths,
+            node_count: validated.node_count,
+        });
+        root_iters.push(SelectedRootIter::new(selection, validated.root_count));
+    }
+
+    let mut current_roots = Vec::new();
+    current_roots
+        .try_reserve_exact(root_iters.len())
+        .map_err(|_| CoreError::capacity("encoded current-root allocation failed"))?;
+    for roots in &mut root_iters {
+        current_roots.push(roots.next()?);
+    }
+    let mut equal_tables = Vec::new();
+    equal_tables
+        .try_reserve_exact(tables.len())
+        .map_err(|_| CoreError::capacity("encoded equal-root allocation failed"))?;
+    let mut previous_logical_root = None;
+    let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
+    let mut transaction = NamedHierarchyBuilder::transaction();
+    while let Some(mut selected_table) = current_roots.iter().position(Option::is_some) {
+        equal_tables.clear();
+        equal_tables.push(selected_table);
+        for candidate in selected_table + 1..current_roots.len() {
+            if current_roots[candidate].is_none() {
+                continue;
+            }
+            let ordering = compare_segment_roots(
+                SegmentRootRef {
+                    table: candidate,
+                    root: current_roots[candidate].ok_or_else(|| {
+                        CoreError::internal("candidate segment cursor unexpectedly ended")
+                    })?,
+                },
+                SegmentRootRef {
+                    table: selected_table,
+                    root: current_roots[selected_table].ok_or_else(|| {
+                        CoreError::internal("selected segment cursor unexpectedly ended")
+                    })?,
+                },
+                &tables,
+                &mut work,
+                limits.max_work,
+            )?;
+            match ordering {
+                Ordering::Less => {
+                    selected_table = candidate;
+                    equal_tables.clear();
+                    equal_tables.push(candidate);
+                }
+                Ordering::Equal => equal_tables.push(candidate),
+                Ordering::Greater => {}
+            }
+        }
+        let selected_root = current_roots[selected_table]
+            .ok_or_else(|| CoreError::internal("selected segment root disappeared"))?;
+        compile_segment_root(
+            SegmentRootRef {
+                table: selected_table,
+                root: selected_root,
+            },
+            &tables,
+            &mut previous_logical_root,
+            &mut work,
+            limits.max_work,
+            &mut builder,
+            &mut transaction,
+        )?;
+        for table in equal_tables.iter().copied() {
+            current_roots[table] = root_iters[table].next()?;
+        }
+    }
+    builder.freeze([0; 32])
+}
+
+fn validate_compilation_segment_limits<B: ByteSource, P: ByteSource>(
+    segments: &[EncodedCompilationSegment<B, P>],
+    limits: EncodedLimits,
+) -> CoreResult<()> {
+    let mut roots = 0_usize;
+    let mut nodes = 0_usize;
+    let mut fields = 0_usize;
+    let mut items = 0_usize;
+    let mut scalars = 0_usize;
+    let add = |total: &mut usize, value: usize, name: &str| {
+        *total = total
+            .checked_add(value)
+            .ok_or_else(|| CoreError::capacity(format!("encoded segment {name} overflow")))?;
+        Ok(())
+    };
+    for segment in segments {
+        add(
+            &mut roots,
+            aligned_count(segment.columns.root_ids, 4, "segment root_ids")?,
+            "root count",
+        )?;
+        add(
+            &mut nodes,
+            aligned_count(segment.columns.node_tags, 2, "segment node_tags")?,
+            "node count",
+        )?;
+        add(
+            &mut fields,
+            segment.columns.field_kinds.len(),
+            "field count",
+        )?;
+        add(&mut items, segment.columns.item_kinds.len(), "item count")?;
+        add(
+            &mut scalars,
+            segment.columns.scalar_bytes.len(),
+            "scalar byte count",
+        )?;
+    }
+    enforce_count(roots, limits.max_roots, "encoded segment root count")?;
+    enforce_count(nodes, limits.max_nodes, "encoded segment node count")?;
+    enforce_count(fields, limits.max_fields, "encoded segment field count")?;
+    enforce_count(items, limits.max_items, "encoded segment item count")?;
+    enforce_count(
+        scalars,
+        limits.max_scalar_bytes,
+        "encoded segment scalar byte count",
+    )
+}
+
 /// Compile one direct source plus one local overlay-delta table without flattening either table.
 ///
 /// Exact duplicate roots and annotation-only logical variants are merged structurally before
@@ -1071,6 +1262,18 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
             "encoded overlay validation exceeds the combined work limit",
         ));
     }
+    let tables = [
+        CompilableSegment {
+            columns: source_columns,
+            canonical_lengths: source_lengths,
+            node_count: source_validated.node_count,
+        },
+        CompilableSegment {
+            columns: delta_columns,
+            canonical_lengths: delta_lengths,
+            node_count: delta_validated.node_count,
+        },
+    ];
     let mut source_roots = SelectedRootIter::new(source_selection, source_validated.root_count);
     let mut delta_roots = SelectedRootIter::<B>::new(None, delta_validated.root_count);
     let mut source_root = source_roots.next()?;
@@ -1098,10 +1301,10 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
                     compare_canonical_nodes_between(
                         left_node,
                         right_node,
-                        &source_columns,
-                        &delta_columns,
-                        &source_lengths,
-                        &delta_lengths,
+                        &tables[0].columns,
+                        &tables[1].columns,
+                        &tables[0].canonical_lengths,
+                        &tables[1].canonical_lengths,
                         &mut work,
                         limits.max_work,
                     )?
@@ -1113,16 +1316,14 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
         };
         match ordering {
             Ordering::Less => {
-                compile_overlay_root(
-                    OverlayRootRef::Source(source_root.ok_or_else(|| {
-                        CoreError::internal("source overlay cursor unexpectedly ended")
-                    })?),
-                    &source_columns,
-                    &delta_columns,
-                    &source_lengths,
-                    &delta_lengths,
-                    source_validated.node_count,
-                    delta_validated.node_count,
+                compile_segment_root(
+                    SegmentRootRef {
+                        table: 0,
+                        root: source_root.ok_or_else(|| {
+                            CoreError::internal("source overlay cursor unexpectedly ended")
+                        })?,
+                    },
+                    &tables,
                     &mut previous_logical_root,
                     &mut work,
                     limits.max_work,
@@ -1132,16 +1333,14 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
                 source_root = source_roots.next()?;
             }
             Ordering::Greater => {
-                compile_overlay_root(
-                    OverlayRootRef::Delta(delta_root.ok_or_else(|| {
-                        CoreError::internal("delta overlay cursor unexpectedly ended")
-                    })?),
-                    &source_columns,
-                    &delta_columns,
-                    &source_lengths,
-                    &delta_lengths,
-                    source_validated.node_count,
-                    delta_validated.node_count,
+                compile_segment_root(
+                    SegmentRootRef {
+                        table: 1,
+                        root: delta_root.ok_or_else(|| {
+                            CoreError::internal("delta overlay cursor unexpectedly ended")
+                        })?,
+                    },
+                    &tables,
                     &mut previous_logical_root,
                     &mut work,
                     limits.max_work,
@@ -1151,16 +1350,14 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
                 delta_root = delta_roots.next()?;
             }
             Ordering::Equal => {
-                compile_overlay_root(
-                    OverlayRootRef::Source(source_root.ok_or_else(|| {
-                        CoreError::internal("equal overlay source cursor unexpectedly ended")
-                    })?),
-                    &source_columns,
-                    &delta_columns,
-                    &source_lengths,
-                    &delta_lengths,
-                    source_validated.node_count,
-                    delta_validated.node_count,
+                compile_segment_root(
+                    SegmentRootRef {
+                        table: 0,
+                        root: source_root.ok_or_else(|| {
+                            CoreError::internal("equal overlay source cursor unexpectedly ended")
+                        })?,
+                    },
+                    &tables,
                     &mut previous_logical_root,
                     &mut work,
                     limits.max_work,
@@ -1231,136 +1428,134 @@ fn validate_combined_column_limits<B: ByteSource>(
     )
 }
 
+struct CompilableSegment<B: ByteSource> {
+    columns: EncodedColumns<B>,
+    canonical_lengths: Vec<u64>,
+    node_count: usize,
+}
+
 #[derive(Clone, Copy)]
-enum OverlayRootRef {
-    Source(usize),
-    Delta(usize),
+struct SegmentRootRef {
+    table: usize,
+    root: usize,
+}
+
+fn compare_segment_roots<B: ByteSource>(
+    left: SegmentRootRef,
+    right: SegmentRootRef,
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    let left_table = tables
+        .get(left.table)
+        .ok_or_else(|| CoreError::internal("left encoded segment table is out of bounds"))?;
+    let right_table = tables
+        .get(right.table)
+        .ok_or_else(|| CoreError::internal("right encoded segment table is out of bounds"))?;
+    let left_kind = byte_at(
+        left_table.columns.root_kinds,
+        left.root,
+        "left segment root kind",
+    )?;
+    let right_kind = byte_at(
+        right_table.columns.root_kinds,
+        right.root,
+        "right segment root kind",
+    )?;
+    let ordering = left_kind.cmp(&right_kind);
+    if ordering != Ordering::Equal {
+        return Ok(ordering);
+    }
+    let left_node = node_index(
+        u32_at(
+            left_table.columns.root_ids,
+            left.root,
+            "left segment root node ID",
+        )?,
+        left_table.node_count,
+    )?;
+    let right_node = node_index(
+        u32_at(
+            right_table.columns.root_ids,
+            right.root,
+            "right segment root node ID",
+        )?,
+        right_table.node_count,
+    )?;
+    compare_canonical_nodes_between(
+        left_node,
+        right_node,
+        &left_table.columns,
+        &right_table.columns,
+        &left_table.canonical_lengths,
+        &right_table.canonical_lengths,
+        work,
+        max_work,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compile_overlay_root<B: ByteSource>(
-    current: OverlayRootRef,
-    source_columns: &EncodedColumns<B>,
-    delta_columns: &EncodedColumns<B>,
-    source_lengths: &[u64],
-    delta_lengths: &[u64],
-    source_node_count: usize,
-    delta_node_count: usize,
-    previous_logical_root: &mut Option<OverlayRootRef>,
+fn compile_segment_root<B: ByteSource>(
+    current: SegmentRootRef,
+    tables: &[CompilableSegment<B>],
+    previous_logical_root: &mut Option<SegmentRootRef>,
     work: &mut u64,
     max_work: u64,
     builder: &mut NamedHierarchyBuilder,
     transaction: &mut NamedHierarchyBuilder,
 ) -> CoreResult<()> {
-    let (columns, node_count, root) = match current {
-        OverlayRootRef::Source(root) => (source_columns, source_node_count, root),
-        OverlayRootRef::Delta(root) => (delta_columns, delta_node_count, root),
-    };
-    let kind = byte_at(columns.root_kinds, root, "overlay root kind")?;
+    let table = tables
+        .get(current.table)
+        .ok_or_else(|| CoreError::internal("encoded segment root table is out of bounds"))?;
+    let columns = &table.columns;
+    let kind = byte_at(columns.root_kinds, current.root, "segment root kind")?;
     let node = node_index(
-        u32_at(columns.root_ids, root, "overlay root node ID")?,
-        node_count,
+        u32_at(columns.root_ids, current.root, "segment root node ID")?,
+        table.node_count,
     )?;
-    let tag = u16_at(columns.node_tags, node, "overlay root node tag")?;
+    let tag = u16_at(columns.node_tags, node, "segment root node tag")?;
     if kind == ROOT_AXIOM && !(120..=123).contains(&tag) {
         let start = usize_at(columns.node_field_offsets, node, "axiom field offset")?;
         let field_limit = annotation_field(node, columns)?
             .checked_sub(start)
             .ok_or_else(|| CoreError::internal("axiom annotation field precedes its start"))?;
         if let Some(previous) = *previous_logical_root {
-            let ordering = match (previous, current) {
-                (OverlayRootRef::Source(left), OverlayRootRef::Source(right)) => {
-                    let left = node_index(
-                        u32_at(source_columns.root_ids, left, "source root node ID")?,
-                        source_node_count,
-                    )?;
-                    let right = node_index(
-                        u32_at(source_columns.root_ids, right, "source root node ID")?,
-                        source_node_count,
-                    )?;
-                    compare_canonical_nodes_between_with_field_limit(
-                        left,
-                        right,
-                        source_columns,
-                        source_columns,
-                        source_lengths,
-                        source_lengths,
-                        Some(field_limit),
-                        work,
-                        max_work,
-                    )?
-                }
-                (OverlayRootRef::Source(left), OverlayRootRef::Delta(right)) => {
-                    let left = node_index(
-                        u32_at(source_columns.root_ids, left, "source root node ID")?,
-                        source_node_count,
-                    )?;
-                    let right = node_index(
-                        u32_at(delta_columns.root_ids, right, "delta root node ID")?,
-                        delta_node_count,
-                    )?;
-                    compare_canonical_nodes_between_with_field_limit(
-                        left,
-                        right,
-                        source_columns,
-                        delta_columns,
-                        source_lengths,
-                        delta_lengths,
-                        Some(field_limit),
-                        work,
-                        max_work,
-                    )?
-                }
-                (OverlayRootRef::Delta(left), OverlayRootRef::Source(right)) => {
-                    let left = node_index(
-                        u32_at(delta_columns.root_ids, left, "delta root node ID")?,
-                        delta_node_count,
-                    )?;
-                    let right = node_index(
-                        u32_at(source_columns.root_ids, right, "source root node ID")?,
-                        source_node_count,
-                    )?;
-                    compare_canonical_nodes_between_with_field_limit(
-                        left,
-                        right,
-                        delta_columns,
-                        source_columns,
-                        delta_lengths,
-                        source_lengths,
-                        Some(field_limit),
-                        work,
-                        max_work,
-                    )?
-                }
-                (OverlayRootRef::Delta(left), OverlayRootRef::Delta(right)) => {
-                    let left = node_index(
-                        u32_at(delta_columns.root_ids, left, "delta root node ID")?,
-                        delta_node_count,
-                    )?;
-                    let right = node_index(
-                        u32_at(delta_columns.root_ids, right, "delta root node ID")?,
-                        delta_node_count,
-                    )?;
-                    compare_canonical_nodes_between_with_field_limit(
-                        left,
-                        right,
-                        delta_columns,
-                        delta_columns,
-                        delta_lengths,
-                        delta_lengths,
-                        Some(field_limit),
-                        work,
-                        max_work,
-                    )?
-                }
-            };
+            let previous_table = tables.get(previous.table).ok_or_else(|| {
+                CoreError::internal("previous encoded segment root table is out of bounds")
+            })?;
+            let left = node_index(
+                u32_at(
+                    previous_table.columns.root_ids,
+                    previous.root,
+                    "previous segment root node ID",
+                )?,
+                previous_table.node_count,
+            )?;
+            let ordering = compare_canonical_nodes_between_with_field_limit(
+                left,
+                node,
+                &previous_table.columns,
+                columns,
+                &previous_table.canonical_lengths,
+                &table.canonical_lengths,
+                Some(field_limit),
+                work,
+                max_work,
+            )?;
             if ordering == Ordering::Equal {
                 return Ok(());
             }
         }
         *previous_logical_root = Some(current);
     }
-    compile_root_from_columns(root, columns, node_count, builder, transaction)
+    compile_root_from_columns(
+        current.root,
+        columns,
+        table.node_count,
+        builder,
+        transaction,
+    )
 }
 
 fn compile_root_from_columns<B: ByteSource>(
@@ -6591,6 +6786,70 @@ mod tests {
             ),
             Err(CoreError::Capacity(message)) if message.contains("overlay root count")
         ));
+    }
+
+    #[test]
+    fn arbitrary_segment_groups_share_one_exact_canonical_merge() {
+        let mut first = declaration();
+        first.scalar_bytes[4] = b'B';
+        let mut second = declaration();
+        second.scalar_bytes[4] = b'A';
+        let duplicate = second.clone();
+        let empty_postings = &[][..];
+        let segments = [
+            EncodedCompilationSegment {
+                columns: first.borrowed(),
+                posting_mode: None,
+                postings: empty_postings,
+            },
+            EncodedCompilationSegment {
+                columns: second.borrowed(),
+                posting_mode: None,
+                postings: empty_postings,
+            },
+            EncodedCompilationSegment {
+                columns: duplicate.borrowed(),
+                posting_mode: None,
+                postings: empty_postings,
+            },
+        ];
+        let actual = compile_encoded_segments_with_policy(
+            &segments,
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        let expected = compile_encoded_hierarchy_with_policy(
+            two_declarations().borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(actual, expected);
+
+        let postings = le32(&[1]);
+        let selected_source = two_declarations();
+        let selected = [
+            EncodedCompilationSegment {
+                columns: selected_source.borrowed(),
+                posting_mode: Some(EncodedPostingMode::Include),
+                postings: postings.as_slice(),
+            },
+            EncodedCompilationSegment {
+                columns: first.borrowed(),
+                posting_mode: None,
+                postings: empty_postings,
+            },
+        ];
+        assert_eq!(
+            compile_encoded_segments_with_policy(
+                &selected,
+                EncodedLimits::default(),
+                EncodedUnsupportedPolicy::Error,
+            )
+            .unwrap(),
+            expected
+        );
     }
 
     #[test]

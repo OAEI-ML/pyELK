@@ -262,6 +262,64 @@ def _delta_overlay_encoded(
     )
 
 
+def _composite_encoded(
+    owner: Any,
+    members: tuple[tuple[Any, int, tuple[int, ...], bytes], ...],
+    *,
+    bridge: Any | None = None,
+) -> Any:
+    from pyowl_core.backends import native_views
+
+    if bridge is None:
+        _empty_snapshot, local = _direct_encoded_snapshot(b"Ontology(<urn:encoded-empty>)")
+    else:
+        local = bridge
+    segments = tuple(
+        native_views.EncodedStructuralSegmentV1(
+            4,
+            source.owner,
+            source,
+            posting_mode,
+            memoryview(b"".join(root_id.to_bytes(4, "little") for root_id in root_ids)),
+            memoryview(b""),
+            member_token,
+            source,
+        )
+        for source, posting_mode, root_ids, member_token in members
+    )
+    if bridge is not None:
+        segments += (
+            native_views.EncodedStructuralSegmentV1(
+                5,
+                owner,
+                None,
+                0,
+                memoryview(b""),
+                memoryview(b""),
+                None,
+                bridge,
+            ),
+        )
+    candidate = SimpleNamespace(
+        schema_name=local.schema_name,
+        schema_version=local.schema_version,
+        model_schema=local.model_schema,
+        owner=owner,
+        buffers=local.buffers,
+        descriptor=local.descriptor,
+        structural_fingerprint=native_views._fingerprint(local.buffers, segments),
+        segments=segments,
+        scope=local.scope,
+        document_key=local.document_key,
+    )
+    return native_views.validate_encoded_structural_view_v1(
+        candidate,
+        expected_owner=owner,
+        expected_scope=local.scope,
+        expected_document_key=local.document_key,
+    )
+
+
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
     assert native_module.implementation_version() == "0.1.0.dev0"
@@ -553,6 +611,200 @@ def test_hidden_overlay_delta_session_retains_every_segment_owner(
     gc.collect()
     assert source_ref() is None
     assert delta_ref() is None
+    assert top_ref() is None
+
+
+def test_hidden_composite_members_merge_without_flattening(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    left, encoded_left = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-composite#>)
+        Ontology(<urn:encoded-composite-left>
+        Declaration(AnnotationProperty(:ap))
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(Annotation(:ap "left") :A :B)
+        )"""
+    )
+    right, encoded_right = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-composite#>)
+        Ontology(<urn:encoded-composite-right>
+        Declaration(AnnotationProperty(:ap))
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        SubClassOf(Annotation(:ap "right") :A :B)
+        SubClassOf(:B :C)
+        )"""
+    )
+    composite = owl.compose_views(left, right)
+    encoded = _composite_encoded(
+        composite,
+        (
+            (encoded_left, 0, (), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(composite, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 4
+        assert diagnostics["encoded_referenced_view_count"] == 2
+        assert diagnostics["encoded_buffer_count"] == 22
+        assert diagnostics["encoded_zero_copy_buffers"] == 22
+        assert diagnostics["encoded_posting_bytes"] == 0
+        assert diagnostics["encoded_buffer_bytes"] == sum(
+            value.nbytes for value in encoded_left.buffers.values()
+        ) + sum(value.nbytes for value in encoded_right.buffers.values())
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_private_ir_bytes"] == 0
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
+def test_hidden_composite_selection_and_bridge_compile_source_locally(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    left, encoded_left = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-composite-bridge#>)
+        Ontology(<urn:encoded-composite-bridge-left>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        )"""
+    )
+    right, encoded_right = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-composite-bridge#>)
+        Ontology(<urn:encoded-composite-bridge-right>
+        Declaration(Class(:C))
+        SubClassOf(:B :C)
+        )"""
+    )
+    bridge_source, encoded_bridge = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-composite-bridge#>)
+        Ontology(<urn:encoded-composite-bridge-local>
+        Declaration(Class(:D))
+        SubClassOf(:C :D)
+        )"""
+    )
+    removed = next(axiom for axiom in left.iter_axioms() if type(axiom).__name__ == "SubClassOf")
+    left_axioms = sorted(left.iter_axioms(), key=lambda axiom: axiom.canonical_bytes())
+    removed_ordinal = left_axioms.index(removed) + 1
+    added = tuple(bridge_source.iter_axioms())
+    composite = owl.compose_views(
+        left,
+        right,
+        delta=owl.OntologyDelta(
+            add_axioms=owl.CanonicalSet(added),
+            remove_axioms=owl.CanonicalSet((removed,)),
+            policy=owl.DeltaPolicy.IDEMPOTENT,
+        ),
+    )
+    encoded = _composite_encoded(
+        composite,
+        (
+            (encoded_left, 2, (removed_ordinal,), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+        bridge=encoded_bridge,
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(composite, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 5
+        assert diagnostics["encoded_referenced_view_count"] == 2
+        assert diagnostics["encoded_buffer_count"] == 33
+        assert diagnostics["encoded_zero_copy_buffers"] == 33
+        assert diagnostics["encoded_posting_bytes"] == 4
+        assert diagnostics["encoded_buffer_bytes"] == sum(
+            value.nbytes for value in encoded_left.buffers.values()
+        ) + sum(value.nbytes for value in encoded_right.buffers.values()) + sum(
+            value.nbytes for value in encoded_bridge.buffers.values()
+        )
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_private_ir_bytes"] == 0
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+    from pyowl_core.backends import native_views
+
+    first, second, bridge = encoded.segments
+    hostile = SimpleNamespace(
+        role=first.role,
+        owner=first.owner,
+        source=first.source,
+        posting_mode=first.posting_mode,
+        root_ids=memoryview((999).to_bytes(4, "little")),
+        anonymous_scope_map=first.anonymous_scope_map,
+        member_token=first.member_token,
+    )
+    hostile_segments = (hostile, second, bridge)
+    with pytest.raises(ValueError, match=r"sorted|unique|range|posting"):
+        native_module.create_session_from_encoded(
+            _encoded_wrapper(
+                encoded,
+                segments=hostile_segments,
+                structural_fingerprint=native_views._fingerprint(encoded.buffers, hostile_segments),
+            ),
+            1,
+            "error",
+        )
+
+
+def test_hidden_composite_session_retains_every_member_owner(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    left, encoded_left = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-composite-retain:A>)))"
+    )
+    right, encoded_right = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-composite-retain:B>)))"
+    )
+    composite = owl.compose_views(left, right)
+    encoded = _composite_encoded(
+        composite,
+        (
+            (encoded_left, 0, (), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+    )
+    left_ref = weakref.ref(encoded_left)
+    right_ref = weakref.ref(encoded_right)
+    top_ref = weakref.ref(encoded)
+    session = native_module.create_session_from_encoded(encoded, 1, "error")
+    del left, encoded_left, right, encoded_right, composite, encoded
+    gc.collect()
+    assert left_ref() is not None
+    assert right_ref() is not None
+    assert top_ref() is not None
+    session.close()
+    gc.collect()
+    assert left_ref() is None
+    assert right_ref() is None
     assert top_ref() is None
 
 

@@ -11,10 +11,11 @@ use std::sync::{Arc, Mutex};
 use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use pyelk_core::encoded::{
-    ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedLimits, EncodedPostingMode,
-    EncodedUnsupportedPolicy, compile_encoded_hierarchy_selected_with_policy,
+    ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedCompilationSegment, EncodedLimits,
+    EncodedPostingMode, EncodedUnsupportedPolicy, compile_encoded_hierarchy_selected_with_policy,
     compile_encoded_hierarchy_with_policy, compile_encoded_overlay_delta_selected_with_policy,
-    compile_encoded_overlay_delta_with_policy, validate_columns,
+    compile_encoded_overlay_delta_with_policy, compile_encoded_segments_with_policy,
+    validate_columns,
 };
 use pyelk_core::wire::{encode_query, encode_realization, encode_taxonomy};
 use pyelk_core::{
@@ -34,6 +35,14 @@ const ENCODED_SCHEMA_NAME: &str = "pyowl-core/structural-columns";
 const ENCODED_SCHEMA_VERSION: u64 = 1;
 const ENCODED_MODEL_SCHEMA: u64 = 1;
 const ENCODED_BUFFER_COUNT: usize = 11;
+const SEGMENT_DIRECT: u64 = 1;
+const SEGMENT_OVERLAY_BASE: u64 = 2;
+const SEGMENT_OVERLAY_DELTA: u64 = 3;
+const SEGMENT_COMPOSITE_MEMBER: u64 = 4;
+const SEGMENT_COMPOSITE_BRIDGE: u64 = 5;
+const POSTINGS_ALL: u64 = 0;
+const POSTINGS_INCLUDE: u64 = 1;
+const POSTINGS_EXCLUDE: u64 = 2;
 const ENCODED_BUFFER_NAMES: [&str; ENCODED_BUFFER_COUNT] = [
     "root_kinds",
     "root_ids",
@@ -69,11 +78,13 @@ impl ByteSource for BorrowedPyBytes<'_, '_> {
     }
 }
 
+#[derive(Clone)]
 struct EncodedBufferBinding<'py> {
     view: Bound<'py, PyAny>,
     bytes_owner: Option<Bound<'py, PyBytes>>,
 }
 
+#[derive(Clone)]
 struct EncodedBufferBindings<'py> {
     root_kinds: EncodedBufferBinding<'py>,
     root_ids: EncodedBufferBinding<'py>,
@@ -110,6 +121,13 @@ struct ValidatedEncodedInput<'py> {
     segment_count: u64,
     referenced_view_count: u64,
     posting: Option<EncodedPostingBinding<'py>>,
+    composite_bindings: Option<Vec<EncodedCompilationTableBinding<'py>>>,
+}
+
+struct EncodedCompilationTableBinding<'py> {
+    bindings: EncodedBufferBindings<'py>,
+    posting_mode: Option<EncodedPostingMode>,
+    root_ids: EncodedBufferBinding<'py>,
 }
 
 struct SessionState {
@@ -370,9 +388,9 @@ fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
 /// Coarse encoded-view compiler entry point retained behind absent capability advertising.
 ///
 /// This executable handoff accepts validated direct segments, all/exclude overlay-base chains,
-/// and one local overlay-delta table without flattening the source. Composites, anonymous scope
-/// remapping, mmap-lifetime, exhaustive-constructor, and performance gates remain release
-/// blockers, so
+/// one local overlay-delta table, and named-only direct composite members without flattening the
+/// sources. Recursive composite sources, anonymous scope remapping, mmap-lifetime,
+/// exhaustive-constructor, and performance gates remain release blockers, so
 /// `encoded_view_schemas()` intentionally stays empty.
 #[pyfunction]
 fn create_session_from_encoded(
@@ -400,58 +418,99 @@ fn create_session_from_encoded(
     };
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let input = validate_encoded_input(encoded_view)?;
-        let columns = input.bindings.columns()?;
-        let delta_columns = input
-            .delta_bindings
-            .as_ref()
-            .map(EncodedBufferBindings::columns)
-            .transpose()?;
-        let posting = input
-            .posting
-            .as_ref()
-            .map(|binding| binding.root_ids.source("segment root_ids"))
-            .transpose()?;
-        let metrics = encoded_ingestion_metrics(
-            columns,
-            delta_columns,
-            input.segment_count,
-            input.referenced_view_count,
-            posting.map_or(0, ByteSource::len),
-        )?;
-        let mut compilation = match (delta_columns, &input.posting, posting) {
-            (Some(delta), Some(binding), Some(root_ids)) => {
-                compile_encoded_overlay_delta_selected_with_policy(
+        let (mut compilation, metrics) = if let Some(composite) = &input.composite_bindings {
+            let mut tables = Vec::new();
+            tables
+                .try_reserve_exact(composite.len())
+                .map_err(|_| CoreError::capacity("encoded composite table allocation failed"))?;
+            let mut metric_columns = Vec::new();
+            metric_columns
+                .try_reserve_exact(composite.len())
+                .map_err(|_| CoreError::capacity("encoded composite metric allocation failed"))?;
+            let mut posting_bytes = 0_usize;
+            for table in composite {
+                let columns = table.bindings.columns()?;
+                let postings = table.root_ids.source("composite segment root_ids")?;
+                posting_bytes = posting_bytes.checked_add(postings.len()).ok_or_else(|| {
+                    CoreError::capacity("encoded composite posting byte count overflow")
+                })?;
+                metric_columns.push(columns);
+                tables.push(EncodedCompilationSegment {
+                    columns,
+                    posting_mode: table.posting_mode,
+                    postings,
+                });
+            }
+            let metrics = encoded_ingestion_metrics(
+                &metric_columns,
+                input.segment_count,
+                input.referenced_view_count,
+                posting_bytes,
+            )?;
+            (
+                compile_encoded_segments_with_policy(&tables, EncodedLimits::default(), policy)?,
+                metrics,
+            )
+        } else {
+            let columns = input.bindings.columns()?;
+            let delta_columns = input
+                .delta_bindings
+                .as_ref()
+                .map(EncodedBufferBindings::columns)
+                .transpose()?;
+            let posting = input
+                .posting
+                .as_ref()
+                .map(|binding| binding.root_ids.source("segment root_ids"))
+                .transpose()?;
+            let metric_columns = [Some(columns), delta_columns]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+            let metrics = encoded_ingestion_metrics(
+                &metric_columns,
+                input.segment_count,
+                input.referenced_view_count,
+                posting.map_or(0, ByteSource::len),
+            )?;
+            let compilation = match (delta_columns, &input.posting, posting) {
+                (Some(delta), Some(binding), Some(root_ids)) => {
+                    compile_encoded_overlay_delta_selected_with_policy(
+                        columns,
+                        delta,
+                        EncodedLimits::default(),
+                        policy,
+                        binding.mode,
+                        root_ids,
+                    )?
+                }
+                (Some(delta), None, None) => compile_encoded_overlay_delta_with_policy(
                     columns,
                     delta,
                     EncodedLimits::default(),
                     policy,
-                    binding.mode,
-                    root_ids,
-                )?
-            }
-            (Some(delta), None, None) => compile_encoded_overlay_delta_with_policy(
-                columns,
-                delta,
-                EncodedLimits::default(),
-                policy,
-            )?,
-            (None, Some(binding), Some(root_ids)) => {
-                compile_encoded_hierarchy_selected_with_policy(
+                )?,
+                (None, Some(binding), Some(root_ids)) => {
+                    compile_encoded_hierarchy_selected_with_policy(
+                        columns,
+                        EncodedLimits::default(),
+                        policy,
+                        binding.mode,
+                        root_ids,
+                    )?
+                }
+                (None, None, None) => compile_encoded_hierarchy_with_policy(
                     columns,
                     EncodedLimits::default(),
                     policy,
-                    binding.mode,
-                    root_ids,
-                )?
-            }
-            (None, None, None) => {
-                compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?
-            }
-            _ => {
-                return Err(CoreError::internal(
-                    "validated encoded posting and delta bindings diverged",
-                ));
-            }
+                )?,
+                _ => {
+                    return Err(CoreError::internal(
+                        "validated encoded posting and delta bindings diverged",
+                    ));
+                }
+            };
+            (compilation, metrics)
         };
         let compatibility_spelling =
             compatibility_spelling_digest(&compilation.compatibility_observations)?;
@@ -555,8 +614,7 @@ impl<'py> EncodedBufferBinding<'py> {
 }
 
 fn encoded_ingestion_metrics(
-    columns: EncodedColumns<BorrowedPyBytes<'_, '_>>,
-    delta_columns: Option<EncodedColumns<BorrowedPyBytes<'_, '_>>>,
+    column_tables: &[EncodedColumns<BorrowedPyBytes<'_, '_>>],
     segment_count: u64,
     referenced_view_count: u64,
     posting_bytes: usize,
@@ -564,7 +622,7 @@ fn encoded_ingestion_metrics(
     let mut buffer_bytes = 0_u64;
     let mut zero_copy_buffers = 0_u64;
     let mut buffer_count = 0_u64;
-    for columns in [Some(columns), delta_columns].into_iter().flatten() {
+    for columns in column_tables.iter().copied() {
         let buffers = [
             columns.root_kinds,
             columns.root_ids,
@@ -651,6 +709,35 @@ fn validate_encoded_input<'py>(
                 })?)
                 .ok_or_else(|| CoreError::capacity("encoded structural segment count overflow"))?;
 
+        if segments.is_empty() {
+            return Err(CoreError::protocol(
+                "encoded structural segment table must not be empty",
+            ));
+        }
+        let first_segment = segments
+            .get_item(0)
+            .map_err(|_| CoreError::protocol("encoded structural segment is inaccessible"))?;
+        let first_role = exact_nonnegative_integer(
+            &required_attribute(&first_segment, "role")?,
+            "encoded segment role",
+        )?;
+        if first_role == SEGMENT_COMPOSITE_MEMBER {
+            if seen.len() != 1 || posting.is_some() || delta_bindings.is_some() {
+                return Err(CoreError::invalid(
+                    "encoded composite sources are not yet recursively composable",
+                ));
+            }
+            return validate_direct_composite_input(
+                &current,
+                &owner,
+                bindings,
+                validated.root_count,
+                segments,
+                source_parts,
+                segment_count,
+                model_schema,
+            );
+        }
         if !(1..=2).contains(&segments.len()) {
             return Err(CoreError::invalid(
                 "encoded compiler slice currently accepts direct or base-plus-delta overlay segments",
@@ -670,9 +757,7 @@ fn validate_encoded_input<'py>(
             validate_overlay_delta_segment(&delta, &owner, validated.root_count)?;
             delta_bindings = local_bindings.take();
         }
-        let segment = segments
-            .get_item(0)
-            .map_err(|_| CoreError::protocol("encoded structural segment is inaccessible"))?;
+        let segment = first_segment;
         let role = exact_nonnegative_integer(
             &required_attribute(&segment, "role")?,
             "encoded segment role",
@@ -682,7 +767,7 @@ fn validate_encoded_input<'py>(
             "encoded segment posting_mode",
         )?;
         match (role, posting_mode) {
-            (1, 0) => {
+            (SEGMENT_DIRECT, POSTINGS_ALL) => {
                 if has_delta {
                     return Err(CoreError::protocol(
                         "encoded overlay delta must follow an overlay base segment",
@@ -698,9 +783,10 @@ fn validate_encoded_input<'py>(
                     segment_count,
                     referenced_view_count,
                     posting,
+                    composite_bindings: None,
                 });
             }
-            (2, mode @ (0 | 2)) => {
+            (SEGMENT_OVERLAY_BASE, mode @ (POSTINGS_ALL | POSTINGS_EXCLUDE)) => {
                 if posting.is_some() {
                     return Err(CoreError::invalid(
                         "selected overlay sources currently require one direct source",
@@ -735,7 +821,7 @@ fn validate_encoded_input<'py>(
                 let root_ids = required_attribute(&segment, "root_ids")?;
                 let root_ids_binding = EncodedBufferBinding::new(root_ids);
                 let root_ids_source = root_ids_binding.source("segment root_ids")?;
-                if mode == 0 {
+                if mode == POSTINGS_ALL {
                     if !root_ids_source.is_empty() {
                         return Err(CoreError::protocol(
                             "ALL overlay base segment must not carry root postings",
@@ -761,6 +847,262 @@ fn validate_encoded_input<'py>(
             }
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_direct_composite_input<'py>(
+    encoded_view: &Bound<'py, PyAny>,
+    top_owner: &Bound<'py, PyAny>,
+    top_bindings: EncodedBufferBindings<'py>,
+    local_root_count: usize,
+    segments: &Bound<'py, PyTuple>,
+    source_parts: EncodedSourceParts,
+    mut segment_count: u64,
+    model_schema: u64,
+) -> CoreResult<ValidatedEncodedInput<'py>> {
+    let last = segments
+        .get_item(segments.len() - 1)
+        .map_err(|_| CoreError::protocol("encoded composite segment is inaccessible"))?;
+    let has_bridge = exact_nonnegative_integer(
+        &required_attribute(&last, "role")?,
+        "encoded composite segment role",
+    )? == SEGMENT_COMPOSITE_BRIDGE;
+    let member_count = segments.len() - usize::from(has_bridge);
+    if member_count < 2 {
+        return Err(CoreError::protocol(
+            "encoded composite requires at least two member segments",
+        ));
+    }
+    if member_count > 255 {
+        return Err(CoreError::capacity(
+            "encoded composite member count exceeds the consumer limit",
+        ));
+    }
+
+    let mut compiled = Vec::new();
+    compiled
+        .try_reserve_exact(member_count + usize::from(has_bridge))
+        .map_err(|_| CoreError::capacity("encoded composite binding allocation failed"))?;
+    let mut previous_token: Option<[u8; 32]> = None;
+    for index in 0..member_count {
+        let segment = segments
+            .get_item(index)
+            .map_err(|_| CoreError::protocol("encoded composite member is inaccessible"))?;
+        let role = exact_nonnegative_integer(
+            &required_attribute(&segment, "role")?,
+            "encoded composite member role",
+        )?;
+        if role != SEGMENT_COMPOSITE_MEMBER {
+            return Err(CoreError::protocol(
+                "encoded composite member roles are not contiguous and canonical",
+            ));
+        }
+        validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
+        let member_token = required_attribute(&segment, "member_token")?;
+        let member_token = member_token.cast::<PyBytes>().map_err(|_| {
+            CoreError::protocol("encoded composite member token must be exact immutable bytes")
+        })?;
+        let member_token: [u8; 32] = member_token.as_bytes().try_into().map_err(|_| {
+            CoreError::protocol("encoded composite member token must contain 32 bytes")
+        })?;
+        if previous_token.is_some_and(|previous| previous >= member_token) {
+            return Err(CoreError::protocol(
+                "encoded composite member tokens must be sorted and unique",
+            ));
+        }
+        previous_token = Some(member_token);
+
+        let source = required_attribute(&segment, "source")?;
+        if source.is_none() {
+            return Err(CoreError::protocol(
+                "encoded composite member must reference a source view",
+            ));
+        }
+        let source_owner = required_attribute(&source, "owner")?;
+        if !required_attribute(&segment, "owner")?.is(&source_owner) {
+            return Err(CoreError::protocol(
+                "encoded composite member owner differs from its source owner",
+            ));
+        }
+        let (_validated_owner, source_model_schema) = validate_encoded_envelope(&source)?;
+        if source_model_schema != model_schema {
+            return Err(CoreError::protocol(
+                "encoded composite member model schema differs from the top view",
+            ));
+        }
+        let bindings = EncodedBufferBindings::from_view(&source)?;
+        let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
+        let raw_source_segments = required_attribute(&source, "segments")?;
+        let source_segments = raw_source_segments.cast::<PyTuple>().map_err(|_| {
+            CoreError::protocol("encoded composite source segments must be an exact tuple")
+        })?;
+        validate_structural_fingerprint(&source, &bindings, source_segments)?;
+        validate_direct_segment(&source, &source_owner)?;
+        reject_anonymous_segment_nodes(&bindings, validated.node_count)?;
+        segment_count = segment_count
+            .checked_add(1)
+            .ok_or_else(|| CoreError::capacity("encoded composite segment count overflow"))?;
+
+        let raw_mode = exact_nonnegative_integer(
+            &required_attribute(&segment, "posting_mode")?,
+            "encoded composite member posting_mode",
+        )?;
+        let root_ids = EncodedBufferBinding::new(required_attribute(&segment, "root_ids")?);
+        let postings = root_ids.source("composite member root_ids")?;
+        let posting_mode = match raw_mode {
+            POSTINGS_ALL => {
+                if !postings.is_empty() {
+                    return Err(CoreError::protocol(
+                        "encoded composite ALL member must not carry root postings",
+                    ));
+                }
+                None
+            }
+            POSTINGS_INCLUDE => {
+                validate_root_postings(postings, validated.root_count)?;
+                Some(EncodedPostingMode::Include)
+            }
+            POSTINGS_EXCLUDE => {
+                validate_root_postings(postings, validated.root_count)?;
+                Some(EncodedPostingMode::Exclude)
+            }
+            _ => {
+                return Err(CoreError::protocol(
+                    "encoded composite member posting mode is invalid",
+                ));
+            }
+        };
+        compiled.push(EncodedCompilationTableBinding {
+            bindings,
+            posting_mode,
+            root_ids,
+        });
+    }
+
+    if has_bridge {
+        validate_composite_bridge_segment(&last, top_owner, local_root_count)?;
+        compiled.push(EncodedCompilationTableBinding {
+            bindings: top_bindings.clone(),
+            posting_mode: None,
+            root_ids: EncodedBufferBinding::new(required_attribute(&last, "root_ids")?),
+        });
+    } else if local_root_count != 0 {
+        return Err(CoreError::protocol(
+            "encoded composite without a bridge must not carry local roots",
+        ));
+    }
+
+    Ok(ValidatedEncodedInput {
+        bindings: if has_bridge {
+            EncodedBufferBindings::from_view(encoded_view)?
+        } else {
+            top_bindings
+        },
+        delta_bindings: None,
+        source_parts,
+        segment_count,
+        referenced_view_count: u64::try_from(member_count)
+            .map_err(|_| CoreError::capacity("encoded composite reference count exceeds u64"))?,
+        posting: None,
+        composite_bindings: Some(compiled),
+    })
+}
+
+fn reject_anonymous_segment_nodes(
+    bindings: &EncodedBufferBindings<'_>,
+    node_count: usize,
+) -> CoreResult<()> {
+    let tags = bindings.node_tags.source("composite member node_tags")?;
+    for node in 0..node_count {
+        let offset = node
+            .checked_mul(2)
+            .ok_or_else(|| CoreError::capacity("encoded composite node-tag offset overflow"))?;
+        let low = tags
+            .byte(offset)
+            .ok_or_else(|| CoreError::protocol("encoded composite node tag is inaccessible"))?;
+        let high = tags
+            .byte(offset + 1)
+            .ok_or_else(|| CoreError::protocol("encoded composite node tag is truncated"))?;
+        if u16::from_le_bytes([low, high]) == 3 {
+            return Err(CoreError::invalid(
+                "encoded composite slice does not yet accept anonymous member nodes",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_root_postings(postings: BorrowedPyBytes<'_, '_>, root_count: usize) -> CoreResult<()> {
+    if postings.is_empty() || postings.len() % 4 != 0 {
+        return Err(CoreError::protocol(
+            "encoded composite root postings must be nonempty u32 rows",
+        ));
+    }
+    let mut previous = 0_usize;
+    for row in 0..postings.len() / 4 {
+        let offset = row
+            .checked_mul(4)
+            .ok_or_else(|| CoreError::capacity("encoded composite posting offset overflow"))?;
+        let bytes = [
+            postings
+                .byte(offset)
+                .ok_or_else(|| CoreError::protocol("encoded composite posting is inaccessible"))?,
+            postings
+                .byte(offset + 1)
+                .ok_or_else(|| CoreError::protocol("encoded composite posting is inaccessible"))?,
+            postings
+                .byte(offset + 2)
+                .ok_or_else(|| CoreError::protocol("encoded composite posting is inaccessible"))?,
+            postings
+                .byte(offset + 3)
+                .ok_or_else(|| CoreError::protocol("encoded composite posting is inaccessible"))?,
+        ];
+        let value = usize::try_from(u32::from_le_bytes(bytes))
+            .map_err(|_| CoreError::capacity("encoded composite posting exceeds usize"))?;
+        if value <= previous || value > root_count {
+            return Err(CoreError::protocol(
+                "encoded composite root postings must be sorted, unique, and in range",
+            ));
+        }
+        previous = value;
+    }
+    Ok(())
+}
+
+fn validate_composite_bridge_segment(
+    segment: &Bound<'_, PyAny>,
+    top_owner: &Bound<'_, PyAny>,
+    local_root_count: usize,
+) -> CoreResult<()> {
+    let role = exact_nonnegative_integer(
+        &required_attribute(segment, "role")?,
+        "encoded composite bridge role",
+    )?;
+    let posting_mode = exact_nonnegative_integer(
+        &required_attribute(segment, "posting_mode")?,
+        "encoded composite bridge posting_mode",
+    )?;
+    if role != SEGMENT_COMPOSITE_BRIDGE || posting_mode != POSTINGS_ALL {
+        return Err(CoreError::protocol(
+            "encoded composite bridge role or posting mode is invalid",
+        ));
+    }
+    if !required_attribute(segment, "owner")?.is(top_owner)
+        || !required_attribute(segment, "source")?.is_none()
+        || !required_attribute(segment, "member_token")?.is_none()
+    {
+        return Err(CoreError::protocol(
+            "encoded composite bridge ownership metadata is invalid",
+        ));
+    }
+    validate_empty_segment_bytes(segment, "root_ids")?;
+    validate_empty_segment_bytes(segment, "anonymous_scope_map")?;
+    if local_root_count == 0 {
+        return Err(CoreError::protocol(
+            "encoded composite bridge must carry local structural roots",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_structural_fingerprint(
@@ -993,7 +1335,7 @@ fn validate_overlay_delta_segment(
         &required_attribute(segment, "posting_mode")?,
         "encoded delta segment posting_mode",
     )?;
-    if role != 3 || posting_mode != 0 {
+    if role != SEGMENT_OVERLAY_DELTA || posting_mode != POSTINGS_ALL {
         return Err(CoreError::protocol(
             "encoded overlay delta role or posting mode is invalid",
         ));
@@ -1047,7 +1389,7 @@ fn validate_direct_segment(
         &required_attribute(&segment, "posting_mode")?,
         "encoded segment posting_mode",
     )?;
-    if role != 1 || posting_mode != 0 {
+    if role != SEGMENT_DIRECT || posting_mode != POSTINGS_ALL {
         return Err(CoreError::invalid(
             "encoded compiler slice currently accepts only direct all-postings segments",
         ));
