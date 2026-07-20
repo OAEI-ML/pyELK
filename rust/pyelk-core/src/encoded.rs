@@ -37,6 +37,7 @@ const COMPONENT_SEQUENCE: u8 = 7;
 
 // Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
 const FEATURE_OBJECT_PROPERTY_CHAIN: usize = 40;
+const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EntityKindRole {
@@ -537,11 +538,11 @@ pub fn validate_columns<B: ByteSource>(
 ///
 /// This stage accepts unannotated declarations of classes, named individuals, and object
 /// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
-/// `SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`, and
-/// `TransitiveObjectProperty` axioms. Ontology annotations and annotation-property declarations
-/// have no ELK effect and are ignored. Every other logical constructor fails closed, irrespective
-/// of the scalar compiler's unsupported policy. Consequently this function is safe to extend and
-/// test while encoded-schema capability advertisement remains disabled.
+/// `SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`, object-property range,
+/// and `TransitiveObjectProperty` axioms. Ontology annotations and annotation-property
+/// declarations have no ELK effect and are ignored. Every other logical constructor fails closed,
+/// irrespective of the scalar compiler's unsupported policy. Consequently this function is safe
+/// to extend and test while encoded-schema capability advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -570,6 +571,7 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
             70 => compile_named_subproperty(node, &columns, &mut builder)?,
             71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
+            75 => compile_named_property_range(node, &columns, &mut builder)?,
             82 => compile_transitive_named_property(node, &columns, &mut builder)?,
             110 => compile_same_named_individuals(node, &columns, &mut builder)?,
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
@@ -591,6 +593,7 @@ struct NamedHierarchyBuilder {
     subclass_axioms: BTreeSet<(Entity, Entity)>,
     equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
+    property_ranges: BTreeSet<(Entity, Entity)>,
     feature_counts: Vec<u64>,
 }
 
@@ -604,6 +607,7 @@ impl Default for NamedHierarchyBuilder {
             subclass_axioms: BTreeSet::new(),
             equivalent_class_axioms: BTreeSet::new(),
             subproperty_axioms: BTreeSet::new(),
+            property_ranges: BTreeSet::new(),
             feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
         }
     }
@@ -742,6 +746,20 @@ impl NamedHierarchyBuilder {
         Ok(())
     }
 
+    fn add_property_range(&mut self, property: Entity, range: Entity) -> CoreResult<()> {
+        self.entities.insert(property.clone());
+        self.entities.insert(range.clone());
+        increment_occurrence(
+            self.property_occurrences
+                .entry(property.clone())
+                .or_default(),
+            false,
+        )?;
+        increment_occurrence(self.occurrences.entry(range.clone()).or_default(), true)?;
+        self.property_ranges.insert((property, range));
+        self.add_feature(FEATURE_OBJECT_PROPERTY_RANGE, 1)
+    }
+
     fn insert_subproperty_rule(&mut self, chain: Vec<Entity>, super_: Entity) {
         self.property_chains.insert(chain.clone());
         self.subproperty_axioms.insert((chain, super_));
@@ -855,6 +873,11 @@ impl NamedHierarchyBuilder {
             .collect::<CoreResult<BTreeSet<_>>>()?
             .into_iter()
             .collect();
+        let property_ranges = self
+            .property_ranges
+            .into_iter()
+            .map(|(property, range)| (entity_ids[&property], expression_ids[&range]))
+            .collect();
 
         Ok(Ontology {
             entities,
@@ -874,7 +897,7 @@ impl NamedHierarchyBuilder {
             equivalent_class_axioms,
             disjoint_groups: Vec::new(),
             subproperty_axioms,
-            property_ranges: Vec::new(),
+            property_ranges,
             feature_counts: self.feature_counts,
             source_fingerprint,
         })
@@ -936,6 +959,17 @@ fn compile_equivalent_named_properties<B: ByteSource>(
         .map(|identifier| decode_named_object_property(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
     builder.add_equivalent_properties(members)
+}
+
+fn compile_named_property_range<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 2, columns)?;
+    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+    let range = decode_named_class(node_field(node, 1, columns)?, columns)?;
+    builder.add_property_range(property, range)
 }
 
 fn compile_transitive_named_property<B: ByteSource>(
@@ -2799,6 +2833,32 @@ mod tests {
         }
     }
 
+    fn named_property_range() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 1, 2, 2, 75]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 9]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 4, 3, 0]),
+            field_lengths: le64(&[5, 5, 5, 0, 15, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:pclassobject_property".to_vec(),
+        }
+    }
+
     fn equivalent_class_pair() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -3599,6 +3659,33 @@ mod tests {
             }
         );
         assert_eq!(compiled.feature_counts[FEATURE_OBJECT_PROPERTY_CHAIN], 1);
+    }
+
+    #[test]
+    fn named_property_range_compiles_directly_with_exact_polarity() {
+        let compiled = compile_named_hierarchy(
+            named_property_range().borrowed(),
+            EncodedLimits::default(),
+            [11; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.property_ranges, vec![(5, 2)]);
+        assert_eq!(
+            compiled.property_occurrences[2],
+            Occurrence {
+                negative: 1,
+                positive: 0,
+            }
+        );
+        assert_eq!(
+            compiled.expression_occurrences[2],
+            Occurrence {
+                negative: 0,
+                positive: 1,
+            }
+        );
+        assert_eq!(compiled.feature_counts[FEATURE_OBJECT_PROPERTY_RANGE], 1);
     }
 
     #[test]
