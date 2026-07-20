@@ -38,6 +38,9 @@ const COMPONENT_SEQUENCE: u8 = 7;
 // Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
 const FEATURE_OBJECT_PROPERTY_CHAIN: usize = 40;
 const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
+const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
+const FEATURE_DISJOINT_CLASSES: usize = 16;
+const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EntityKindRole {
@@ -538,11 +541,12 @@ pub fn validate_columns<B: ByteSource>(
 ///
 /// This stage accepts unannotated declarations of classes, named individuals, and object
 /// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
-/// `SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`, object-property range,
-/// and `TransitiveObjectProperty` axioms. Ontology annotations and annotation-property
-/// declarations have no ELK effect and are ignored. Every other logical constructor fails closed,
-/// irrespective of the scalar compiler's unsupported policy. Consequently this function is safe
-/// to extend and test while encoded-schema capability advertisement remains disabled.
+/// `DisjointClasses`, `SameIndividual`, `DifferentIndividuals`, `SubObjectPropertyOf`,
+/// `EquivalentObjectProperties`, object-property range, and `TransitiveObjectProperty` axioms.
+/// Ontology annotations and annotation-property declarations have no ELK effect and are ignored.
+/// Every other logical constructor fails closed, irrespective of the scalar compiler's unsupported
+/// policy. Consequently this function is safe to extend and test while encoded-schema capability
+/// advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -569,11 +573,13 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             60 => compile_declaration(node, &columns, &mut builder)?,
             61 => compile_named_subclass(node, &columns, &mut builder)?,
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
+            63 => compile_disjoint_named_classes(node, &columns, &mut builder)?,
             70 => compile_named_subproperty(node, &columns, &mut builder)?,
             71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
             75 => compile_named_property_range(node, &columns, &mut builder)?,
             82 => compile_transitive_named_property(node, &columns, &mut builder)?,
             110 => compile_same_named_individuals(node, &columns, &mut builder)?,
+            111 => compile_different_named_individuals(node, &columns, &mut builder)?,
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
             tag => {
                 return Err(CoreError::invalid(format!(
@@ -591,7 +597,10 @@ struct NamedHierarchyBuilder {
     property_occurrences: BTreeMap<Entity, Occurrence>,
     property_chains: BTreeSet<Vec<Entity>>,
     subclass_axioms: BTreeSet<(Entity, Entity)>,
+    intersection_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
+    intersection_subclass_axioms: BTreeSet<((Entity, Entity), Entity)>,
     equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
+    disjoint_groups: BTreeSet<Vec<Entity>>,
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
     property_ranges: BTreeSet<(Entity, Entity)>,
     feature_counts: Vec<u64>,
@@ -605,7 +614,10 @@ impl Default for NamedHierarchyBuilder {
             property_occurrences: BTreeMap::new(),
             property_chains: BTreeSet::new(),
             subclass_axioms: BTreeSet::new(),
+            intersection_occurrences: BTreeMap::new(),
+            intersection_subclass_axioms: BTreeSet::new(),
             equivalent_class_axioms: BTreeSet::new(),
+            disjoint_groups: BTreeSet::new(),
             subproperty_axioms: BTreeSet::new(),
             property_ranges: BTreeSet::new(),
             feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
@@ -682,6 +694,43 @@ impl NamedHierarchyBuilder {
         for member in members.into_iter().skip(1) {
             self.subclass_axioms.insert((first.clone(), member.clone()));
             self.subclass_axioms.insert((member, first.clone()));
+        }
+        Ok(())
+    }
+
+    fn add_disjoint(&mut self, members: Vec<Entity>, feature: usize) -> CoreResult<()> {
+        self.add_feature(feature, 1)?;
+        if members.len() > 2 {
+            for member in &members {
+                self.entities.insert(member.clone());
+                increment_occurrence(self.occurrences.entry(member.clone()).or_default(), false)?;
+            }
+            self.disjoint_groups.insert(members);
+            return Ok(());
+        }
+
+        let bottom = Entity {
+            kind: EntityKind::Class,
+            iri: OWL_NOTHING_IRI.to_owned(),
+        };
+        increment_occurrence(self.occurrences.entry(bottom.clone()).or_default(), true)?;
+        self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+        for (first_position, first) in members.iter().enumerate() {
+            self.entities.insert(first.clone());
+            increment_occurrence(self.occurrences.entry(first.clone()).or_default(), false)?;
+            for second in members.iter().skip(first_position + 1) {
+                self.entities.insert(second.clone());
+                increment_occurrence(self.occurrences.entry(second.clone()).or_default(), false)?;
+                let key = (first.clone(), second.clone());
+                increment_occurrence(
+                    self.intersection_occurrences
+                        .entry(key.clone())
+                        .or_default(),
+                    false,
+                )?;
+                self.intersection_subclass_axioms
+                    .insert((key, bottom.clone()));
+            }
         }
         Ok(())
     }
@@ -817,21 +866,61 @@ impl NamedHierarchyBuilder {
             }
         }
 
+        let mut intersection_rows = self
+            .intersection_occurrences
+            .into_iter()
+            .collect::<Vec<_>>();
+        intersection_rows.sort_by_key(|((first, second), _occurrence)| {
+            (expression_ids[first], expression_ids[second])
+        });
+        let mut intersection_ids = BTreeMap::new();
+        for ((first, second), occurrence) in intersection_rows {
+            let identifier = u32::try_from(expressions.len())
+                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
+            if identifier == u32::MAX {
+                return Err(CoreError::capacity(
+                    "encoded compiler expression table reaches the reserved u32 ID",
+                ));
+            }
+            expressions.push(Expression {
+                tag: ExpressionTag::ObjectIntersectionOf,
+                payload: Vec::new(),
+                arguments: vec![expression_ids[&first], expression_ids[&second]],
+            });
+            expression_occurrences.push(occurrence);
+            intersection_ids.insert((first, second), identifier);
+        }
+
         let object_properties = entities
             .iter()
             .filter(|entity| entity.kind == EntityKind::ObjectProperty)
             .cloned()
             .collect::<Vec<_>>();
-        let subclass_axioms = self
+        let mut subclass_axioms = self
             .subclass_axioms
             .into_iter()
             .map(|(sub, super_)| Ok((expression_ids[&sub], expression_ids[&super_])))
-            .collect::<CoreResult<Vec<_>>>()?;
+            .collect::<CoreResult<BTreeSet<_>>>()?;
+        subclass_axioms.extend(self.intersection_subclass_axioms.into_iter().map(
+            |(intersection, super_)| (intersection_ids[&intersection], expression_ids[&super_]),
+        ));
         let equivalent_class_axioms = self
             .equivalent_class_axioms
             .into_iter()
             .map(|(first, second)| Ok((expression_ids[&first], expression_ids[&second])))
             .collect::<CoreResult<Vec<_>>>()?;
+        let disjoint_groups = self
+            .disjoint_groups
+            .into_iter()
+            .map(|group| {
+                group
+                    .into_iter()
+                    .map(|member| expression_ids[&member])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         let mut property_chain_values = self
             .property_chains
             .into_iter()
@@ -893,9 +982,9 @@ impl NamedHierarchyBuilder {
                 })
                 .collect(),
             property_chains,
-            subclass_axioms,
+            subclass_axioms: subclass_axioms.into_iter().collect(),
             equivalent_class_axioms,
-            disjoint_groups: Vec::new(),
+            disjoint_groups,
             subproperty_axioms,
             property_ranges,
             feature_counts: self.feature_counts,
@@ -935,6 +1024,19 @@ fn compile_named_equivalence<B: ByteSource>(
         .map(|identifier| decode_named_class(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
     builder.add_equivalent_classes(members)
+}
+
+fn compile_disjoint_named_classes<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    let members = node_collection(node, 0, columns)?
+        .into_iter()
+        .map(|identifier| decode_named_class(identifier, columns))
+        .collect::<CoreResult<Vec<_>>>()?;
+    builder.add_disjoint(members, FEATURE_DISJOINT_CLASSES)
 }
 
 fn compile_named_subproperty<B: ByteSource>(
@@ -1004,6 +1106,19 @@ fn compile_same_named_individuals<B: ByteSource>(
         .map(|identifier| decode_named_individual(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
     builder.add_same_individuals(members)
+}
+
+fn compile_different_named_individuals<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    let members = node_collection(node, 0, columns)?
+        .into_iter()
+        .map(|identifier| decode_named_individual(identifier, columns))
+        .collect::<CoreResult<Vec<_>>>()?;
+    builder.add_disjoint(members, FEATURE_DIFFERENT_INDIVIDUALS)
 }
 
 fn decode_named_class<B: ByteSource>(
@@ -2626,6 +2741,12 @@ mod tests {
         }
     }
 
+    fn disjoint_named_classes() -> OwnedColumns {
+        let mut columns = equivalent_classes();
+        columns.node_tags = le16(&[1, 1, 2, 2, 63]);
+        columns
+    }
+
     fn two_declarations() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -2728,6 +2849,12 @@ mod tests {
             item_lengths: le64(&[0, 0]),
             scalar_bytes: b"urn:iurn:jnamed_individualnamed_individual".to_vec(),
         }
+    }
+
+    fn different_named_individuals() -> OwnedColumns {
+        let mut columns = same_named_individuals();
+        columns.node_tags = le16(&[1, 1, 2, 2, 111]);
+        columns
     }
 
     fn named_subproperty() -> OwnedColumns {
@@ -3492,6 +3619,48 @@ mod tests {
     }
 
     #[test]
+    fn binary_named_disjointness_matches_scalar_binarization() {
+        let compiled = compile_named_hierarchy(
+            disjoint_named_classes().borrowed(),
+            EncodedLimits::default(),
+            [12; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[4].tag,
+            ExpressionTag::ObjectIntersectionOf
+        );
+        assert_eq!(compiled.expressions[4].arguments, [2, 3]);
+        assert_eq!(compiled.subclass_axioms, vec![(4, 0)]);
+        assert!(compiled.disjoint_groups.is_empty());
+        assert_eq!(
+            compiled.expression_occurrences,
+            vec![
+                Occurrence {
+                    negative: 0,
+                    positive: 1,
+                },
+                Occurrence::default(),
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+                Occurrence {
+                    negative: 2,
+                    positive: 0,
+                },
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+            ]
+        );
+        assert_eq!(compiled.feature_counts[FEATURE_DISJOINT_CLASSES], 1);
+        assert_eq!(compiled.feature_counts[FEATURE_OWL_NOTHING_POSITIVE], 1);
+    }
+
+    #[test]
     fn named_class_assertion_compiles_as_individual_subsumption() {
         let compiled = compile_named_hierarchy(
             named_class_assertion().borrowed(),
@@ -3545,6 +3714,29 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn binary_different_individuals_reuses_exact_disjoint_binarization() {
+        let compiled = compile_named_hierarchy(
+            different_named_individuals().borrowed(),
+            EncodedLimits::default(),
+            [13; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[4].tag,
+            ExpressionTag::ObjectIntersectionOf
+        );
+        assert_eq!(compiled.expressions[4].arguments, [2, 3]);
+        assert_eq!(compiled.subclass_axioms, vec![(4, 0)]);
+        assert_eq!(compiled.expression_occurrences[0].positive, 1);
+        assert_eq!(compiled.expression_occurrences[2].negative, 1);
+        assert_eq!(compiled.expression_occurrences[3].negative, 2);
+        assert_eq!(compiled.expression_occurrences[4].negative, 1);
+        assert_eq!(compiled.feature_counts[FEATURE_DIFFERENT_INDIVIDUALS], 1);
+        assert_eq!(compiled.feature_counts[FEATURE_OWL_NOTHING_POSITIVE], 1);
     }
 
     #[test]
