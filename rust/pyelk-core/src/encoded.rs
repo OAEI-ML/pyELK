@@ -600,19 +600,23 @@ pub fn compile_named_hierarchy<B: ByteSource>(
     builder.freeze(source_fingerprint)
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum CompilerExpression {
+    Named(Entity),
+    Intersection(Entity, Entity),
+    Existential(Entity, Entity),
+    HasSelf(Entity),
+}
+
 struct NamedHierarchyBuilder {
     entities: BTreeSet<Entity>,
     occurrences: BTreeMap<Entity, Occurrence>,
     property_occurrences: BTreeMap<Entity, Occurrence>,
     property_chains: BTreeSet<Vec<Entity>>,
-    subclass_axioms: BTreeSet<(Entity, Entity)>,
+    subclass_axioms: BTreeSet<(CompilerExpression, CompilerExpression)>,
     intersection_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
-    intersection_subclass_axioms: BTreeSet<((Entity, Entity), Entity)>,
     existential_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
-    existential_subclass_axioms: BTreeSet<((Entity, Entity), Entity)>,
-    subclass_existential_axioms: BTreeSet<(Entity, (Entity, Entity))>,
     has_self_occurrences: BTreeMap<Entity, Occurrence>,
-    subclass_has_self_axioms: BTreeSet<(Entity, Entity)>,
     equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
     disjoint_groups: BTreeSet<Vec<Entity>>,
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
@@ -629,12 +633,8 @@ impl Default for NamedHierarchyBuilder {
             property_chains: BTreeSet::new(),
             subclass_axioms: BTreeSet::new(),
             intersection_occurrences: BTreeMap::new(),
-            intersection_subclass_axioms: BTreeSet::new(),
             existential_occurrences: BTreeMap::new(),
-            existential_subclass_axioms: BTreeSet::new(),
-            subclass_existential_axioms: BTreeSet::new(),
             has_self_occurrences: BTreeMap::new(),
-            subclass_has_self_axioms: BTreeSet::new(),
             equivalent_class_axioms: BTreeSet::new(),
             disjoint_groups: BTreeSet::new(),
             subproperty_axioms: BTreeSet::new(),
@@ -678,7 +678,10 @@ impl NamedHierarchyBuilder {
     fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
         self.add_named_occurrence(&sub, true, false)?;
         self.add_named_occurrence(&super_, false, true)?;
-        self.subclass_axioms.insert((sub, super_));
+        self.subclass_axioms.insert((
+            CompilerExpression::Named(sub),
+            CompilerExpression::Named(super_),
+        ));
         Ok(())
     }
 
@@ -709,8 +712,14 @@ impl NamedHierarchyBuilder {
             increment_occurrence(occurrence, true)?;
         }
         for member in members.into_iter().skip(1) {
-            self.subclass_axioms.insert((first.clone(), member.clone()));
-            self.subclass_axioms.insert((member, first.clone()));
+            self.subclass_axioms.insert((
+                CompilerExpression::Named(first.clone()),
+                CompilerExpression::Named(member.clone()),
+            ));
+            self.subclass_axioms.insert((
+                CompilerExpression::Named(member),
+                CompilerExpression::Named(first.clone()),
+            ));
         }
         Ok(())
     }
@@ -744,8 +753,10 @@ impl NamedHierarchyBuilder {
                         .or_default(),
                     false,
                 )?;
-                self.intersection_subclass_axioms
-                    .insert((key, bottom.clone()));
+                self.subclass_axioms.insert((
+                    CompilerExpression::Intersection(key.0, key.1),
+                    CompilerExpression::Named(bottom.clone()),
+                ));
             }
         }
         Ok(())
@@ -775,7 +786,10 @@ impl NamedHierarchyBuilder {
                 self.add_named_occurrence(&defined, false, true)?;
                 for member in members {
                     self.add_named_occurrence(&member, true, false)?;
-                    self.subclass_axioms.insert((member, defined.clone()));
+                    self.subclass_axioms.insert((
+                        CompilerExpression::Named(member),
+                        CompilerExpression::Named(defined.clone()),
+                    ));
                 }
             }
         }
@@ -888,8 +902,10 @@ impl NamedHierarchyBuilder {
                 .or_default(),
             false,
         )?;
-        self.existential_subclass_axioms
-            .insert((existential, domain));
+        self.subclass_axioms.insert((
+            CompilerExpression::Existential(existential.0, existential.1),
+            CompilerExpression::Named(domain),
+        ));
         Ok(())
     }
 
@@ -911,8 +927,10 @@ impl NamedHierarchyBuilder {
             true,
         )?;
         self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
-        self.subclass_existential_axioms
-            .insert((source, existential));
+        self.subclass_axioms.insert((
+            CompilerExpression::Named(source),
+            CompilerExpression::Existential(existential.0, existential.1),
+        ));
         Ok(())
     }
 
@@ -930,7 +948,10 @@ impl NamedHierarchyBuilder {
                 .or_default(),
             true,
         )?;
-        self.subclass_has_self_axioms.insert((thing, property));
+        self.subclass_axioms.insert((
+            CompilerExpression::Named(thing),
+            CompilerExpression::HasSelf(property),
+        ));
         Ok(())
     }
 
@@ -987,6 +1008,7 @@ impl NamedHierarchyBuilder {
         let mut expressions = Vec::new();
         let mut expression_occurrences = Vec::new();
         let mut expression_ids = BTreeMap::new();
+        let mut compiler_expression_ids = BTreeMap::new();
         for (tag, kind) in [
             (ExpressionTag::Class, EntityKind::Class),
             (ExpressionTag::Individual, EntityKind::NamedIndividual),
@@ -1008,6 +1030,8 @@ impl NamedHierarchyBuilder {
                 expression_occurrences
                     .push(self.occurrences.get(entity).copied().unwrap_or_default());
                 expression_ids.insert(entity.clone(), identifier);
+                compiler_expression_ids
+                    .insert(CompilerExpression::Named(entity.clone()), identifier);
             }
         }
 
@@ -1018,7 +1042,6 @@ impl NamedHierarchyBuilder {
         intersection_rows.sort_by_key(|((first, second), _occurrence)| {
             (expression_ids[first], expression_ids[second])
         });
-        let mut intersection_ids = BTreeMap::new();
         for ((first, second), occurrence) in intersection_rows {
             let identifier = u32::try_from(expressions.len())
                 .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
@@ -1033,14 +1056,16 @@ impl NamedHierarchyBuilder {
                 arguments: vec![expression_ids[&first], expression_ids[&second]],
             });
             expression_occurrences.push(occurrence);
-            intersection_ids.insert((first, second), identifier);
+            compiler_expression_ids.insert(
+                CompilerExpression::Intersection(first.clone(), second.clone()),
+                identifier,
+            );
         }
 
         let mut existential_rows = self.existential_occurrences.into_iter().collect::<Vec<_>>();
         existential_rows.sort_by_key(|((property, filler), _occurrence)| {
             (entity_ids[property], expression_ids[filler])
         });
-        let mut existential_ids = BTreeMap::new();
         for ((property, filler), occurrence) in existential_rows {
             let identifier = u32::try_from(expressions.len())
                 .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
@@ -1055,12 +1080,14 @@ impl NamedHierarchyBuilder {
                 arguments: vec![entity_ids[&property], expression_ids[&filler]],
             });
             expression_occurrences.push(occurrence);
-            existential_ids.insert((property, filler), identifier);
+            compiler_expression_ids.insert(
+                CompilerExpression::Existential(property.clone(), filler.clone()),
+                identifier,
+            );
         }
 
         let mut has_self_rows = self.has_self_occurrences.into_iter().collect::<Vec<_>>();
         has_self_rows.sort_by_key(|(property, _occurrence)| entity_ids[property]);
-        let mut has_self_ids = BTreeMap::new();
         for (property, occurrence) in has_self_rows {
             let identifier = u32::try_from(expressions.len())
                 .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
@@ -1075,7 +1102,8 @@ impl NamedHierarchyBuilder {
                 arguments: vec![entity_ids[&property]],
             });
             expression_occurrences.push(occurrence);
-            has_self_ids.insert(property, identifier);
+            compiler_expression_ids
+                .insert(CompilerExpression::HasSelf(property.clone()), identifier);
         }
 
         let object_properties = entities
@@ -1083,31 +1111,16 @@ impl NamedHierarchyBuilder {
             .filter(|entity| entity.kind == EntityKind::ObjectProperty)
             .cloned()
             .collect::<Vec<_>>();
-        let mut subclass_axioms = self
+        let subclass_axioms = self
             .subclass_axioms
             .into_iter()
-            .map(|(sub, super_)| Ok((expression_ids[&sub], expression_ids[&super_])))
-            .collect::<CoreResult<BTreeSet<_>>>()?;
-        subclass_axioms.extend(self.intersection_subclass_axioms.into_iter().map(
-            |(intersection, super_)| (intersection_ids[&intersection], expression_ids[&super_]),
-        ));
-        subclass_axioms.extend(
-            self.existential_subclass_axioms
-                .into_iter()
-                .map(|(existential, super_)| {
-                    (existential_ids[&existential], expression_ids[&super_])
-                }),
-        );
-        subclass_axioms.extend(
-            self.subclass_existential_axioms
-                .into_iter()
-                .map(|(sub, existential)| (expression_ids[&sub], existential_ids[&existential])),
-        );
-        subclass_axioms.extend(
-            self.subclass_has_self_axioms
-                .into_iter()
-                .map(|(sub, property)| (expression_ids[&sub], has_self_ids[&property])),
-        );
+            .map(|(sub, super_)| {
+                (
+                    compiler_expression_ids[&sub],
+                    compiler_expression_ids[&super_],
+                )
+            })
+            .collect::<BTreeSet<_>>();
         let equivalent_class_axioms = self
             .equivalent_class_axioms
             .into_iter()
