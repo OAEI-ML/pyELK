@@ -29,7 +29,7 @@ use pyo3::create_exception;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{
-    PyBytes, PyDict, PyInt, PyMapping, PyMemoryView, PyModule, PyTuple, PyTupleMethods,
+    PyBytes, PyDict, PyInt, PyMapping, PyMemoryView, PyModule, PySlice, PyTuple, PyTupleMethods,
 };
 use sha2::Sha256;
 
@@ -88,6 +88,7 @@ impl ByteSource for BorrowedPyBytes<'_, '_> {
 struct EncodedBufferBinding<'py> {
     view: Bound<'py, PyAny>,
     bytes_owner: Option<Bound<'py, PyBytes>>,
+    owner_range: Option<(usize, usize)>,
 }
 
 #[derive(Clone)]
@@ -109,7 +110,7 @@ struct EncodedBufferBindings<'py> {
 struct EncodedIngestionMetrics {
     buffer_count: u64,
     buffer_bytes: u64,
-    zero_copy_buffers: u64,
+    detached_buffer_count: u64,
     compiler_gil_released: bool,
     segment_count: u64,
     referenced_view_count: u64,
@@ -809,7 +810,11 @@ impl NativeSession {
         if let Some(metrics) = encoded_metrics {
             result.set_item("encoded_buffer_count", metrics.buffer_count)?;
             result.set_item("encoded_buffer_bytes", metrics.buffer_bytes)?;
-            result.set_item("encoded_zero_copy_buffers", metrics.zero_copy_buffers)?;
+            result.set_item("encoded_zero_copy_buffers", metrics.buffer_count)?;
+            result.set_item(
+                "encoded_detached_buffer_count",
+                metrics.detached_buffer_count,
+            )?;
             result.set_item(
                 "encoded_compiler_gil_released",
                 metrics.compiler_gil_released,
@@ -822,7 +827,7 @@ impl NativeSession {
             result.set_item("encoded_posting_bytes", metrics.posting_bytes)?;
             result.set_item(
                 "encoded_indexed_buffer_count",
-                metrics.buffer_count - metrics.zero_copy_buffers,
+                metrics.buffer_count - metrics.detached_buffer_count,
             )?;
             result.set_item("encoded_staging_copy_bytes", 0)?;
             result.set_item("encoded_private_ir_bytes", 0)?;
@@ -1208,7 +1213,7 @@ impl<'py> EncodedBufferBindings<'py> {
                 .get_item(name)
                 .map_err(|_| CoreError::protocol(format!("encoded view is missing buffer {name}")))
         };
-        Ok(Self {
+        let mut result = Self {
             root_kinds: EncodedBufferBinding::new(get("root_kinds")?),
             root_ids: EncodedBufferBinding::new(get("root_ids")?),
             node_tags: EncodedBufferBinding::new(get("node_tags")?),
@@ -1220,7 +1225,79 @@ impl<'py> EncodedBufferBindings<'py> {
             item_values: EncodedBufferBinding::new(get("item_values")?),
             item_lengths: EncodedBufferBinding::new(get("item_lengths")?),
             scalar_bytes: EncodedBufferBinding::new(get("scalar_bytes")?),
-        })
+        };
+        result.attach_packed_bytes_owner()?;
+        Ok(result)
+    }
+
+    fn attach_packed_bytes_owner(&mut self) -> CoreResult<()> {
+        let Some(owner) = self.root_kinds.bytes_owner.as_ref() else {
+            return Ok(());
+        };
+        let owner = owner.clone();
+        let mut bindings = [
+            &mut self.root_kinds,
+            &mut self.root_ids,
+            &mut self.node_tags,
+            &mut self.node_field_offsets,
+            &mut self.field_kinds,
+            &mut self.field_values,
+            &mut self.field_lengths,
+            &mut self.item_kinds,
+            &mut self.item_values,
+            &mut self.item_lengths,
+            &mut self.scalar_bytes,
+        ];
+        if bindings.iter().any(|binding| {
+            binding
+                .bytes_owner
+                .as_ref()
+                .is_none_or(|candidate| !candidate.is(&owner))
+        }) {
+            return Ok(());
+        }
+
+        let mut ranges = Vec::new();
+        ranges
+            .try_reserve_exact(bindings.len())
+            .map_err(|_| CoreError::capacity("encoded packed-owner range allocation failed"))?;
+        let mut cursor = 0_usize;
+        for (name, binding) in ENCODED_BUFFER_NAMES.iter().zip(&bindings) {
+            let source = borrowed_py_bytes(&binding.view, binding.bytes_owner.as_ref(), name)?;
+            let end = cursor
+                .checked_add(source.len)
+                .ok_or_else(|| CoreError::capacity("encoded packed-owner range overflow"))?;
+            ranges.push((cursor, end));
+            cursor = end;
+        }
+        if cursor != owner.as_bytes().len() {
+            return Ok(());
+        }
+
+        let py = owner.py();
+        let owner_view = PyMemoryView::from(owner.as_any()).map_err(|_| {
+            CoreError::protocol("encoded packed bytes owner cannot export a memoryview")
+        })?;
+        for (binding, (start, end)) in bindings.iter().zip(&ranges) {
+            let start = isize::try_from(*start)
+                .map_err(|_| CoreError::capacity("encoded packed-owner start exceeds isize"))?;
+            let end = isize::try_from(*end)
+                .map_err(|_| CoreError::capacity("encoded packed-owner end exceeds isize"))?;
+            let expected = owner_view
+                .get_item(PySlice::new(py, start, end, 1))
+                .map_err(|_| CoreError::protocol("encoded packed-owner slice is inaccessible"))?;
+            if !binding
+                .view
+                .eq(expected)
+                .map_err(|_| CoreError::protocol("encoded packed-owner slice comparison failed"))?
+            {
+                return Ok(());
+            }
+        }
+        for (binding, range) in bindings.iter_mut().zip(ranges) {
+            binding.owner_range = Some(range);
+        }
+        Ok(())
     }
 
     fn columns(&self) -> CoreResult<EncodedColumns<BorrowedPyBytes<'_, 'py>>> {
@@ -1296,11 +1373,29 @@ impl<'py> EncodedBufferBinding<'py> {
             .getattr("obj")
             .ok()
             .and_then(|owner| owner.cast_into::<PyBytes>().ok());
-        Self { view, bytes_owner }
+        Self {
+            view,
+            bytes_owner,
+            owner_range: None,
+        }
     }
 
     fn source(&self, name: &str) -> CoreResult<BorrowedPyBytes<'_, 'py>> {
-        borrowed_py_bytes(&self.view, self.bytes_owner.as_ref(), name)
+        let mut source = borrowed_py_bytes(&self.view, self.bytes_owner.as_ref(), name)?;
+        if let (Some(owner), Some((start, end))) = (&self.bytes_owner, self.owner_range) {
+            let bytes = owner.as_bytes().get(start..end).ok_or_else(|| {
+                CoreError::protocol(format!(
+                    "encoded buffer {name} packed-owner range is invalid"
+                ))
+            })?;
+            if bytes.len() != source.len {
+                return Err(CoreError::protocol(format!(
+                    "encoded buffer {name} packed-owner range has the wrong length"
+                )));
+            }
+            source.bytes = Some(bytes);
+        }
+        Ok(source)
     }
 }
 
@@ -1346,7 +1441,7 @@ fn encoded_ingestion_metrics(
     posting_bytes: usize,
 ) -> CoreResult<EncodedIngestionMetrics> {
     let mut buffer_bytes = 0_u64;
-    let mut zero_copy_buffers = 0_u64;
+    let mut detached_buffer_count = 0_u64;
     let mut buffer_count = 0_u64;
     for columns in column_tables.iter().copied() {
         let buffers = [
@@ -1369,7 +1464,7 @@ fn encoded_ingestion_metrics(
                         .map_err(|_| CoreError::capacity("encoded buffer length exceeds u64"))?,
                 )
                 .ok_or_else(|| CoreError::capacity("encoded buffer byte total exceeds u64"))?;
-            zero_copy_buffers += u64::from(buffer.bytes.is_some());
+            detached_buffer_count += u64::from(buffer.bytes.is_some());
             buffer_count = buffer_count
                 .checked_add(1)
                 .ok_or_else(|| CoreError::capacity("encoded buffer count overflow"))?;
@@ -1378,7 +1473,7 @@ fn encoded_ingestion_metrics(
     Ok(EncodedIngestionMetrics {
         buffer_count,
         buffer_bytes,
-        zero_copy_buffers,
+        detached_buffer_count,
         compiler_gil_released: false,
         segment_count,
         referenced_view_count,

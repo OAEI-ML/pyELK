@@ -44,6 +44,19 @@ _FROZEN_ENCODED_ONTOLOGIES = tuple(
 _W3C_CORE_FIXTURES = tuple(
     sorted((Path(__file__).parents[1] / "data/native-structural/w3c-minimal").glob("minimal.*"))
 )
+_ENCODED_BUFFER_NAMES = (
+    "root_kinds",
+    "root_ids",
+    "node_tags",
+    "node_field_offsets",
+    "field_kinds",
+    "field_values",
+    "field_lengths",
+    "item_kinds",
+    "item_values",
+    "item_lengths",
+    "scalar_bytes",
+)
 
 
 def _native_library() -> Path:
@@ -128,6 +141,35 @@ def _encoded_wrapper(encoded: Any, **changes: object) -> SimpleNamespace:
     }
     values.update(changes)
     return SimpleNamespace(**values)
+
+
+def _shared_bytes_exporter_encoded(
+    encoded: Any,
+    *,
+    owner_order: tuple[str, ...] = _ENCODED_BUFFER_NAMES,
+) -> SimpleNamespace:
+    from pyowl_core.backends import native_views
+
+    assert set(owner_order) == set(_ENCODED_BUFFER_NAMES)
+    payloads = {name: bytes(encoded.buffers[name]) for name in _ENCODED_BUFFER_NAMES}
+    owner = b"".join(payloads[name] for name in owner_order)
+    ranges: dict[str, tuple[int, int]] = {}
+    cursor = 0
+    for name in owner_order:
+        end = cursor + len(payloads[name])
+        ranges[name] = (cursor, end)
+        cursor = end
+    buffers = MappingProxyType(
+        {
+            name: memoryview(owner)[slice(*ranges[name])]
+            for name in _ENCODED_BUFFER_NAMES
+        }
+    )
+    return _encoded_wrapper(
+        encoded,
+        buffers=buffers,
+        structural_fingerprint=native_views._fingerprint(buffers, encoded.segments),
+    )
 
 
 def _noop_overlay_encoded(source: Any, encoded_source: Any) -> tuple[Any, Any]:
@@ -388,6 +430,7 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
             value.nbytes for value in encoded.buffers.values()
         )
         assert diagnostics["encoded_zero_copy_buffers"] == 11
+        assert diagnostics["encoded_detached_buffer_count"] == 11
         assert diagnostics["encoded_compiler_gil_released"] is True
         assert diagnostics["encoded_indexed_buffer_count"] == 0
         assert diagnostics["encoded_staging_copy_bytes"] == 0
@@ -422,6 +465,58 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
     finally:
         direct.close()
+        scalar.close()
+
+
+def test_hidden_packed_bytes_exporter_detaches_only_in_frozen_column_order(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-packed#>) Ontology(<urn:encoded-packed>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(ObjectProperty(:p))
+        SubClassOf(:A ObjectSomeValuesFrom(:p :B))
+        )"""
+    )
+    compiled = compile_ontology(snapshot, unsupported="error")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    packed = native_module.create_session_from_encoded(
+        _shared_bytes_exporter_encoded(encoded),
+        1,
+        "error",
+    )
+    reordered = native_module.create_session_from_encoded(
+        _shared_bytes_exporter_encoded(encoded, owner_order=_ENCODED_BUFFER_NAMES[::-1]),
+        1,
+        "error",
+    )
+    try:
+        expected = scalar.debug_snapshot(realize=True)
+        assert packed.debug_snapshot(realize=True) == expected
+        assert reordered.debug_snapshot(realize=True) == expected
+
+        packed_diagnostics = packed.diagnostics()
+        assert packed_diagnostics["encoded_zero_copy_buffers"] == 11
+        assert packed_diagnostics["encoded_detached_buffer_count"] == 11
+        assert packed_diagnostics["encoded_indexed_buffer_count"] == 0
+        assert packed_diagnostics["encoded_compiler_gil_released"] is True
+
+        reordered_diagnostics = reordered.diagnostics()
+        assert reordered_diagnostics["encoded_zero_copy_buffers"] == 11
+        assert reordered_diagnostics["encoded_detached_buffer_count"] == 0
+        assert reordered_diagnostics["encoded_indexed_buffer_count"] == 11
+        assert reordered_diagnostics["encoded_compiler_gil_released"] is False
+        assert (
+            packed_diagnostics["compiler_digest"]
+            == reordered_diagnostics["compiler_digest"]
+            == scalar.diagnostics()["compiler_digest"]
+        )
+    finally:
+        packed.close()
+        reordered.close()
         scalar.close()
 
 
@@ -1509,12 +1604,13 @@ def test_hidden_encoded_w3c_cross_syntax_views_have_one_exact_compiler_result(
             scalar.close()
 
 
-def test_hidden_encoded_mmap_view_matches_direct_and_survives_provider_close(
+def test_hidden_encoded_mmap_view_matches_direct_and_retains_provider(
     native_module: ModuleType,
     tmp_path: Path,
 ) -> None:
     import pyowl_core as owl
     from pyowl_core.backends import native_views
+    from pyowl_core.exceptions import SnapshotInUseError
 
     from pyelk.indexing.compiler import compile_ontology
 
@@ -1533,8 +1629,9 @@ def test_hidden_encoded_mmap_view_matches_direct_and_survives_provider_close(
     direct = native_module.create_session_from_encoded(direct_encoded, 1, "error")
     mmap_session = native_module.create_session_from_encoded(mapped_encoded, 1, "error")
     scalar = native_module.create_session(compiled.encode(), 1)
-    mapped.close()
     try:
+        with pytest.raises(SnapshotInUseError):
+            mapped.close()
         expected = scalar.debug_snapshot(realize=True)
         assert direct.debug_snapshot(realize=True) == expected
         assert mmap_session.debug_snapshot(realize=True) == expected
@@ -1543,16 +1640,28 @@ def test_hidden_encoded_mmap_view_matches_direct_and_survives_provider_close(
             == mmap_session.diagnostics()["compiler_digest"]
             == scalar.diagnostics()["compiler_digest"]
         )
-        for session in (direct, mmap_session):
-            diagnostics = session.diagnostics()
-            assert diagnostics["encoded_compiler_gil_released"] is True
+        direct_diagnostics = direct.diagnostics()
+        mmap_diagnostics = mmap_session.diagnostics()
+        for diagnostics in (direct_diagnostics, mmap_diagnostics):
             assert diagnostics["encoded_staging_copy_bytes"] == 0
             assert diagnostics["encoded_private_ir_bytes"] == 0
             assert diagnostics["encoded_zero_copy_buffers"] == 11
+        assert direct_diagnostics["encoded_detached_buffer_count"] == 11
+        assert direct_diagnostics["encoded_indexed_buffer_count"] == 0
+        assert direct_diagnostics["encoded_compiler_gil_released"] is True
+        # PyO3's buffer API entered the stable ABI in CPython 3.11, while the
+        # single pyELK native wheel targets abi3-py310. The mmap memoryviews
+        # therefore remain zero-copy but are indexed with the GIL held.
+        assert mmap_diagnostics["encoded_detached_buffer_count"] == 0
+        assert mmap_diagnostics["encoded_indexed_buffer_count"] == 11
+        assert mmap_diagnostics["encoded_compiler_gil_released"] is False
     finally:
         direct.close()
         mmap_session.close()
         scalar.close()
+        del mapped_encoded
+        gc.collect()
+        mapped.close()
 
 
 def test_hidden_encoded_compiler_is_hash_seed_and_worker_deterministic(
