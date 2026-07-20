@@ -7,7 +7,8 @@
 //! compilation remains a separate gate.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{
@@ -645,24 +646,30 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum CompilerExpression {
     Named(Entity),
-    Intersection(Entity, Entity),
+    Intersection(usize, usize),
+    Existential(Entity, usize),
+    HasSelf(Entity),
+}
+
+#[derive(Clone, Debug)]
+enum SimpleCompilerExpression {
+    Named(Entity),
     Existential(Entity, Entity),
     HasSelf(Entity),
 }
 
 struct NamedHierarchyBuilder {
     entities: BTreeSet<Entity>,
-    occurrences: BTreeMap<Entity, Occurrence>,
+    expressions: Vec<CompilerExpression>,
+    expression_ids: BTreeMap<CompilerExpression, usize>,
+    expression_occurrences: Vec<Occurrence>,
     property_occurrences: BTreeMap<Entity, Occurrence>,
     property_chains: BTreeSet<Vec<Entity>>,
-    subclass_axioms: BTreeSet<(CompilerExpression, CompilerExpression)>,
-    intersection_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
-    existential_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
-    has_self_occurrences: BTreeMap<Entity, Occurrence>,
-    equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
-    disjoint_groups: BTreeSet<Vec<Entity>>,
+    subclass_axioms: BTreeSet<(usize, usize)>,
+    equivalent_class_axioms: BTreeSet<(usize, usize)>,
+    disjoint_groups: BTreeSet<Vec<usize>>,
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
-    property_ranges: BTreeSet<(Entity, Entity)>,
+    property_ranges: BTreeSet<(Entity, usize)>,
     feature_counts: Vec<u64>,
     unsupported: EncodedUnsupportedPolicy,
 }
@@ -671,13 +678,12 @@ impl Default for NamedHierarchyBuilder {
     fn default() -> Self {
         Self {
             entities: BTreeSet::new(),
-            occurrences: BTreeMap::new(),
+            expressions: Vec::new(),
+            expression_ids: BTreeMap::new(),
+            expression_occurrences: Vec::new(),
             property_occurrences: BTreeMap::new(),
             property_chains: BTreeSet::new(),
             subclass_axioms: BTreeSet::new(),
-            intersection_occurrences: BTreeMap::new(),
-            existential_occurrences: BTreeMap::new(),
-            has_self_occurrences: BTreeMap::new(),
             equivalent_class_axioms: BTreeSet::new(),
             disjoint_groups: BTreeSet::new(),
             subproperty_axioms: BTreeSet::new(),
@@ -722,117 +728,130 @@ impl NamedHierarchyBuilder {
 
     fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
         self.add_compiled_subclass(
-            CompilerExpression::Named(sub),
-            CompilerExpression::Named(super_),
+            SimpleCompilerExpression::Named(sub),
+            SimpleCompilerExpression::Named(super_),
         )
     }
 
     fn add_compiled_subclass(
         &mut self,
-        sub: CompilerExpression,
-        super_: CompilerExpression,
+        sub: SimpleCompilerExpression,
+        super_: SimpleCompilerExpression,
     ) -> CoreResult<()> {
-        self.add_compiler_expression_occurrence(&sub, true, false)?;
-        self.add_compiler_expression_occurrence(&super_, false, true)?;
+        let sub = self.add_simple_expression(sub, true, false)?;
+        let super_ = self.add_simple_expression(super_, false, true)?;
         self.subclass_axioms.insert((sub, super_));
         Ok(())
     }
 
-    fn add_compiler_expression_occurrence(
+    fn add_simple_expression(
         &mut self,
-        expression: &CompilerExpression,
+        expression: SimpleCompilerExpression,
         negative: bool,
         positive: bool,
-    ) -> CoreResult<()> {
+    ) -> CoreResult<usize> {
         match expression {
-            CompilerExpression::Named(entity) => {
-                self.add_named_occurrence(entity, negative, positive)?;
+            SimpleCompilerExpression::Named(entity) => {
+                let handle = self.add_named_occurrence(&entity, negative, positive)?;
                 if positive && entity.kind == EntityKind::Class && entity.iri == OWL_NOTHING_IRI {
                     self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
                 }
+                Ok(handle)
             }
-            CompilerExpression::Existential(property, filler) => {
-                self.add_property_occurrence(property, negative, positive)?;
-                self.add_named_occurrence(filler, negative, positive)?;
+            SimpleCompilerExpression::Existential(property, filler) => {
+                self.add_property_occurrence(&property, negative, positive)?;
+                let filler_expression = self.add_named_occurrence(&filler, negative, positive)?;
                 if positive && filler.kind == EntityKind::Class && filler.iri == OWL_NOTHING_IRI {
                     self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
                 }
                 if positive && filler.kind == EntityKind::NamedIndividual {
                     self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
                 }
-                let occurrence = self
-                    .existential_occurrences
-                    .entry((property.clone(), filler.clone()))
-                    .or_default();
-                if negative {
-                    increment_occurrence(occurrence, false)?;
-                }
-                if positive {
-                    increment_occurrence(occurrence, true)?;
-                }
+                self.intern_expression(
+                    CompilerExpression::Existential(property, filler_expression),
+                    negative,
+                    positive,
+                )
             }
-            CompilerExpression::HasSelf(property) => {
-                self.add_property_occurrence(property, negative, positive)?;
-                {
-                    let occurrence = self
-                        .has_self_occurrences
-                        .entry(property.clone())
-                        .or_default();
-                    if negative {
-                        increment_occurrence(occurrence, false)?;
-                    }
-                    if positive {
-                        increment_occurrence(occurrence, true)?;
-                    }
-                }
+            SimpleCompilerExpression::HasSelf(property) => {
+                self.add_property_occurrence(&property, negative, positive)?;
                 if negative {
                     self.add_feature(FEATURE_OBJECT_HAS_SELF_NEGATIVE, 1)?;
                 }
-            }
-            CompilerExpression::Intersection(_, _) => {
-                return Err(CoreError::internal(
-                    "general encoded intersection conversion is not installed",
-                ));
+                self.intern_expression(CompilerExpression::HasSelf(property), negative, positive)
             }
         }
-        Ok(())
+    }
+
+    fn intern_expression(
+        &mut self,
+        expression: CompilerExpression,
+        negative: bool,
+        positive: bool,
+    ) -> CoreResult<usize> {
+        match &expression {
+            CompilerExpression::Named(entity) => {
+                self.entities.insert(entity.clone());
+            }
+            CompilerExpression::Existential(property, filler) => {
+                self.entities.insert(property.clone());
+                if *filler >= self.expressions.len() {
+                    return Err(CoreError::internal(
+                        "encoded existential references an unknown expression",
+                    ));
+                }
+            }
+            CompilerExpression::HasSelf(property) => {
+                self.entities.insert(property.clone());
+            }
+            CompilerExpression::Intersection(first, second) => {
+                if *first >= self.expressions.len() || *second >= self.expressions.len() {
+                    return Err(CoreError::internal(
+                        "encoded intersection references an unknown expression",
+                    ));
+                }
+            }
+        }
+        let handle = if let Some(handle) = self.expression_ids.get(&expression).copied() {
+            handle
+        } else {
+            let handle = self.expressions.len();
+            self.expressions.push(expression.clone());
+            self.expression_ids.insert(expression, handle);
+            self.expression_occurrences.push(Occurrence::default());
+            handle
+        };
+        let occurrence = &mut self.expression_occurrences[handle];
+        if negative {
+            increment_occurrence(occurrence, false)?;
+        }
+        if positive {
+            increment_occurrence(occurrence, true)?;
+        }
+        Ok(handle)
     }
 
     fn add_equivalent_classes(&mut self, members: Vec<Entity>) -> CoreResult<()> {
-        let Some(first) = members.first().cloned() else {
+        let Some(first) = members.first() else {
             return Ok(());
         };
-        for member in &members {
-            self.entities.insert(member.clone());
-            let occurrence = self.occurrences.entry(member.clone()).or_default();
-            increment_occurrence(occurrence, false)?;
-            increment_occurrence(occurrence, true)?;
-        }
-        for member in members.into_iter().skip(1) {
-            self.equivalent_class_axioms.insert((first.clone(), member));
+        let first = self.add_named_occurrence(first, true, true)?;
+        for member in members.iter().skip(1) {
+            let member = self.add_named_occurrence(member, true, true)?;
+            self.equivalent_class_axioms.insert((first, member));
         }
         Ok(())
     }
 
     fn add_same_individuals(&mut self, members: Vec<Entity>) -> CoreResult<()> {
-        let Some(first) = members.first().cloned() else {
+        let Some(first) = members.first() else {
             return Ok(());
         };
-        for member in &members {
-            self.entities.insert(member.clone());
-            let occurrence = self.occurrences.entry(member.clone()).or_default();
-            increment_occurrence(occurrence, false)?;
-            increment_occurrence(occurrence, true)?;
-        }
-        for member in members.into_iter().skip(1) {
-            self.subclass_axioms.insert((
-                CompilerExpression::Named(first.clone()),
-                CompilerExpression::Named(member.clone()),
-            ));
-            self.subclass_axioms.insert((
-                CompilerExpression::Named(member),
-                CompilerExpression::Named(first.clone()),
-            ));
+        let first = self.add_named_occurrence(first, true, true)?;
+        for member in members.iter().skip(1) {
+            let member = self.add_named_occurrence(member, true, true)?;
+            self.subclass_axioms.insert((first, member));
+            self.subclass_axioms.insert((member, first));
         }
         Ok(())
     }
@@ -842,10 +861,14 @@ impl NamedHierarchyBuilder {
             self.add_feature(index, 1)?;
         }
         if members.len() > 2 {
+            let mut group = Vec::new();
+            group
+                .try_reserve_exact(members.len())
+                .map_err(|_| CoreError::capacity("encoded disjoint group allocation failed"))?;
             for member in &members {
-                self.add_named_occurrence(member, true, false)?;
+                group.push(self.add_named_occurrence(member, true, false)?);
             }
-            self.disjoint_groups.insert(members);
+            self.disjoint_groups.insert(group);
             return Ok(());
         }
 
@@ -853,23 +876,18 @@ impl NamedHierarchyBuilder {
             kind: EntityKind::Class,
             iri: OWL_NOTHING_IRI.to_owned(),
         };
-        self.add_named_occurrence(&bottom, false, true)?;
+        let bottom = self.add_named_occurrence(&bottom, false, true)?;
         self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
         for (first_position, first) in members.iter().enumerate() {
-            self.add_named_occurrence(first, true, false)?;
+            let first = self.add_named_occurrence(first, true, false)?;
             for second in members.iter().skip(first_position + 1) {
-                self.add_named_occurrence(second, true, false)?;
-                let key = (first.clone(), second.clone());
-                increment_occurrence(
-                    self.intersection_occurrences
-                        .entry(key.clone())
-                        .or_default(),
+                let second = self.add_named_occurrence(second, true, false)?;
+                let intersection = self.intern_expression(
+                    CompilerExpression::Intersection(first, second),
+                    true,
                     false,
                 )?;
-                self.subclass_axioms.insert((
-                    CompilerExpression::Intersection(key.0, key.1),
-                    CompilerExpression::Named(bottom.clone()),
-                ));
+                self.subclass_axioms.insert((intersection, bottom));
             }
         }
         Ok(())
@@ -883,26 +901,22 @@ impl NamedHierarchyBuilder {
                     kind: EntityKind::Class,
                     iri: OWL_NOTHING_IRI.to_owned(),
                 };
-                self.add_named_occurrence(&defined, false, true)?;
-                self.add_named_occurrence(&bottom, false, true)?;
+                let defined = self.add_named_occurrence(&defined, false, true)?;
+                let bottom = self.add_named_occurrence(&bottom, false, true)?;
                 self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
                 self.equivalent_class_axioms.insert((defined, bottom));
             }
             [member] => {
-                self.add_named_occurrence(&defined, true, true)?;
-                self.add_named_occurrence(member, true, true)?;
-                self.equivalent_class_axioms
-                    .insert((defined, member.clone()));
+                let defined = self.add_named_occurrence(&defined, true, true)?;
+                let member = self.add_named_occurrence(member, true, true)?;
+                self.equivalent_class_axioms.insert((defined, member));
             }
             _ => {
                 self.add_feature(FEATURE_DISJOINT_UNION, 1)?;
-                self.add_named_occurrence(&defined, false, true)?;
+                let defined = self.add_named_occurrence(&defined, false, true)?;
                 for member in members {
-                    self.add_named_occurrence(&member, true, false)?;
-                    self.subclass_axioms.insert((
-                        CompilerExpression::Named(member),
-                        CompilerExpression::Named(defined.clone()),
-                    ));
+                    let member = self.add_named_occurrence(&member, true, false)?;
+                    self.subclass_axioms.insert((member, defined));
                 }
             }
         }
@@ -914,16 +928,12 @@ impl NamedHierarchyBuilder {
         entity: &Entity,
         negative: bool,
         positive: bool,
-    ) -> CoreResult<()> {
-        self.entities.insert(entity.clone());
-        let occurrence = self.occurrences.entry(entity.clone()).or_default();
-        if negative {
-            increment_occurrence(occurrence, false)?;
-        }
-        if positive {
-            increment_occurrence(occurrence, true)?;
-        }
-        Ok(())
+    ) -> CoreResult<usize> {
+        self.intern_expression(
+            CompilerExpression::Named(entity.clone()),
+            negative,
+            positive,
+        )
     }
 
     fn add_subproperty(&mut self, chain: Vec<Entity>, super_: Entity) -> CoreResult<()> {
@@ -968,9 +978,8 @@ impl NamedHierarchyBuilder {
     }
 
     fn add_property_range(&mut self, property: Entity, range: Entity) -> CoreResult<()> {
-        self.entities.insert(range.clone());
         self.add_property_occurrence(&property, true, false)?;
-        increment_occurrence(self.occurrences.entry(range.clone()).or_default(), true)?;
+        let range = self.add_named_occurrence(&range, false, true)?;
         self.property_ranges.insert((property, range));
         self.add_feature(FEATURE_OBJECT_PROPERTY_RANGE, 1)
     }
@@ -981,19 +990,14 @@ impl NamedHierarchyBuilder {
             iri: OWL_THING_IRI.to_owned(),
         };
         self.add_property_occurrence(&property, true, false)?;
-        self.add_named_occurrence(&thing, true, false)?;
-        self.add_named_occurrence(&domain, false, true)?;
-        let existential = (property, thing);
-        increment_occurrence(
-            self.existential_occurrences
-                .entry(existential.clone())
-                .or_default(),
+        let thing = self.add_named_occurrence(&thing, true, false)?;
+        let domain = self.add_named_occurrence(&domain, false, true)?;
+        let existential = self.intern_expression(
+            CompilerExpression::Existential(property, thing),
+            true,
             false,
         )?;
-        self.subclass_axioms.insert((
-            CompilerExpression::Existential(existential.0, existential.1),
-            CompilerExpression::Named(domain),
-        ));
+        self.subclass_axioms.insert((existential, domain));
         Ok(())
     }
 
@@ -1004,21 +1008,16 @@ impl NamedHierarchyBuilder {
         target: Entity,
     ) -> CoreResult<()> {
         self.add_feature(FEATURE_OBJECT_PROPERTY_ASSERTION, 1)?;
-        self.add_named_occurrence(&source, true, false)?;
+        let source = self.add_named_occurrence(&source, true, false)?;
         self.add_property_occurrence(&property, false, true)?;
-        self.add_named_occurrence(&target, false, true)?;
-        let existential = (property, target);
-        increment_occurrence(
-            self.existential_occurrences
-                .entry(existential.clone())
-                .or_default(),
+        let target = self.add_named_occurrence(&target, false, true)?;
+        let existential = self.intern_expression(
+            CompilerExpression::Existential(property, target),
+            false,
             true,
         )?;
         self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
-        self.subclass_axioms.insert((
-            CompilerExpression::Named(source),
-            CompilerExpression::Existential(existential.0, existential.1),
-        ));
+        self.subclass_axioms.insert((source, existential));
         Ok(())
     }
 
@@ -1028,18 +1027,11 @@ impl NamedHierarchyBuilder {
             iri: OWL_THING_IRI.to_owned(),
         };
         self.add_feature(FEATURE_REFLEXIVE_OBJECT_PROPERTY, 1)?;
-        self.add_named_occurrence(&thing, true, false)?;
+        let thing = self.add_named_occurrence(&thing, true, false)?;
         self.add_property_occurrence(&property, false, true)?;
-        increment_occurrence(
-            self.has_self_occurrences
-                .entry(property.clone())
-                .or_default(),
-            true,
-        )?;
-        self.subclass_axioms.insert((
-            CompilerExpression::Named(thing),
-            CompilerExpression::HasSelf(property),
-        ));
+        let has_self =
+            self.intern_expression(CompilerExpression::HasSelf(property), false, true)?;
+        self.subclass_axioms.insert((thing, has_self));
         Ok(())
     }
 
@@ -1090,8 +1082,9 @@ impl NamedHierarchyBuilder {
         }
     }
 
-    fn freeze(self, source_fingerprint: [u8; 32]) -> CoreResult<Ontology> {
-        let entities = self.entities.into_iter().collect::<Vec<_>>();
+    fn freeze(mut self, source_fingerprint: [u8; 32]) -> CoreResult<Ontology> {
+        self.ensure_named_expressions()?;
+        let entities = self.entities.iter().cloned().collect::<Vec<_>>();
         if entities.len() >= u32::MAX as usize {
             return Err(CoreError::capacity(
                 "encoded compiler entity table exceeds the reserved u32 namespace",
@@ -1107,107 +1100,8 @@ impl NamedHierarchyBuilder {
                     .map_err(|_| CoreError::capacity("encoded compiler entity ID exceeds u32"))
             })
             .collect::<CoreResult<BTreeMap<_, _>>>()?;
-
-        let mut expressions = Vec::new();
-        let mut expression_occurrences = Vec::new();
-        let mut expression_ids = BTreeMap::new();
-        let mut compiler_expression_ids = BTreeMap::new();
-        for (tag, kind) in [
-            (ExpressionTag::Class, EntityKind::Class),
-            (ExpressionTag::Individual, EntityKind::NamedIndividual),
-        ] {
-            for entity in entities.iter().filter(|entity| entity.kind == kind) {
-                let identifier = u32::try_from(expressions.len()).map_err(|_| {
-                    CoreError::capacity("encoded compiler expression ID exceeds u32")
-                })?;
-                if identifier == u32::MAX {
-                    return Err(CoreError::capacity(
-                        "encoded compiler expression table reaches the reserved u32 ID",
-                    ));
-                }
-                expressions.push(Expression {
-                    tag,
-                    payload: Vec::new(),
-                    arguments: vec![entity_ids[entity]],
-                });
-                expression_occurrences
-                    .push(self.occurrences.get(entity).copied().unwrap_or_default());
-                expression_ids.insert(entity.clone(), identifier);
-                compiler_expression_ids
-                    .insert(CompilerExpression::Named(entity.clone()), identifier);
-            }
-        }
-
-        let mut intersection_rows = self
-            .intersection_occurrences
-            .into_iter()
-            .collect::<Vec<_>>();
-        intersection_rows.sort_by_key(|((first, second), _occurrence)| {
-            (expression_ids[first], expression_ids[second])
-        });
-        for ((first, second), occurrence) in intersection_rows {
-            let identifier = u32::try_from(expressions.len())
-                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
-            if identifier == u32::MAX {
-                return Err(CoreError::capacity(
-                    "encoded compiler expression table reaches the reserved u32 ID",
-                ));
-            }
-            expressions.push(Expression {
-                tag: ExpressionTag::ObjectIntersectionOf,
-                payload: Vec::new(),
-                arguments: vec![expression_ids[&first], expression_ids[&second]],
-            });
-            expression_occurrences.push(occurrence);
-            compiler_expression_ids.insert(
-                CompilerExpression::Intersection(first.clone(), second.clone()),
-                identifier,
-            );
-        }
-
-        let mut existential_rows = self.existential_occurrences.into_iter().collect::<Vec<_>>();
-        existential_rows.sort_by_key(|((property, filler), _occurrence)| {
-            (entity_ids[property], expression_ids[filler])
-        });
-        for ((property, filler), occurrence) in existential_rows {
-            let identifier = u32::try_from(expressions.len())
-                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
-            if identifier == u32::MAX {
-                return Err(CoreError::capacity(
-                    "encoded compiler expression table reaches the reserved u32 ID",
-                ));
-            }
-            expressions.push(Expression {
-                tag: ExpressionTag::ObjectSomeValuesFrom,
-                payload: Vec::new(),
-                arguments: vec![entity_ids[&property], expression_ids[&filler]],
-            });
-            expression_occurrences.push(occurrence);
-            compiler_expression_ids.insert(
-                CompilerExpression::Existential(property.clone(), filler.clone()),
-                identifier,
-            );
-        }
-
-        let mut has_self_rows = self.has_self_occurrences.into_iter().collect::<Vec<_>>();
-        has_self_rows.sort_by_key(|(property, _occurrence)| entity_ids[property]);
-        for (property, occurrence) in has_self_rows {
-            let identifier = u32::try_from(expressions.len())
-                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
-            if identifier == u32::MAX {
-                return Err(CoreError::capacity(
-                    "encoded compiler expression table reaches the reserved u32 ID",
-                ));
-            }
-            expressions.push(Expression {
-                tag: ExpressionTag::ObjectHasSelf,
-                payload: Vec::new(),
-                arguments: vec![entity_ids[&property]],
-            });
-            expression_occurrences.push(occurrence);
-            compiler_expression_ids
-                .insert(CompilerExpression::HasSelf(property.clone()), identifier);
-        }
+        let (expressions, expression_occurrences, expression_ids) =
+            self.freeze_expressions(&entity_ids)?;
 
         let object_properties = entities
             .iter()
@@ -1217,25 +1111,22 @@ impl NamedHierarchyBuilder {
         let subclass_axioms = self
             .subclass_axioms
             .into_iter()
-            .map(|(sub, super_)| {
-                (
-                    compiler_expression_ids[&sub],
-                    compiler_expression_ids[&super_],
-                )
-            })
+            .map(|(sub, super_)| (expression_ids[sub], expression_ids[super_]))
             .collect::<BTreeSet<_>>();
         let equivalent_class_axioms = self
             .equivalent_class_axioms
             .into_iter()
-            .map(|(first, second)| Ok((expression_ids[&first], expression_ids[&second])))
-            .collect::<CoreResult<Vec<_>>>()?;
+            .map(|(first, second)| (expression_ids[first], expression_ids[second]))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         let disjoint_groups = self
             .disjoint_groups
             .into_iter()
             .map(|group| {
                 group
                     .into_iter()
-                    .map(|member| expression_ids[&member])
+                    .map(|member| expression_ids[member])
                     .collect::<Vec<_>>()
             })
             .collect::<BTreeSet<_>>()
@@ -1285,7 +1176,7 @@ impl NamedHierarchyBuilder {
         let property_ranges = self
             .property_ranges
             .into_iter()
-            .map(|(property, range)| (entity_ids[&property], expression_ids[&range]))
+            .map(|(property, range)| (entity_ids[&property], expression_ids[range]))
             .collect();
 
         Ok(Ontology {
@@ -1310,6 +1201,148 @@ impl NamedHierarchyBuilder {
             feature_counts: self.feature_counts,
             source_fingerprint,
         })
+    }
+
+    fn ensure_named_expressions(&mut self) -> CoreResult<()> {
+        for entity in self.entities.clone() {
+            if matches!(entity.kind, EntityKind::Class | EntityKind::NamedIndividual) {
+                self.intern_expression(CompilerExpression::Named(entity), false, false)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn freeze_expressions(
+        &self,
+        entity_ids: &BTreeMap<Entity, u32>,
+    ) -> CoreResult<(Vec<Expression>, Vec<Occurrence>, Vec<u32>)> {
+        let count = self.expressions.len();
+        if count >= u32::MAX as usize {
+            return Err(CoreError::capacity(
+                "encoded compiler expression table reaches the reserved u32 ID",
+            ));
+        }
+        let mut dependents = vec![Vec::<usize>::new(); count];
+        let mut remaining = vec![0_usize; count];
+        let mut final_ids = vec![u32::MAX; count];
+        let mut available = BinaryHeap::<Reverse<((u8, Vec<u32>), usize)>>::new();
+        for (handle, expression) in self.expressions.iter().enumerate() {
+            let dependencies = expression.dependencies()?;
+            remaining[handle] = dependencies.len();
+            for dependency in dependencies {
+                if dependency >= count {
+                    return Err(CoreError::internal(
+                        "encoded expression dependency is out of bounds",
+                    ));
+                }
+                dependents[dependency].push(handle);
+            }
+            if remaining[handle] == 0 {
+                available.push(Reverse((
+                    (
+                        expression.tag()? as u8,
+                        expression.rewritten_arguments(entity_ids, &final_ids)?,
+                    ),
+                    handle,
+                )));
+            }
+        }
+
+        let mut expressions = Vec::new();
+        let mut occurrences = Vec::new();
+        while let Some(Reverse((_order, handle))) = available.pop() {
+            if final_ids[handle] != u32::MAX {
+                continue;
+            }
+            let expression = &self.expressions[handle];
+            let identifier = u32::try_from(expressions.len())
+                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
+            let arguments = expression.rewritten_arguments(entity_ids, &final_ids)?;
+            final_ids[handle] = identifier;
+            expressions.push(Expression {
+                tag: expression.tag()?,
+                payload: Vec::new(),
+                arguments,
+            });
+            occurrences.push(self.expression_occurrences[handle]);
+            for dependent in &dependents[handle] {
+                remaining[*dependent] = remaining[*dependent]
+                    .checked_sub(1)
+                    .ok_or_else(|| CoreError::internal("encoded dependency count underflow"))?;
+                if remaining[*dependent] == 0 {
+                    let dependent_expression = &self.expressions[*dependent];
+                    available.push(Reverse((
+                        (
+                            dependent_expression.tag()? as u8,
+                            dependent_expression.rewritten_arguments(entity_ids, &final_ids)?,
+                        ),
+                        *dependent,
+                    )));
+                }
+            }
+        }
+        if expressions.len() != count {
+            return Err(CoreError::internal(
+                "encoded temporary expression graph is cyclic",
+            ));
+        }
+        Ok((expressions, occurrences, final_ids))
+    }
+}
+
+impl CompilerExpression {
+    fn dependencies(&self) -> CoreResult<BTreeSet<usize>> {
+        Ok(match self {
+            Self::Named(_) | Self::HasSelf(_) => BTreeSet::new(),
+            Self::Existential(_, filler) => BTreeSet::from([*filler]),
+            Self::Intersection(first, second) => BTreeSet::from([*first, *second]),
+        })
+    }
+
+    fn tag(&self) -> CoreResult<ExpressionTag> {
+        match self {
+            Self::Named(entity) => match entity.kind {
+                EntityKind::Class => Ok(ExpressionTag::Class),
+                EntityKind::NamedIndividual => Ok(ExpressionTag::Individual),
+                _ => Err(CoreError::internal(
+                    "encoded named expression has a non-expression entity kind",
+                )),
+            },
+            Self::Intersection(_, _) => Ok(ExpressionTag::ObjectIntersectionOf),
+            Self::Existential(_, _) => Ok(ExpressionTag::ObjectSomeValuesFrom),
+            Self::HasSelf(_) => Ok(ExpressionTag::ObjectHasSelf),
+        }
+    }
+
+    fn rewritten_arguments(
+        &self,
+        entity_ids: &BTreeMap<Entity, u32>,
+        expression_ids: &[u32],
+    ) -> CoreResult<Vec<u32>> {
+        let entity = |value: &Entity| {
+            entity_ids
+                .get(value)
+                .copied()
+                .ok_or_else(|| CoreError::internal("encoded expression entity is not interned"))
+        };
+        let expression = |handle: usize| {
+            expression_ids
+                .get(handle)
+                .copied()
+                .filter(|identifier| *identifier != u32::MAX)
+                .ok_or_else(|| {
+                    CoreError::internal("encoded expression dependency is not finalized")
+                })
+        };
+        match self {
+            Self::Named(value) | Self::HasSelf(value) => Ok(vec![entity(value)?]),
+            Self::Existential(property, filler) => {
+                Ok(vec![entity(property)?, expression(*filler)?])
+            }
+            Self::Intersection(first, second) => {
+                Ok(vec![expression(*first)?, expression(*second)?])
+            }
+        }
     }
 }
 
@@ -1504,26 +1537,26 @@ fn decode_named_class<B: ByteSource>(
 fn decode_simple_class_expression<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
-) -> CoreResult<CompilerExpression> {
+) -> CoreResult<SimpleCompilerExpression> {
     let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
     let node = node_index(identifier, node_count)?;
     match u16_at(columns.node_tags, node, "class-expression node tag")? {
-        2 => Ok(CompilerExpression::Named(decode_named_class(
+        2 => Ok(SimpleCompilerExpression::Named(decode_named_class(
             identifier, columns,
         )?)),
         34 => {
             let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
             let filler = decode_named_class(node_field(node, 1, columns)?, columns)?;
-            Ok(CompilerExpression::Existential(property, filler))
+            Ok(SimpleCompilerExpression::Existential(property, filler))
         }
         36 => {
             let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
             let filler = decode_named_individual(node_field(node, 1, columns)?, columns)?;
-            Ok(CompilerExpression::Existential(property, filler))
+            Ok(SimpleCompilerExpression::Existential(property, filler))
         }
         37 => {
             let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-            Ok(CompilerExpression::HasSelf(property))
+            Ok(SimpleCompilerExpression::HasSelf(property))
         }
         tag => Err(CoreError::invalid(format!(
             "encoded named-hierarchy compiler does not support class-expression tag {tag}"
