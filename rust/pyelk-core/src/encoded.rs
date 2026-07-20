@@ -887,19 +887,9 @@ impl NamedHierarchyBuilder {
 
     fn add_subproperty(&mut self, chain: Vec<Entity>, super_: Entity) -> CoreResult<()> {
         for property in &chain {
-            self.entities.insert(property.clone());
-            increment_occurrence(
-                self.property_occurrences
-                    .entry(property.clone())
-                    .or_default(),
-                false,
-            )?;
+            self.add_property_occurrence(property, true, false)?;
         }
-        self.entities.insert(super_.clone());
-        increment_occurrence(
-            self.property_occurrences.entry(super_.clone()).or_default(),
-            true,
-        )?;
+        self.add_property_occurrence(&super_, false, true)?;
         if chain.len() > 1 {
             self.add_feature(
                 FEATURE_OBJECT_PROPERTY_CHAIN,
@@ -917,10 +907,7 @@ impl NamedHierarchyBuilder {
             return Ok(());
         };
         for member in &members {
-            self.entities.insert(member.clone());
-            let occurrence = self.property_occurrences.entry(member.clone()).or_default();
-            increment_occurrence(occurrence, false)?;
-            increment_occurrence(occurrence, true)?;
+            self.add_property_occurrence(member, true, true)?;
             self.property_chains.insert(vec![member.clone()]);
         }
         for member in members.into_iter().skip(1) {
@@ -933,27 +920,15 @@ impl NamedHierarchyBuilder {
     }
 
     fn add_transitive_property(&mut self, property: Entity) -> CoreResult<()> {
-        self.entities.insert(property.clone());
-        let occurrence = self
-            .property_occurrences
-            .entry(property.clone())
-            .or_default();
-        increment_occurrence(occurrence, false)?;
-        increment_occurrence(occurrence, true)?;
+        self.add_property_occurrence(&property, true, true)?;
         self.add_feature(FEATURE_OBJECT_PROPERTY_CHAIN, 1)?;
         self.insert_subproperty_rule(vec![property.clone(), property.clone()], property);
         Ok(())
     }
 
     fn add_property_range(&mut self, property: Entity, range: Entity) -> CoreResult<()> {
-        self.entities.insert(property.clone());
         self.entities.insert(range.clone());
-        increment_occurrence(
-            self.property_occurrences
-                .entry(property.clone())
-                .or_default(),
-            false,
-        )?;
+        self.add_property_occurrence(&property, true, false)?;
         increment_occurrence(self.occurrences.entry(range.clone()).or_default(), true)?;
         self.property_ranges.insert((property, range));
         self.add_feature(FEATURE_OBJECT_PROPERTY_RANGE, 1)
@@ -4665,6 +4640,30 @@ mod tests {
             ),
             Err(CoreError::Protocol(message)) if message.contains("one-based")
         ));
+    }
+
+    #[test]
+    fn predefined_property_polarity_features_apply_to_every_compiler_path() {
+        let top = Entity {
+            kind: EntityKind::ObjectProperty,
+            iri: OWL_TOP_OBJECT_PROPERTY_IRI.to_owned(),
+        };
+        let bottom = Entity {
+            kind: EntityKind::ObjectProperty,
+            iri: OWL_BOTTOM_OBJECT_PROPERTY_IRI.to_owned(),
+        };
+        let mut builder = NamedHierarchyBuilder::new();
+        builder.add_subproperty(vec![top], bottom).unwrap();
+        let compiled = builder.freeze([23; 32]).unwrap();
+
+        assert_eq!(
+            compiled.feature_counts[FEATURE_TOP_OBJECT_PROPERTY_NEGATIVE],
+            1
+        );
+        assert_eq!(
+            compiled.feature_counts[FEATURE_BOTTOM_OBJECT_PROPERTY_POSITIVE],
+            1
+        );
     }
 
     #[test]
