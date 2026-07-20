@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import gc
 import importlib.util
+import json
 import os
 import shutil
+import subprocess
 import sys
 import weakref
 from collections.abc import Iterator
@@ -37,6 +39,9 @@ from tests.unit.indexing.test_feature_corpus import (
 
 _FROZEN_ENCODED_ONTOLOGIES = tuple(
     sorted(_UPSTREAM.rglob("*.owl"), key=lambda path: path.relative_to(_UPSTREAM).as_posix())
+)
+_W3C_CORE_FIXTURES = tuple(
+    sorted((Path(__file__).parents[1] / "data/native-structural/w3c-minimal").glob("minimal.*"))
 )
 
 
@@ -1372,6 +1377,116 @@ def test_hidden_encoded_frozen_elk_corpus_matches_scalar_compiler(
     finally:
         direct.close()
         scalar.close()
+
+
+def test_hidden_encoded_w3c_cross_syntax_views_have_one_exact_compiler_result(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+    from pyowl_core.backends import native_views
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    assert {path.suffix for path in _W3C_CORE_FIXTURES} == {".ofn", ".owx", ".rdf", ".ttl"}
+    expected: tuple[str, bytes] | None = None
+    options = owl.LoadOptions(
+        imports=owl.ImportPolicy.IGNORE,
+        backend=owl.BackendPreference.PYTHON,
+    )
+    for path in _W3C_CORE_FIXTURES:
+        snapshot = owl.load_snapshot(path, options=options)
+        encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+        compiled = compile_ontology(snapshot, unsupported="error")
+        direct = native_module.create_session_from_encoded(encoded, 1, "error")
+        scalar = native_module.create_session(compiled.encode(), 1)
+        try:
+            actual = (
+                direct.diagnostics()["compiler_digest"],
+                direct.debug_snapshot(realize=True),
+            )
+            assert actual == (
+                scalar.diagnostics()["compiler_digest"],
+                scalar.debug_snapshot(realize=True),
+            )
+            if expected is None:
+                expected = actual
+            else:
+                assert actual == expected
+        finally:
+            direct.close()
+            scalar.close()
+
+
+def test_hidden_encoded_mmap_view_matches_direct_and_survives_provider_close(
+    native_module: ModuleType,
+    tmp_path: Path,
+) -> None:
+    import pyowl_core as owl
+    from pyowl_core.backends import native_views
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    source = _W3C_CORE_FIXTURES[0]
+    options = owl.LoadOptions(
+        imports=owl.ImportPolicy.IGNORE,
+        backend=owl.BackendPreference.PYTHON,
+    )
+    snapshot = owl.load_snapshot(source, options=options)
+    wire_path = tmp_path / "w3c-minimal.pyocore"
+    wire_path.write_bytes(owl.encode_snapshot(snapshot))
+    mapped = owl.open_snapshot(wire_path, mmap=True, verify=True)
+    direct_encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+    mapped_encoded = native_views.produce_encoded_structural_view_v1(mapped)
+    compiled = compile_ontology(snapshot, unsupported="error")
+    direct = native_module.create_session_from_encoded(direct_encoded, 1, "error")
+    mmap_session = native_module.create_session_from_encoded(mapped_encoded, 1, "error")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    mapped.close()
+    try:
+        expected = scalar.debug_snapshot(realize=True)
+        assert direct.debug_snapshot(realize=True) == expected
+        assert mmap_session.debug_snapshot(realize=True) == expected
+        assert (
+            direct.diagnostics()["compiler_digest"]
+            == mmap_session.diagnostics()["compiler_digest"]
+            == scalar.diagnostics()["compiler_digest"]
+        )
+        for session in (direct, mmap_session):
+            diagnostics = session.diagnostics()
+            assert diagnostics["encoded_staging_copy_bytes"] == 0
+            assert diagnostics["encoded_private_ir_bytes"] == 0
+            assert diagnostics["encoded_zero_copy_buffers"] == 11
+    finally:
+        direct.close()
+        mmap_session.close()
+        scalar.close()
+
+
+def test_hidden_encoded_compiler_is_hash_seed_and_worker_deterministic(
+    native_module: ModuleType,
+) -> None:
+    native_path = Path(native_module.__file__).resolve()
+    runner = Path(__file__).with_name("_encoded_determinism_runner.py")
+    ontology = _UPSTREAM / "classification" / "Existentials.owl"
+    root = Path(__file__).parents[2]
+    python_path = os.pathsep.join((str(root / "src"), str(root.parent / "pyOWLCore" / "src")))
+    payloads: list[object] = []
+    for seed in ("0", "1", "42", "random"):
+        environment = os.environ.copy()
+        environment["PYTHONHASHSEED"] = seed
+        environment["PYTHONPATH"] = python_path
+        completed = subprocess.run(
+            [sys.executable, os.fspath(runner), os.fspath(native_path), os.fspath(ontology)],
+            cwd=root,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert completed.returncode == 0, completed.stderr
+        payloads.append(json.loads(completed.stdout))
+    assert payloads[1:] == payloads[:-1]
 
 
 def test_hidden_direct_encoded_general_class_axioms_match_scalar(
