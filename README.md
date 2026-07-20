@@ -218,8 +218,11 @@ if report.selected == "python" and report.rust.reason:
 ```
 
 `reasoner.backend` reports the immutable choice, effective worker count, native availability,
-and fallback reason for a live session. `pyelk.core.require_core_compatibility()` performs the
-full pyowl-core package/API/model/wire/adapter guard explicitly.
+and fallback reason for a live session. `reasoner.diagnostics()` returns an immutable scalar
+mapping; its `ingestion_path` is `scalar-python`, `scalar-wire`, or `encoded-native`, and native
+encoded sessions include measured buffer/copy/segment counters.
+`pyelk.core.require_core_compatibility()` performs the full pyowl-core package/API/model/wire/
+adapter guard explicitly.
 
 ## Supported reasoning surface
 

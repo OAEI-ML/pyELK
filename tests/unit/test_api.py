@@ -117,6 +117,11 @@ def test_basic_end_to_end_api_shapes_ordering_caching_and_entailment() -> None:
         assert reasoner.backend.name == "python"
         assert reasoner.backend.requested_workers == 12
         assert reasoner.backend.effective_workers == 1
+        diagnostics = reasoner.diagnostics()
+        assert diagnostics["ingestion_path"] == "scalar-python"
+        assert diagnostics["stage"] == "compiled"
+        with pytest.raises(TypeError):
+            cast(dict[str, DiagnosticScalar], diagnostics)["stage"] = "hostile"
         assert reasoner.is_consistent().value is True
         assert reasoner.is_inconsistent().value is False
         classes = reasoner.classify()
@@ -312,6 +317,23 @@ def test_malformed_backend_taxonomy_is_rejected_without_id_leak(
     reasoner.close()
 
 
+def test_malformed_backend_diagnostics_are_rejected_without_value_leak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Hostile(_DelegatingSession):
+        def diagnostics(self) -> Mapping[str, DiagnosticScalar]:
+            return cast(Mapping[str, DiagnosticScalar], {"ingestion_path": object()})
+
+    def factory(compiled: CompiledOntology, config: ReasonerConfig) -> BackendSession:
+        return Hostile(_python_session(compiled, config))
+
+    monkeypatch.setattr("pyelk.api.create_backend_session", factory)
+    reasoner = Reasoner(_snapshot(), ReasonerConfig(backend="python"))
+    with pytest.raises(BackendProtocolError, match="string-to-scalar backend diagnostics"):
+        reasoner.diagnostics()
+    reasoner.close()
+
+
 def test_facade_lock_serializes_calls_and_close_waits_for_inflight_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -369,6 +391,7 @@ def test_close_is_idempotent_terminal_and_returned_values_survive() -> None:
     operations = (
         lambda: reasoner.backend,
         lambda: reasoner.ontology,
+        reasoner.diagnostics,
         reasoner.is_consistent,
         reasoner.classify,
         reasoner.realize,

@@ -340,6 +340,7 @@ def _run_backend(
     measured: dict[str, dict[str, list[PhaseSample]]] = {}
     expected: dict[str, dict[str, object]] = {}
     backend_info: dict[str, object] | None = None
+    ingestion_by_view: dict[str, dict[str, int | float | str | bool]] = {}
 
     for iteration in range(warmups + repeats):
         recording = iteration >= warmups
@@ -374,6 +375,15 @@ def _run_backend(
                 if backend_info is not None and current_info != backend_info:
                     raise AssertionError("backend diagnostics changed between sessions")
                 backend_info = current_info
+                current_ingestion = {
+                    key: value
+                    for key, value in reasoner.diagnostics().items()
+                    if key == "ingestion_path" or key.startswith("encoded_")
+                }
+                previous_ingestion = ingestion_by_view.get(name)
+                if previous_ingestion is not None and current_ingestion != previous_ingestion:
+                    raise AssertionError(f"{backend} {name} ingestion diagnostics changed")
+                ingestion_by_view[name] = current_ingestion
                 result, classification = _observe(
                     reasoner.classify, trace_allocations=trace_allocations
                 )
@@ -408,6 +418,7 @@ def _run_backend(
             "identity_preserved": True,
             "provider_calls": providers[name].calls,
             "provider_calls_expected": warmups + repeats,
+            "ingestion": ingestion_by_view[name],
             "session_construction": {
                 "summary": asdict(_summarize(construction_samples)),
                 "samples": [asdict(sample) for sample in construction_samples],
@@ -422,14 +433,13 @@ def _run_backend(
         "views": results,
         "native_transfer": {
             "boundary": "public Reasoner construction",
-            "compiled_ir_bytes": None,
-            "contiguous_copy_count": None,
-            "observable": False,
+            "observable": True,
+            "views": ingestion_by_view,
             "reason": (
-                "The public facade deliberately does not expose private compiled IR bytes "
-                "or native copy counters; construction wall time and process-lifetime RSS "
-                "high-water growth are recorded, with allocation tracing available only as "
-                "an opt-in diagnostic."
+                "The public facade exposes the selected ingestion path and encoded buffer/copy/"
+                "segment counters. Scalar-wire private-IR byte length remains private. "
+                "Construction wall time and process-lifetime RSS high-water growth are recorded, "
+                "with allocation tracing available only as an opt-in diagnostic."
             ),
         }
         if backend == "rust"

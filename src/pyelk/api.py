@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from threading import RLock
+from types import MappingProxyType
 from typing import TypeVar, cast
 
 import pyowl_core as owl
@@ -34,6 +36,7 @@ from pyelk.reasoning.completeness import issues_for
 from pyelk.reasoning.contracts import (
     BackendInfo,
     BackendSession,
+    DiagnosticScalar,
     PolicyFeature,
     QueryKind,
     QueryResultEntityId,
@@ -200,6 +203,20 @@ class Reasoner:
             if self._capture is None:  # pragma: no cover - open invariant
                 raise ReasonerClosedError
             return self._capture.ontology.view
+
+    def diagnostics(self) -> Mapping[str, DiagnosticScalar]:
+        """Return one immutable, validated snapshot of backend/session diagnostics."""
+
+        with self._lock:
+            raw = self._require_session().diagnostics()
+            if not isinstance(raw, Mapping):
+                raise BackendProtocolError("string-to-scalar backend diagnostics", raw)
+            values: dict[str, DiagnosticScalar] = {}
+            for key, value in raw.items():
+                if not isinstance(key, str) or not isinstance(value, (bool, int, float, str)):
+                    raise BackendProtocolError("string-to-scalar backend diagnostics", raw)
+                values[key] = value
+            return MappingProxyType(dict(sorted(values.items())))
 
     def is_consistent(self) -> ReasoningResult[bool]:
         with self._lock:

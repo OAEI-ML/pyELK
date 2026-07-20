@@ -439,7 +439,12 @@ def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
         "composite": True,
     }
     assert payload["backends"]["rust"]["backend"]["name"] == "rust"
-    assert payload["backends"]["rust"]["native_transfer"]["observable"] is False
+    transfer = payload["backends"]["rust"]["native_transfer"]
+    assert transfer["observable"] is True
+    assert {row["ingestion_path"] for row in transfer["views"].values()} <= {
+        "scalar-wire",
+        "encoded-native",
+    }
 
 
 def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:

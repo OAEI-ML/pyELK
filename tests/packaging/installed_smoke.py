@@ -74,15 +74,23 @@ def main() -> int:
 
     with pyelk.Reasoner(payload, load_options=options) as standalone:
         assert standalone.backend.name == args.expected_backend
+        standalone_ingestion = standalone.diagnostics()["ingestion_path"]
         standalone_result = standalone.classify()
     with pyelk.Reasoner(snapshot) as shared:
         assert shared.backend.name == args.expected_backend
         assert shared.ontology is snapshot
+        shared_ingestion = shared.diagnostics()["ingestion_path"]
         shared_result = shared.classify()
     assert standalone_result == shared_result
+    expected_ingestion = (
+        {"scalar-python"}
+        if args.expected_backend == "python"
+        else {"scalar-wire", "encoded-native"}
+    )
+    assert {standalone_ingestion, shared_ingestion} <= expected_ingestion
     print(
         f"installed smoke passed: backend={args.expected_backend} "
-        f"python={sys.version_info.major}.{sys.version_info.minor}"
+        f"ingestion={shared_ingestion} python={sys.version_info.major}.{sys.version_info.minor}"
     )
     return 0
 
