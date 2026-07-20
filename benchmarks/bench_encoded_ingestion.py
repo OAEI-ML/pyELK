@@ -45,6 +45,7 @@ from pyelk.indexing.encoded import (
 
 T = TypeVar("T")
 _ROOT_AXIOM = 2
+_HIERARCHY_COMPONENT_CLASSES = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,15 +185,20 @@ def _load_native(path: Path | None) -> ModuleType:
 def _axioms(classes: tuple[owl.Class, ...]) -> Iterator[owl.AxiomNode]:
     for entity in classes:
         yield owl.Declaration(entity)
-    for subclass, superclass in pairwise(classes):
-        yield owl.SubClassOf(subclass, superclass)
+    for start in range(0, len(classes), _HIERARCHY_COMPONENT_CLASSES):
+        component = classes[start : start + _HIERARCHY_COMPONENT_CLASSES]
+        for subclass, superclass in pairwise(component):
+            yield owl.SubClassOf(subclass, superclass)
 
 
 def _hierarchy_snapshot(namespace: str, class_count: int) -> owl.OntologySnapshot:
     document_iri = owl.IRI(namespace)
     classes = tuple(owl.Class(owl.IRI(f"{namespace}#C{index}")) for index in range(class_count))
     axioms: owl.CanonicalSet[owl.AxiomNode] = owl.CanonicalSet(_axioms(classes))
-    descriptor = f"pyelk:encoded-ingestion:v1:{namespace}:classes={class_count}".encode()
+    descriptor = (
+        f"pyelk:encoded-ingestion:v2:{namespace}:classes={class_count}:"
+        f"component-classes={_HIERARCHY_COMPONENT_CLASSES}"
+    ).encode()
     source_digest = hashlib.sha256(descriptor).digest()
     provenance = owl.DocumentProvenance(
         source_sha256=source_digest,
@@ -709,6 +715,7 @@ def run(
         },
         "fixture": {
             "class_count": class_count,
+            "hierarchy_component_classes": _HIERARCHY_COMPONENT_CLASSES,
             "setup": asdict(setup_phase),
             "workloads": tuple(workloads),
         },

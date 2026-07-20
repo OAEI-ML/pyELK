@@ -470,6 +470,7 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
     )
 
     assert payload["schema"] == "pyelk.encoded-ingestion-benchmark/1"
+    assert payload["fixture"]["hierarchy_component_classes"] == 8
     assert payload["gate_eligible"] is False
     assert payload["capabilities"]["producer_modes"] == ["experimental-scalar-fallback"]
     assert set(payload["workloads"]) == {"direct", "overlay", "composite"}

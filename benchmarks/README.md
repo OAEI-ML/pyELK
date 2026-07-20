@@ -52,6 +52,9 @@ Native suites also run `bench_encoded_ingestion.py` from already-resident direct
 composite views. It records raw phase samples and RSS observations for encoded-view acquisition,
 native session creation, first taxonomy, and warm queries alongside the scalar compiler/private-
 wire baseline. Compiler digests, section counts, and packed taxonomy bytes must agree exactly.
+The generated structural workload uses many bounded eight-class hierarchy components, keeping
+ontology size large while preventing identical quadratic transitive closure from swamping the
+ingestion-path comparison; realistic reasoning pressure remains covered by the biomedical suite.
 Ordinary development runs use the explicitly labelled scalar fallback producer while the core and
 consumer capabilities remain unpublished; those reports are never gate-eligible. `--enforce`
 forbids that fallback and requires public capability negotiation, zero parser/resolver/wire/
