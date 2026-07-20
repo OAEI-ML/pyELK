@@ -40,6 +40,7 @@ const FEATURE_OBJECT_PROPERTY_CHAIN: usize = 40;
 const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
 const FEATURE_DISJOINT_CLASSES: usize = 16;
+const FEATURE_DISJOINT_UNION: usize = 19;
 const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -541,12 +542,12 @@ pub fn validate_columns<B: ByteSource>(
 ///
 /// This stage accepts unannotated declarations of classes, named individuals, and object
 /// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
-/// `DisjointClasses`, `SameIndividual`, `DifferentIndividuals`, `SubObjectPropertyOf`,
-/// `EquivalentObjectProperties`, object-property range, and `TransitiveObjectProperty` axioms.
-/// Ontology annotations and annotation-property declarations have no ELK effect and are ignored.
-/// Every other logical constructor fails closed, irrespective of the scalar compiler's unsupported
-/// policy. Consequently this function is safe to extend and test while encoded-schema capability
-/// advertisement remains disabled.
+/// `DisjointClasses`, named `DisjointUnion`, `SameIndividual`, `DifferentIndividuals`,
+/// `SubObjectPropertyOf`, `EquivalentObjectProperties`, object-property range, and
+/// `TransitiveObjectProperty` axioms. Ontology annotations and annotation-property declarations
+/// have no ELK effect and are ignored. Every other logical constructor fails closed, irrespective
+/// of the scalar compiler's unsupported policy. Consequently this function is safe to extend and
+/// test while encoded-schema capability advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -574,6 +575,7 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             61 => compile_named_subclass(node, &columns, &mut builder)?,
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
             63 => compile_disjoint_named_classes(node, &columns, &mut builder)?,
+            64 => compile_named_disjoint_union(node, &columns, &mut builder)?,
             70 => compile_named_subproperty(node, &columns, &mut builder)?,
             71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
             75 => compile_named_property_range(node, &columns, &mut builder)?,
@@ -657,10 +659,8 @@ impl NamedHierarchyBuilder {
     }
 
     fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
-        self.entities.insert(sub.clone());
-        self.entities.insert(super_.clone());
-        increment_occurrence(self.occurrences.entry(sub.clone()).or_default(), false)?;
-        increment_occurrence(self.occurrences.entry(super_.clone()).or_default(), true)?;
+        self.add_named_occurrence(&sub, true, false)?;
+        self.add_named_occurrence(&super_, false, true)?;
         self.subclass_axioms.insert((sub, super_));
         Ok(())
     }
@@ -698,12 +698,13 @@ impl NamedHierarchyBuilder {
         Ok(())
     }
 
-    fn add_disjoint(&mut self, members: Vec<Entity>, feature: usize) -> CoreResult<()> {
-        self.add_feature(feature, 1)?;
+    fn add_disjoint(&mut self, members: Vec<Entity>, feature: Option<usize>) -> CoreResult<()> {
+        if let Some(index) = feature {
+            self.add_feature(index, 1)?;
+        }
         if members.len() > 2 {
             for member in &members {
-                self.entities.insert(member.clone());
-                increment_occurrence(self.occurrences.entry(member.clone()).or_default(), false)?;
+                self.add_named_occurrence(member, true, false)?;
             }
             self.disjoint_groups.insert(members);
             return Ok(());
@@ -713,14 +714,12 @@ impl NamedHierarchyBuilder {
             kind: EntityKind::Class,
             iri: OWL_NOTHING_IRI.to_owned(),
         };
-        increment_occurrence(self.occurrences.entry(bottom.clone()).or_default(), true)?;
+        self.add_named_occurrence(&bottom, false, true)?;
         self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
         for (first_position, first) in members.iter().enumerate() {
-            self.entities.insert(first.clone());
-            increment_occurrence(self.occurrences.entry(first.clone()).or_default(), false)?;
+            self.add_named_occurrence(first, true, false)?;
             for second in members.iter().skip(first_position + 1) {
-                self.entities.insert(second.clone());
-                increment_occurrence(self.occurrences.entry(second.clone()).or_default(), false)?;
+                self.add_named_occurrence(second, true, false)?;
                 let key = (first.clone(), second.clone());
                 increment_occurrence(
                     self.intersection_occurrences
@@ -731,6 +730,54 @@ impl NamedHierarchyBuilder {
                 self.intersection_subclass_axioms
                     .insert((key, bottom.clone()));
             }
+        }
+        Ok(())
+    }
+
+    fn add_disjoint_union(&mut self, defined: Entity, members: Vec<Entity>) -> CoreResult<()> {
+        self.add_disjoint(members.clone(), None)?;
+        match members.as_slice() {
+            [] => {
+                let bottom = Entity {
+                    kind: EntityKind::Class,
+                    iri: OWL_NOTHING_IRI.to_owned(),
+                };
+                self.add_named_occurrence(&defined, false, true)?;
+                self.add_named_occurrence(&bottom, false, true)?;
+                self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+                self.equivalent_class_axioms.insert((defined, bottom));
+            }
+            [member] => {
+                self.add_named_occurrence(&defined, true, true)?;
+                self.add_named_occurrence(member, true, true)?;
+                self.equivalent_class_axioms
+                    .insert((defined, member.clone()));
+            }
+            _ => {
+                self.add_feature(FEATURE_DISJOINT_UNION, 1)?;
+                self.add_named_occurrence(&defined, false, true)?;
+                for member in members {
+                    self.add_named_occurrence(&member, true, false)?;
+                    self.subclass_axioms.insert((member, defined.clone()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn add_named_occurrence(
+        &mut self,
+        entity: &Entity,
+        negative: bool,
+        positive: bool,
+    ) -> CoreResult<()> {
+        self.entities.insert(entity.clone());
+        let occurrence = self.occurrences.entry(entity.clone()).or_default();
+        if negative {
+            increment_occurrence(occurrence, false)?;
+        }
+        if positive {
+            increment_occurrence(occurrence, true)?;
         }
         Ok(())
     }
@@ -1036,7 +1083,21 @@ fn compile_disjoint_named_classes<B: ByteSource>(
         .into_iter()
         .map(|identifier| decode_named_class(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_disjoint(members, FEATURE_DISJOINT_CLASSES)
+    builder.add_disjoint(members, Some(FEATURE_DISJOINT_CLASSES))
+}
+
+fn compile_named_disjoint_union<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 2, columns)?;
+    let defined = decode_named_class(node_field(node, 0, columns)?, columns)?;
+    let members = node_collection(node, 1, columns)?
+        .into_iter()
+        .map(|identifier| decode_named_class(identifier, columns))
+        .collect::<CoreResult<Vec<_>>>()?;
+    builder.add_disjoint_union(defined, members)
 }
 
 fn compile_named_subproperty<B: ByteSource>(
@@ -1118,7 +1179,7 @@ fn compile_different_named_individuals<B: ByteSource>(
         .into_iter()
         .map(|identifier| decode_named_individual(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_disjoint(members, FEATURE_DIFFERENT_INDIVIDUALS)
+    builder.add_disjoint(members, Some(FEATURE_DIFFERENT_INDIVIDUALS))
 }
 
 fn decode_named_class<B: ByteSource>(
@@ -2747,6 +2808,63 @@ mod tests {
         columns
     }
 
+    fn nary_disjoint_named_classes() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[7]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 63]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 11]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 1, 20, 2, 25, 3, 0, 3]),
+            field_lengths: le64(&[5, 5, 5, 5, 0, 5, 0, 5, 0, 3, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[4, 5, 6]),
+            item_lengths: le64(&[0, 0, 0]),
+            scalar_bytes: b"urn:Aurn:Burn:Cclassclassclass".to_vec(),
+        }
+    }
+
+    fn binary_named_disjoint_union() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[7]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 64]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 12]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 1, 20, 2, 25, 3, 6, 0, 2]),
+            field_lengths: le64(&[5, 5, 5, 5, 0, 5, 0, 5, 0, 0, 2, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[4, 5]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes: b"urn:Aurn:Burn:Dclassclassclass".to_vec(),
+        }
+    }
+
     fn two_declarations() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -3657,6 +3775,50 @@ mod tests {
             ]
         );
         assert_eq!(compiled.feature_counts[FEATURE_DISJOINT_CLASSES], 1);
+        assert_eq!(compiled.feature_counts[FEATURE_OWL_NOTHING_POSITIVE], 1);
+    }
+
+    #[test]
+    fn nary_named_disjointness_preserves_one_canonical_group() {
+        let compiled = compile_named_hierarchy(
+            nary_disjoint_named_classes().borrowed(),
+            EncodedLimits::default(),
+            [14; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.disjoint_groups, vec![vec![2, 3, 4]]);
+        assert!(compiled.subclass_axioms.is_empty());
+        assert_eq!(compiled.expression_occurrences[0], Occurrence::default());
+        assert_eq!(compiled.expression_occurrences[2].negative, 1);
+        assert_eq!(compiled.expression_occurrences[3].negative, 1);
+        assert_eq!(compiled.expression_occurrences[4].negative, 1);
+        assert_eq!(compiled.feature_counts[FEATURE_DISJOINT_CLASSES], 1);
+        assert_eq!(compiled.feature_counts[FEATURE_OWL_NOTHING_POSITIVE], 0);
+    }
+
+    #[test]
+    fn binary_named_disjoint_union_matches_scalar_lowering() {
+        let compiled = compile_named_hierarchy(
+            binary_named_disjoint_union().borrowed(),
+            EncodedLimits::default(),
+            [15; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[5].tag,
+            ExpressionTag::ObjectIntersectionOf
+        );
+        assert_eq!(compiled.expressions[5].arguments, [2, 3]);
+        assert_eq!(compiled.subclass_axioms, vec![(2, 4), (3, 4), (5, 0)]);
+        assert_eq!(compiled.expression_occurrences[0].positive, 1);
+        assert_eq!(compiled.expression_occurrences[2].negative, 2);
+        assert_eq!(compiled.expression_occurrences[3].negative, 3);
+        assert_eq!(compiled.expression_occurrences[4].positive, 1);
+        assert_eq!(compiled.expression_occurrences[5].negative, 1);
+        assert_eq!(compiled.feature_counts[FEATURE_DISJOINT_UNION], 1);
+        assert_eq!(compiled.feature_counts[FEATURE_DISJOINT_CLASSES], 0);
         assert_eq!(compiled.feature_counts[FEATURE_OWL_NOTHING_POSITIVE], 1);
     }
 
