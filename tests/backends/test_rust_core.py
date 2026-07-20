@@ -147,6 +147,15 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         1,
     )
     try:
+        diagnostics = direct.diagnostics()
+        assert diagnostics["encoded_buffer_count"] == 11
+        assert diagnostics["encoded_buffer_bytes"] == sum(
+            value.nbytes for value in encoded.buffers.values()
+        )
+        assert diagnostics["encoded_zero_copy_buffers"] == 11
+        assert diagnostics["encoded_indexed_buffer_count"] == 0
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_private_ir_bytes"] == 0
         for operation in (
             "is_inconsistent",
             "class_taxonomy",

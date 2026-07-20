@@ -36,6 +36,7 @@ const ELK_COMPATIBILITY_ID: &str = "elk-0.6.0:b8ac5ce83db0704a7359d96aa382891e2f
 #[derive(Clone, Copy)]
 struct BorrowedPyBytes<'a, 'py> {
     view: &'a Bound<'py, PyAny>,
+    bytes: Option<&'a [u8]>,
     len: usize,
 }
 
@@ -45,27 +46,42 @@ impl ByteSource for BorrowedPyBytes<'_, '_> {
     }
 
     fn byte(self, index: usize) -> Option<u8> {
-        self.view.get_item(index).ok()?.extract().ok()
+        self.bytes
+            .and_then(|bytes| bytes.get(index).copied())
+            .or_else(|| self.view.get_item(index).ok()?.extract().ok())
     }
 }
 
+struct EncodedBufferBinding<'py> {
+    view: Bound<'py, PyAny>,
+    bytes_owner: Option<Bound<'py, PyBytes>>,
+}
+
 struct EncodedBufferBindings<'py> {
-    root_kinds: Bound<'py, PyAny>,
-    root_ids: Bound<'py, PyAny>,
-    node_tags: Bound<'py, PyAny>,
-    node_field_offsets: Bound<'py, PyAny>,
-    field_kinds: Bound<'py, PyAny>,
-    field_values: Bound<'py, PyAny>,
-    field_lengths: Bound<'py, PyAny>,
-    item_kinds: Bound<'py, PyAny>,
-    item_values: Bound<'py, PyAny>,
-    item_lengths: Bound<'py, PyAny>,
-    scalar_bytes: Bound<'py, PyAny>,
+    root_kinds: EncodedBufferBinding<'py>,
+    root_ids: EncodedBufferBinding<'py>,
+    node_tags: EncodedBufferBinding<'py>,
+    node_field_offsets: EncodedBufferBinding<'py>,
+    field_kinds: EncodedBufferBinding<'py>,
+    field_values: EncodedBufferBinding<'py>,
+    field_lengths: EncodedBufferBinding<'py>,
+    item_kinds: EncodedBufferBinding<'py>,
+    item_values: EncodedBufferBinding<'py>,
+    item_lengths: EncodedBufferBinding<'py>,
+    scalar_bytes: EncodedBufferBinding<'py>,
+}
+
+#[derive(Clone, Copy)]
+struct EncodedIngestionMetrics {
+    buffer_count: u64,
+    buffer_bytes: u64,
+    zero_copy_buffers: u64,
 }
 
 struct SessionState {
     session: Option<NativeCoreSession>,
     encoded_owner: Option<Py<PyAny>>,
+    encoded_metrics: Option<EncodedIngestionMetrics>,
     failed: bool,
 }
 
@@ -207,6 +223,11 @@ impl NativeSession {
 
     fn diagnostics(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let values = self.detached(py, "diagnostics", |session| Ok(session.diagnostics()))?;
+        let encoded_metrics = self
+            .inner
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("native session lock is poisoned"))?
+            .encoded_metrics;
         let result = PyDict::new(py);
         for (key, value) in values {
             match value {
@@ -214,6 +235,17 @@ impl NativeSession {
                 DiagnosticValue::Boolean(item) => result.set_item(key, item)?,
                 DiagnosticValue::Text(item) => result.set_item(key, item)?,
             }
+        }
+        if let Some(metrics) = encoded_metrics {
+            result.set_item("encoded_buffer_count", metrics.buffer_count)?;
+            result.set_item("encoded_buffer_bytes", metrics.buffer_bytes)?;
+            result.set_item("encoded_zero_copy_buffers", metrics.zero_copy_buffers)?;
+            result.set_item(
+                "encoded_indexed_buffer_count",
+                metrics.buffer_count - metrics.zero_copy_buffers,
+            )?;
+            result.set_item("encoded_staging_copy_bytes", 0)?;
+            result.set_item("encoded_private_ir_bytes", 0)?;
         }
         Ok(result.unbind())
     }
@@ -291,15 +323,20 @@ fn create_session_from_encoded(
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let (bindings, source_fingerprint) =
             validate_direct_encoded_input(py, encoded_view, unsupported)?;
+        let columns = bindings.columns()?;
+        let metrics = encoded_ingestion_metrics(columns)?;
         let ontology = compile_named_hierarchy_with_policy(
-            bindings.columns()?,
+            columns,
             EncodedLimits::default(),
             source_fingerprint,
             policy,
         )?;
-        NativeCoreSession::from_ontology(ontology, worker_count)
+        Ok((
+            NativeCoreSession::from_ontology(ontology, worker_count)?,
+            metrics,
+        ))
     }));
-    let session = match outcome {
+    let (session, metrics) = match outcome {
         Ok(value) => value.map_err(core_error)?,
         Err(payload) => {
             return Err(PyRuntimeError::new_err(format!(
@@ -312,6 +349,7 @@ fn create_session_from_encoded(
         inner: Arc::new(Mutex::new(SessionState {
             session: Some(session),
             encoded_owner: Some(encoded_view.clone().unbind()),
+            encoded_metrics: Some(metrics),
             failed: false,
         })),
     })
@@ -338,35 +376,83 @@ impl<'py> EncodedBufferBindings<'py> {
                 .map_err(|_| CoreError::protocol(format!("encoded view is missing buffer {name}")))
         };
         Ok(Self {
-            root_kinds: get("root_kinds")?,
-            root_ids: get("root_ids")?,
-            node_tags: get("node_tags")?,
-            node_field_offsets: get("node_field_offsets")?,
-            field_kinds: get("field_kinds")?,
-            field_values: get("field_values")?,
-            field_lengths: get("field_lengths")?,
-            item_kinds: get("item_kinds")?,
-            item_values: get("item_values")?,
-            item_lengths: get("item_lengths")?,
-            scalar_bytes: get("scalar_bytes")?,
+            root_kinds: EncodedBufferBinding::new(get("root_kinds")?),
+            root_ids: EncodedBufferBinding::new(get("root_ids")?),
+            node_tags: EncodedBufferBinding::new(get("node_tags")?),
+            node_field_offsets: EncodedBufferBinding::new(get("node_field_offsets")?),
+            field_kinds: EncodedBufferBinding::new(get("field_kinds")?),
+            field_values: EncodedBufferBinding::new(get("field_values")?),
+            field_lengths: EncodedBufferBinding::new(get("field_lengths")?),
+            item_kinds: EncodedBufferBinding::new(get("item_kinds")?),
+            item_values: EncodedBufferBinding::new(get("item_values")?),
+            item_lengths: EncodedBufferBinding::new(get("item_lengths")?),
+            scalar_bytes: EncodedBufferBinding::new(get("scalar_bytes")?),
         })
     }
 
     fn columns(&self) -> CoreResult<EncodedColumns<BorrowedPyBytes<'_, 'py>>> {
         Ok(EncodedColumns {
-            root_kinds: borrowed_py_bytes(&self.root_kinds, "root_kinds")?,
-            root_ids: borrowed_py_bytes(&self.root_ids, "root_ids")?,
-            node_tags: borrowed_py_bytes(&self.node_tags, "node_tags")?,
-            node_field_offsets: borrowed_py_bytes(&self.node_field_offsets, "node_field_offsets")?,
-            field_kinds: borrowed_py_bytes(&self.field_kinds, "field_kinds")?,
-            field_values: borrowed_py_bytes(&self.field_values, "field_values")?,
-            field_lengths: borrowed_py_bytes(&self.field_lengths, "field_lengths")?,
-            item_kinds: borrowed_py_bytes(&self.item_kinds, "item_kinds")?,
-            item_values: borrowed_py_bytes(&self.item_values, "item_values")?,
-            item_lengths: borrowed_py_bytes(&self.item_lengths, "item_lengths")?,
-            scalar_bytes: borrowed_py_bytes(&self.scalar_bytes, "scalar_bytes")?,
+            root_kinds: self.root_kinds.source("root_kinds")?,
+            root_ids: self.root_ids.source("root_ids")?,
+            node_tags: self.node_tags.source("node_tags")?,
+            node_field_offsets: self.node_field_offsets.source("node_field_offsets")?,
+            field_kinds: self.field_kinds.source("field_kinds")?,
+            field_values: self.field_values.source("field_values")?,
+            field_lengths: self.field_lengths.source("field_lengths")?,
+            item_kinds: self.item_kinds.source("item_kinds")?,
+            item_values: self.item_values.source("item_values")?,
+            item_lengths: self.item_lengths.source("item_lengths")?,
+            scalar_bytes: self.scalar_bytes.source("scalar_bytes")?,
         })
     }
+}
+
+impl<'py> EncodedBufferBinding<'py> {
+    fn new(view: Bound<'py, PyAny>) -> Self {
+        let bytes_owner = view
+            .getattr("obj")
+            .ok()
+            .and_then(|owner| owner.cast_into::<PyBytes>().ok());
+        Self { view, bytes_owner }
+    }
+
+    fn source(&self, name: &str) -> CoreResult<BorrowedPyBytes<'_, 'py>> {
+        borrowed_py_bytes(&self.view, self.bytes_owner.as_ref(), name)
+    }
+}
+
+fn encoded_ingestion_metrics(
+    columns: EncodedColumns<BorrowedPyBytes<'_, '_>>,
+) -> CoreResult<EncodedIngestionMetrics> {
+    let buffers = [
+        columns.root_kinds,
+        columns.root_ids,
+        columns.node_tags,
+        columns.node_field_offsets,
+        columns.field_kinds,
+        columns.field_values,
+        columns.field_lengths,
+        columns.item_kinds,
+        columns.item_values,
+        columns.item_lengths,
+        columns.scalar_bytes,
+    ];
+    let mut buffer_bytes = 0_u64;
+    let mut zero_copy_buffers = 0_u64;
+    for buffer in buffers {
+        buffer_bytes = buffer_bytes
+            .checked_add(
+                u64::try_from(buffer.len())
+                    .map_err(|_| CoreError::capacity("encoded buffer length exceeds u64"))?,
+            )
+            .ok_or_else(|| CoreError::capacity("encoded buffer byte total exceeds u64"))?;
+        zero_copy_buffers += u64::from(buffer.bytes.is_some());
+    }
+    Ok(EncodedIngestionMetrics {
+        buffer_count: ENCODED_BUFFER_COUNT as u64,
+        buffer_bytes,
+        zero_copy_buffers,
+    })
 }
 
 fn validate_direct_encoded_input<'py>(
@@ -500,7 +586,7 @@ fn validate_direct_segment(
     }
     for name in ["root_ids", "anonymous_scope_map"] {
         let value = required_attribute(&segment, name)?;
-        if !borrowed_py_bytes(&value, name)?.is_empty() {
+        if !borrowed_py_bytes(&value, None, name)?.is_empty() {
             return Err(CoreError::protocol(format!(
                 "encoded direct segment {name} must be empty"
             )));
@@ -678,6 +764,7 @@ fn required_attribute<'py>(value: &Bound<'py, PyAny>, name: &str) -> CoreResult<
 
 fn borrowed_py_bytes<'a, 'py>(
     buffer: &'a Bound<'py, PyAny>,
+    bytes_owner: Option<&'a Bound<'py, PyBytes>>,
     name: &str,
 ) -> CoreResult<BorrowedPyBytes<'a, 'py>> {
     let invalid = |message: &str| CoreError::protocol(format!("encoded buffer {name} {message}"));
@@ -713,7 +800,14 @@ fn borrowed_py_bytes<'a, 'py>(
     if buffer.len().map_err(|_| invalid("has invalid length"))? != len {
         return Err(invalid("has inconsistent byte-length metadata"));
     }
-    Ok(BorrowedPyBytes { view: buffer, len })
+    let bytes = bytes_owner
+        .map(|owner| owner.as_bytes())
+        .filter(|owner| owner.len() == len);
+    Ok(BorrowedPyBytes {
+        view: buffer,
+        bytes,
+        len,
+    })
 }
 
 #[pyfunction]
@@ -746,6 +840,7 @@ fn create_session(
         inner: Arc::new(Mutex::new(SessionState {
             session: Some(session),
             encoded_owner: None,
+            encoded_metrics: None,
             failed: false,
         })),
     })
