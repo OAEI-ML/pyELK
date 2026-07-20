@@ -10,6 +10,8 @@ pub enum CoreError {
     Protocol(String),
     /// A caller supplied an invalid scalar or requested an invalid operation.
     InvalidInput(String),
+    /// Strict compilation encountered one named unsupported ELK feature.
+    Unsupported(String),
     /// An arithmetic or namespace limit was exceeded.
     Capacity(String),
     /// A session was closed or permanently invalidated.
@@ -29,6 +31,11 @@ impl CoreError {
         Self::InvalidInput(message.into())
     }
 
+    /// Construct an unsupported-feature error with a stable feature identifier.
+    pub fn unsupported(feature: impl Into<String>) -> Self {
+        Self::Unsupported(feature.into())
+    }
+
     /// Construct a capacity error.
     pub fn capacity(message: impl Into<String>) -> Self {
         Self::Capacity(message.into())
@@ -45,6 +52,7 @@ impl Display for CoreError {
         match self {
             Self::Protocol(message) => write!(formatter, "protocol error: {message}"),
             Self::InvalidInput(message) => write!(formatter, "invalid input: {message}"),
+            Self::Unsupported(feature) => write!(formatter, "unsupported ELK feature: {feature}"),
             Self::Capacity(message) => write!(formatter, "capacity error: {message}"),
             Self::Closed(message) => write!(formatter, "closed session: {message}"),
             Self::Internal(message) => write!(formatter, "internal reasoner error: {message}"),

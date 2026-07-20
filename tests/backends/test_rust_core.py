@@ -11,7 +11,7 @@ import weakref
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
@@ -344,6 +344,7 @@ def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> No
     assert native_module.implementation_version() == "0.1.0.dev0"
     assert native_module.ir_version() == (1, 0)
     assert native_module.self_check() is True
+    assert issubclass(native_module.NativeUnsupportedFeatureError, ValueError)
     assert native_module.encoded_view_schemas() == {}
     with pytest.raises(ValueError, match=r"IR|payload|header|magic"):
         native_module.create_session(b"not a compiled ontology", 1)
@@ -410,6 +411,79 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
     finally:
         direct.close()
         scalar.close()
+
+
+def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
+    native_module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.backends import EncodedBackendSelection
+    from pyelk.backends.python import IMPLEMENTATION_VERSION
+    from pyelk.backends.rust import RustBackendFactory
+    from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
+    from pyelk.indexing.encoded import (
+        ENCODED_SCHEMA_NAME,
+        ENCODED_SCHEMA_VERSION,
+        _validate_encoded_view,
+    )
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:facade#>) Ontology(<urn:facade>
+        Declaration(Class(:A)) Declaration(Class(:B)) SubClassOf(:A :B)
+        Declaration(ObjectProperty(:p)) Declaration(ObjectProperty(:q))
+        SubObjectPropertyOf(:p :q)
+        Declaration(NamedIndividual(:i)) ClassAssertion(:A :i)
+        )"""
+    )
+    config = ReasonerConfig(backend="rust", workers=2, unsupported="error")
+    expected = Reasoner(snapshot, ReasonerConfig(backend="python", unsupported="error"))
+    factory = RustBackendFactory(
+        native_module,
+        implementation_version=IMPLEMENTATION_VERSION,
+        ir_major=SCHEMA_MAJOR,
+        ir_minor=SCHEMA_MINOR,
+    )
+    factory._encoded_view_schemas = MappingProxyType({ENCODED_SCHEMA_NAME: ENCODED_SCHEMA_VERSION})
+    handoff = _validate_encoded_view(snapshot, encoded, owl.AxiomScope.CLOSURE)
+    session = factory.create_encoded_session(handoff, config)
+    selection = EncodedBackendSelection(session=session, metadata=session.compiler_metadata())
+    monkeypatch.setattr(
+        "pyelk.api.try_create_encoded_backend_session",
+        lambda ontology, supplied: selection,
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        raise AssertionError("public encoded path reached scalar compilation")
+
+    monkeypatch.setattr("pyelk.api.compile_ontology", forbidden)
+    monkeypatch.setattr("pyelk.api.create_backend_session", forbidden)
+    actual: Reasoner | None = None
+    try:
+        actual = Reasoner(snapshot, config)
+        assert actual.backend.name == "rust"
+        assert actual._session is not None
+        assert actual._session.diagnostics()["ingestion_path"] == "encoded-native"
+        assert actual.is_consistent() == expected.is_consistent()
+        assert actual.classify() == expected.classify()
+        assert actual.classify_object_properties() == expected.classify_object_properties()
+        assert actual.realize() == expected.realize()
+        class_a = owl.Class(owl.IRI("urn:facade#A"))
+        class_b = owl.Class(owl.IRI("urn:facade#B"))
+        individual = owl.NamedIndividual(owl.IRI("urn:facade#i"))
+        assert actual.superclasses(class_a) == expected.superclasses(class_a)
+        assert actual.instances(class_b) == expected.instances(class_b)
+        assert actual.types(individual) == expected.types(individual)
+        assert actual.is_entailed(owl.SubClassOf(class_a, class_b)) == expected.is_entailed(
+            owl.SubClassOf(class_a, class_b)
+        )
+    finally:
+        if actual is None:
+            session.close()
+        else:
+            actual.close()
+        expected.close()
 
 
 def test_hidden_noop_overlay_chain_reuses_direct_source_without_flattening(
@@ -1279,7 +1353,7 @@ def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleT
         direct.close()
         scalar.close()
 
-    with pytest.raises(ValueError, match=r"unsupported ELK feature"):
+    with pytest.raises(native_module.NativeUnsupportedFeatureError):
         native_module.create_session_from_encoded(encoded, 1, "error")
 
 
@@ -1326,9 +1400,9 @@ def test_hidden_encoded_feature_corpus_matches_scalar_compiler(
     try:
         strict_compiled = compile_ontology(view, unsupported="error")
     except UnsupportedFeatureError as scalar_error:
-        with pytest.raises(ValueError) as native_error:
+        with pytest.raises(native_module.NativeUnsupportedFeatureError) as native_error:
             native_module.create_session_from_encoded(encoded, 1, "error")
-        assert scalar_error.feature in str(native_error.value)
+        assert str(native_error.value) == scalar_error.feature
     else:
         strict_direct = native_module.create_session_from_encoded(encoded, 1, "error")
         strict_scalar = native_module.create_session(strict_compiled.encode(), 1)

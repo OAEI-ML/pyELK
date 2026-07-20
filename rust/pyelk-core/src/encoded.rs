@@ -2525,9 +2525,7 @@ impl NamedHierarchyBuilder {
     fn handle_unsupported(&mut self, feature: usize, name: &'static str) -> CoreResult<()> {
         match self.unsupported {
             EncodedUnsupportedPolicy::Ignore => self.add_feature(feature, 1),
-            EncodedUnsupportedPolicy::Error => Err(CoreError::invalid(format!(
-                "encoded ontology contains unsupported ELK feature {name}"
-            ))),
+            EncodedUnsupportedPolicy::Error => Err(CoreError::unsupported(name)),
         }
     }
 
@@ -7324,7 +7322,7 @@ mod tests {
                     EncodedLimits::default(),
                     [0; 32],
                 ),
-                Err(CoreError::InvalidInput(message)) if message.contains("unsupported ELK feature")
+                Err(CoreError::Unsupported(feature)) if feature == kind.to_ascii_uppercase()
             ));
         }
 
@@ -7369,8 +7367,8 @@ mod tests {
                 [24; 32],
                 EncodedUnsupportedPolicy::Error,
             ),
-            Err(CoreError::InvalidInput(message))
-                if message.contains("FUNCTIONAL_OBJECT_PROPERTY")
+            Err(CoreError::Unsupported(feature))
+                if feature == "FUNCTIONAL_OBJECT_PROPERTY"
         ));
     }
 

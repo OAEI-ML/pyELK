@@ -10,7 +10,12 @@ import pytest
 from pyelk.backends.python import IMPLEMENTATION_VERSION, PythonBackendFactory
 from pyelk.backends.rust import RustBackendFactory, RustBackendSession
 from pyelk.config import ReasonerConfig
-from pyelk.exceptions import BackendProtocolError, InternalReasonerError, ReasonerClosedError
+from pyelk.exceptions import (
+    BackendProtocolError,
+    InternalReasonerError,
+    ReasonerClosedError,
+    UnsupportedFeatureError,
+)
 from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
 from pyelk.indexing.encoded import (
     ENCODED_SCHEMA_NAME,
@@ -83,10 +88,14 @@ class _NativeModule:
 
 
 class _EncodedNativeModule(_NativeModule):
+    class NativeUnsupportedFeatureError(ValueError):
+        pass
+
     def __init__(self, compiled: CompiledOntology) -> None:
         super().__init__(compiled)
         self.encoded: object | None = None
         self.unsupported: str | None = None
+        self.create_error: Exception | None = None
 
     def encoded_view_schemas(self) -> Mapping[str, int]:
         return {ENCODED_SCHEMA_NAME: ENCODED_SCHEMA_VERSION}
@@ -97,6 +106,8 @@ class _EncodedNativeModule(_NativeModule):
         workers: int,
         unsupported: str,
     ) -> _NativeSession:
+        if self.create_error is not None:
+            raise self.create_error
         self.encoded = encoded
         self.workers = workers
         self.unsupported = unsupported
@@ -205,6 +216,42 @@ def test_encoded_factory_uses_one_coarse_call_and_retains_owner_until_close() ->
     assert session.diagnostics()["ingestion_path"] == "encoded-native"
     session.close()
     assert session._encoded_owner is None
+
+
+def test_encoded_factory_preserves_unsupported_and_protocol_error_categories() -> None:
+    compiled = TinyCompiledOntologyBuilder().build()
+    native = _EncodedNativeModule(compiled)
+    owner = cast(owl.OntologyView, object())
+    handoff = EncodedStructuralHandoff(
+        encoded_view=object(),
+        owner=owner,
+        schema_name=ENCODED_SCHEMA_NAME,
+        schema_version=ENCODED_SCHEMA_VERSION,
+        model_schema=1,
+        scope=owl.AxiomScope.CLOSURE,
+        descriptor=b"descriptor",
+        descriptor_digest=b"d" * 32,
+        buffers=MappingProxyType({"column": memoryview(b"value")}),
+        segments=(),
+        structural_fingerprint=owl.Fingerprint("sha256", 1, b"s" * 32),
+    )
+    factory = RustBackendFactory(
+        native,
+        implementation_version=IMPLEMENTATION_VERSION,
+        ir_major=SCHEMA_MAJOR,
+        ir_minor=SCHEMA_MINOR,
+    )
+    config = cast(BackendConfig, ReasonerConfig(unsupported="error"))
+
+    native.create_error = native.NativeUnsupportedFeatureError("FUNCTIONAL_OBJECT_PROPERTY")
+    with pytest.raises(UnsupportedFeatureError) as unsupported:
+        factory.create_encoded_session(handoff, config)
+    assert unsupported.value.feature == "FUNCTIONAL_OBJECT_PROPERTY"
+    assert unsupported.value.axiom is owner
+
+    native.create_error = ValueError("corrupt structural column")
+    with pytest.raises(BackendProtocolError, match="valid encoded structural"):
+        factory.create_encoded_session(handoff, config)
 
 
 @pytest.mark.parametrize(

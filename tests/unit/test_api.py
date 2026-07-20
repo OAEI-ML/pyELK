@@ -9,6 +9,7 @@ import pytest
 
 import pyelk
 from pyelk import Reasoner, ReasonerConfig
+from pyelk.backends import EncodedBackendSelection
 from pyelk.backends.python import PythonBackendFactory
 from pyelk.exceptions import (
     BackendProtocolError,
@@ -17,7 +18,9 @@ from pyelk.exceptions import (
     ReasonerClosedError,
     UnsupportedFeatureError,
 )
+from pyelk.indexing.compiler import compile_ontology
 from pyelk.indexing.ir import CompiledOntology
+from pyelk.indexing.metadata import metadata_from_compiled
 from pyelk.reasoning.contracts import (
     BackendConfig,
     BackendInfo,
@@ -164,6 +167,42 @@ def test_provider_is_called_once_and_view_identity_is_retained() -> None:
     assert _class("A") in reasoner.all_classes()
     reasoner.close()
     assert snapshot.signature()
+
+
+def test_public_facade_runs_from_encoded_metadata_without_scalar_compilation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _snapshot(
+        "Declaration(Class(:A)) Declaration(Class(:B)) SubClassOf(:A :B) "
+        "Declaration(NamedIndividual(:i)) ClassAssertion(:A :i)"
+    )
+    config = ReasonerConfig(backend="python")
+    compiled = compile_ontology(snapshot)
+    selection = EncodedBackendSelection(
+        session=_python_session(compiled, config),
+        metadata=metadata_from_compiled(compiled),
+    )
+
+    monkeypatch.setattr(
+        "pyelk.api.try_create_encoded_backend_session",
+        lambda ontology, supplied: selection,
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        raise AssertionError("scalar compiler/backend path was reached")
+
+    monkeypatch.setattr("pyelk.api.compile_ontology", forbidden)
+    monkeypatch.setattr("pyelk.api.create_backend_session", forbidden)
+
+    with Reasoner(snapshot, config) as reasoner:
+        assert reasoner._entity_by_record == {}
+        assert reasoner.is_consistent().value is True
+        assert reasoner.classify().value.supers(_class("A"), direct=True) == (
+            reasoner.classify().value.node(_class("B")),
+        )
+        assert reasoner.is_satisfiable(_class("A")).value is True
+        assert reasoner.is_entailed(owl.SubClassOf(_class("A"), _class("B"))).value is True
+        assert reasoner.types(_individual("i")).value
 
 
 def test_fresh_entity_policy_and_quiet_inconsistency_precedence() -> None:

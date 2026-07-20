@@ -7,12 +7,19 @@ from typing import Any
 import pyowl_core
 import pytest
 
-from pyelk.backends import backend_report, create_backend_session
+from pyelk.backends import (
+    backend_report,
+    create_backend_session,
+    try_create_encoded_backend_session,
+)
 from pyelk.backends.python import IMPLEMENTATION_VERSION
 from pyelk.config import ReasonerConfig
-from pyelk.exceptions import BackendUnavailableError
+from pyelk.exceptions import BackendProtocolError, BackendUnavailableError, ReasonerClosedError
 from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
-from tests.helpers.contracts import TinyCompiledOntologyBuilder
+from pyelk.indexing.ir import EntityId
+from pyelk.indexing.metadata import CompilerMetadata, metadata_from_compiled
+from pyelk.reasoning.contracts import RawTaxonomy
+from tests.helpers.contracts import FakeBackendSession, TinyCompiledOntologyBuilder
 
 
 class _NativeSession:
@@ -141,3 +148,78 @@ def test_backend_report_covers_valid_invalid_and_unprobed_states(
     invalid = backend_report()
     assert invalid.selected is None
     assert invalid.selection_error is not None
+
+
+class _MetadataSession(FakeBackendSession):
+    def __init__(self, metadata: object) -> None:
+        taxonomy = RawTaxonomy(nodes=((EntityId(0),),), direct_edges=(), top=0, bottom=0)
+        super().__init__(class_taxonomy=taxonomy)
+        self.metadata = metadata
+
+    def compiler_metadata(self) -> object:
+        return self.metadata
+
+
+class _EncodedFactory:
+    def __init__(self, handoff: object | None, session: _MetadataSession) -> None:
+        self.handoff = handoff
+        self.session = session
+        self.created = False
+
+    def negotiate_encoded_input(self, ontology: object) -> SimpleNamespace:
+        return SimpleNamespace(handoff=self.handoff)
+
+    def create_encoded_session(self, handoff: object, config: object) -> _MetadataSession:
+        assert handoff is self.handoff
+        self.created = True
+        return self.session
+
+
+def test_encoded_backend_selection_is_precompile_and_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiled = TinyCompiledOntologyBuilder().build()
+    metadata = metadata_from_compiled(compiled)
+    view = pyowl_core.load_snapshot(b"Ontology()")
+    session = _MetadataSession(metadata)
+    factory = _EncodedFactory(object(), session)
+    monkeypatch.setattr(
+        "pyelk.backends._probe_native",
+        lambda: SimpleNamespace(module=object()),
+    )
+    monkeypatch.setattr("pyelk.backends._rust_factory", lambda probe: factory)
+
+    selected = try_create_encoded_backend_session(view, ReasonerConfig(backend="rust"))
+    assert selected is not None
+    assert selected.session is session
+    assert selected.metadata == metadata
+    assert factory.created is True
+
+    malformed = _MetadataSession(object())
+    malformed_factory = _EncodedFactory(object(), malformed)
+    monkeypatch.setattr("pyelk.backends._rust_factory", lambda probe: malformed_factory)
+    with pytest.raises(BackendProtocolError, match="CompilerMetadata"):
+        try_create_encoded_backend_session(view, ReasonerConfig(backend="rust"))
+    with pytest.raises(ReasonerClosedError):
+        _ = malformed.info
+
+
+def test_encoded_backend_capability_absence_does_not_create_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metadata: CompilerMetadata = metadata_from_compiled(TinyCompiledOntologyBuilder().build())
+    factory = _EncodedFactory(None, _MetadataSession(metadata))
+    monkeypatch.setattr(
+        "pyelk.backends._probe_native",
+        lambda: SimpleNamespace(module=object()),
+    )
+    monkeypatch.setattr("pyelk.backends._rust_factory", lambda probe: factory)
+
+    assert (
+        try_create_encoded_backend_session(
+            pyowl_core.load_snapshot(b"Ontology()"),
+            ReasonerConfig(backend="rust"),
+        )
+        is None
+    )
+    assert factory.created is False

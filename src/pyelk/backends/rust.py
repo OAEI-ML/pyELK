@@ -9,7 +9,13 @@ from typing import Any, Protocol, cast
 
 import pyowl_core as owl
 
-from pyelk.exceptions import BackendProtocolError, InternalReasonerError, ReasonerClosedError
+from pyelk.exceptions import (
+    BackendProtocolError,
+    InternalReasonerError,
+    ReasonerClosedError,
+    UnsupportedFeatureError,
+)
+from pyelk.indexing.conversion import FEATURE_INDEX
 from pyelk.indexing.encoded import (
     ENCODED_SCHEMA_NAME,
     EncodedStructuralHandoff,
@@ -150,6 +156,20 @@ class RustBackendFactory:
         except (MemoryError, KeyboardInterrupt, SystemExit):
             raise
         except Exception as error:
+            unsupported_type = getattr(self._native, "NativeUnsupportedFeatureError", None)
+            if isinstance(unsupported_type, type) and isinstance(error, unsupported_type):
+                feature = str(error)
+                if feature not in FEATURE_INDEX:
+                    raise BackendProtocolError(
+                        "a canonical native unsupported feature identifier",
+                        feature,
+                    ) from error
+                raise UnsupportedFeatureError(feature, handoff.owner) from error
+            if isinstance(error, ValueError):
+                raise BackendProtocolError(
+                    "valid encoded structural compiler input",
+                    str(error),
+                ) from error
             raise InternalReasonerError(
                 "create_session_from_encoded",
                 "rust",

@@ -24,6 +24,7 @@ use pyelk_core::{
     CoreError, CoreResult, DiagnosticValue, IMPLEMENTATION_VERSION, IR_MAJOR, IR_MINOR,
     NativeCoreSession, QueryKind,
 };
+use pyo3::create_exception;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{
@@ -32,6 +33,8 @@ use pyo3::types::{
 use sha2::Sha256;
 
 type Blake2b256 = Blake2b<U32>;
+
+create_exception!(_native, NativeUnsupportedFeatureError, PyValueError);
 
 const ENCODED_SCHEMA_NAME: &str = "pyowl-core/structural-columns";
 const ENCODED_SCHEMA_VERSION: u64 = 1;
@@ -2304,6 +2307,7 @@ fn core_error(error: CoreError) -> PyErr {
         CoreError::Protocol(message) | CoreError::InvalidInput(message) => {
             PyValueError::new_err(message)
         }
+        CoreError::Unsupported(feature) => NativeUnsupportedFeatureError::new_err(feature),
         CoreError::Capacity(message)
         | CoreError::Closed(message)
         | CoreError::Internal(message) => PyRuntimeError::new_err(message),
@@ -2312,6 +2316,10 @@ fn core_error(error: CoreError) -> PyErr {
 
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add(
+        "NativeUnsupportedFeatureError",
+        module.py().get_type::<NativeUnsupportedFeatureError>(),
+    )?;
     module.add_class::<NativeSession>()?;
     module.add_function(wrap_pyfunction!(implementation_version, module)?)?;
     module.add_function(wrap_pyfunction!(ir_version, module)?)?;

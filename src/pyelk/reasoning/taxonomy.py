@@ -10,6 +10,7 @@ from pyelk.indexing.ir import (
     CompiledOntology,
     EntityId,
     EntityKind,
+    EntityRecord,
     ExpressionId,
     ExpressionTag,
     PropertyChainId,
@@ -163,23 +164,39 @@ def validate_taxonomy(
 
     if not isinstance(compiled, CompiledOntology):
         raise TypeError("compiled must be CompiledOntology")
+    return validate_taxonomy_entities(compiled.entities, taxonomy, kind)
+
+
+def validate_taxonomy_entities(
+    entities: tuple[EntityRecord, ...],
+    taxonomy: RawTaxonomy,
+    kind: EntityKind,
+) -> RawTaxonomy:
+    """Validate a backend taxonomy against bounded facade entity metadata."""
+
+    if not isinstance(entities, tuple) or any(
+        not isinstance(record, EntityRecord) for record in entities
+    ):
+        raise TypeError("entities must be a tuple of EntityRecord values")
     if not isinstance(taxonomy, RawTaxonomy):
         raise TypeError("taxonomy must be RawTaxonomy")
     if kind not in {EntityKind.CLASS, EntityKind.OBJECT_PROPERTY}:
         raise ValueError("taxonomy kind must be CLASS or OBJECT_PROPERTY")
-    expected = _entity_ids(compiled, kind)
+    expected = tuple(
+        EntityId(index) for index, record in enumerate(entities) if record.kind is kind
+    )
     actual = tuple(sorted(member for node in taxonomy.nodes for member in node))
     if actual != expected:
-        raise ValueError("taxonomy member coverage does not match compiled entities")
-    if any(compiled.entities[member].kind is not kind for member in actual):
+        raise ValueError("taxonomy member coverage does not match facade entities")
+    if any(entities[member].kind is not kind for member in actual):
         raise ValueError("taxonomy contains an entity of the wrong kind")
     top_iri, bottom_iri = (
         (OWL_THING_IRI, OWL_NOTHING_IRI)
         if kind is EntityKind.CLASS
         else (OWL_TOP_OBJECT_PROPERTY_IRI, OWL_BOTTOM_OBJECT_PROPERTY_IRI)
     )
-    top = _entity(compiled, kind, top_iri)
-    bottom = _entity(compiled, kind, bottom_iri)
+    top = _metadata_entity(entities, kind, top_iri)
+    bottom = _metadata_entity(entities, kind, bottom_iri)
     if top not in taxonomy.nodes[taxonomy.top]:
         raise ValueError("taxonomy top node does not contain the predefined top entity")
     if bottom not in taxonomy.nodes[taxonomy.bottom]:
@@ -187,6 +204,17 @@ def validate_taxonomy(
     if transitive_reduction(len(taxonomy.nodes), taxonomy.direct_edges) != taxonomy.direct_edges:
         raise ValueError("taxonomy direct edges contain a transitive redundancy")
     return taxonomy
+
+
+def _metadata_entity(
+    entities: tuple[EntityRecord, ...],
+    kind: EntityKind,
+    iri: str,
+) -> EntityId:
+    for index, record in enumerate(entities):
+        if record.kind is kind and record.iri == iri:
+            return EntityId(index)
+    raise ValueError(f"facade entities are missing predefined {kind.name} {iri!r}")
 
 
 def _from_relation(
@@ -258,4 +286,5 @@ __all__ = [
     "class_taxonomy",
     "object_property_taxonomy",
     "validate_taxonomy",
+    "validate_taxonomy_entities",
 ]

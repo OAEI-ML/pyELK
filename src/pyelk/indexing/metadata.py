@@ -19,8 +19,15 @@ from pyelk.indexing.codec import (
 from pyelk.indexing.ir import (
     FEATURE_VECTOR_LENGTH,
     FINGERPRINT_SIZE,
+    OWL_BOTTOM_OBJECT_PROPERTY_IRI,
+    OWL_NOTHING_IRI,
+    OWL_THING_IRI,
+    OWL_TOP_OBJECT_PROPERTY_IRI,
+    U32_RESERVED,
     U64_MAX,
     CompiledOntology,
+    EntityId,
+    EntityKind,
     EntityRecord,
     ReadableBuffer,
 )
@@ -57,11 +64,25 @@ class CompilerMetadata:
         keys = tuple((int(record.kind), record.iri.encode("utf-8")) for record in self.entities)
         if any(keys[index - 1] >= keys[index] for index in range(1, len(keys))):
             raise ValueError("compiler metadata entities must be strictly canonical")
+        if len(self.entities) > U32_RESERVED:
+            raise ValueError("compiler metadata entity table exceeds the frozen u32 namespace")
         if len(self.feature_counts) != FEATURE_VECTOR_LENGTH or any(
             isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= U64_MAX
             for count in self.feature_counts
         ):
             raise ValueError("compiler metadata feature counts must be the frozen u64 vector")
+        required = {
+            (EntityKind.CLASS, OWL_NOTHING_IRI),
+            (EntityKind.CLASS, OWL_THING_IRI),
+            (EntityKind.OBJECT_PROPERTY, OWL_BOTTOM_OBJECT_PROPERTY_IRI),
+            (EntityKind.OBJECT_PROPERTY, OWL_TOP_OBJECT_PROPERTY_IRI),
+        }
+        actual = {(record.kind, record.iri) for record in self.entities}
+        missing = tuple(
+            sorted((int(kind), iri) for kind, iri in required - actual)
+        )
+        if missing:
+            raise ValueError(f"compiler metadata is missing predefined entities: {missing!r}")
         if (
             not isinstance(self.source_fingerprint, bytes)
             or len(self.source_fingerprint) != FINGERPRINT_SIZE
@@ -69,6 +90,39 @@ class CompilerMetadata:
             raise ValueError(
                 f"compiler metadata source fingerprint must be {FINGERPRINT_SIZE} bytes"
             )
+
+
+class CompilerSymbolTable:
+    """Immutable binary-search lookup over native or scalar facade metadata."""
+
+    __slots__ = ("_metadata",)
+
+    def __init__(self, metadata: CompilerMetadata) -> None:
+        if not isinstance(metadata, CompilerMetadata):
+            raise TypeError("metadata must be CompilerMetadata")
+        self._metadata = metadata
+
+    @property
+    def entity_count(self) -> int:
+        return len(self._metadata.entities)
+
+    def lookup_entity(self, entity: EntityRecord) -> EntityId | None:
+        if not isinstance(entity, EntityRecord):
+            raise TypeError("entity must be EntityRecord")
+        needle = (int(entity.kind), entity.iri.encode("utf-8"))
+        lower = 0
+        upper = len(self._metadata.entities)
+        while lower < upper:
+            middle = (lower + upper) // 2
+            candidate = self._metadata.entities[middle]
+            key = (int(candidate.kind), candidate.iri.encode("utf-8"))
+            if key < needle:
+                lower = middle + 1
+            else:
+                upper = middle
+        if lower == len(self._metadata.entities) or self._metadata.entities[lower] != entity:
+            return None
+        return EntityId(lower)
 
 
 def metadata_from_compiled(compiled: CompiledOntology) -> CompilerMetadata:
@@ -160,6 +214,7 @@ __all__ = [
     "COMPILER_METADATA_MAGIC",
     "CompilerMetadata",
     "CompilerMetadataSection",
+    "CompilerSymbolTable",
     "decode_compiler_metadata",
     "encode_compiler_metadata",
     "metadata_from_compiled",

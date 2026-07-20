@@ -7,6 +7,7 @@ from pyelk.indexing.ir import EntityKind, EntityRecord
 from pyelk.indexing.metadata import (
     COMPILER_METADATA_MAGIC,
     CompilerMetadata,
+    CompilerSymbolTable,
     decode_compiler_metadata,
     encode_compiler_metadata,
     metadata_from_compiled,
@@ -54,7 +55,25 @@ def test_compiler_metadata_requires_canonical_entities_and_fixed_features() -> N
         )
     with pytest.raises(ValueError, match="frozen u64 vector"):
         CompilerMetadata(
-            entities=(EntityRecord(EntityKind.CLASS, "urn:metadata:A"),),
+            entities=metadata.entities,
             feature_counts=metadata.feature_counts[:-1],
             source_fingerprint=metadata.source_fingerprint,
         )
+    with pytest.raises(ValueError, match="missing predefined"):
+        CompilerMetadata(
+            entities=(EntityRecord(EntityKind.CLASS, "urn:metadata:A"),),
+            feature_counts=metadata.feature_counts,
+            source_fingerprint=metadata.source_fingerprint,
+        )
+
+
+def test_compiler_symbol_table_uses_canonical_metadata_ids() -> None:
+    metadata = _metadata()
+    symbols = CompilerSymbolTable(metadata)
+
+    assert symbols.entity_count == len(metadata.entities)
+    for expected, record in enumerate(metadata.entities):
+        assert symbols.lookup_entity(record) == expected
+    assert symbols.lookup_entity(EntityRecord(EntityKind.CLASS, "urn:metadata:missing")) is None
+    with pytest.raises(TypeError, match="EntityRecord"):
+        symbols.lookup_entity(object())  # type: ignore[arg-type]

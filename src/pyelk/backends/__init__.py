@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import importlib
 import os
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pyelk.backends.python import IMPLEMENTATION_VERSION, PythonBackendFactory
 from pyelk.config import ReasonerConfig
 from pyelk.core import current_core_versions
-from pyelk.exceptions import BackendUnavailableError, InternalReasonerError
+from pyelk.exceptions import BackendProtocolError, BackendUnavailableError, InternalReasonerError
 from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
 from pyelk.indexing.ir import CompiledOntology
+from pyelk.indexing.metadata import CompilerMetadata
 from pyelk.reasoning.contracts import (
     BackendAvailability,
     BackendConfig,
@@ -20,6 +22,9 @@ from pyelk.reasoning.contracts import (
     BackendReport,
     BackendSession,
 )
+
+if TYPE_CHECKING:
+    import pyowl_core as owl
 
 _BACKEND_VALUES = frozenset({"auto", "python", "rust"})
 _PURE_VALUES = frozenset({"0", "1"})
@@ -29,6 +34,72 @@ _PURE_VALUES = frozenset({"0", "1"})
 class _NativeProbe:
     availability: BackendAvailability
     module: object | None
+
+
+@dataclass(frozen=True, slots=True)
+class EncodedBackendSelection:
+    """Unpublished native session plus its bounded public-facade metadata."""
+
+    session: BackendSession
+    metadata: CompilerMetadata
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.session, BackendSession):
+            raise TypeError("session must implement BackendSession")
+        if not isinstance(self.metadata, CompilerMetadata):
+            raise TypeError("metadata must be CompilerMetadata")
+
+
+def try_create_encoded_backend_session(
+    ontology: owl.OntologyView,
+    config: ReasonerConfig,
+) -> EncodedBackendSelection | None:
+    """Select encoded-native only before scalar compilation or input consumption.
+
+    Capability absence returns ``None``. Once both sides advertise the schema and a handoff is
+    acquired, every validation/compiler/metadata failure is propagated and the unpublished
+    session is closed; callers must not silently switch to scalar ingestion.
+    """
+
+    import pyowl_core as owl
+
+    if not isinstance(ontology, owl.OntologyView):
+        raise TypeError("ontology must implement pyowl_core.OntologyView")
+    if not isinstance(config, ReasonerConfig):
+        raise TypeError("config must be ReasonerConfig")
+    environment_backend, pure = _environment()
+    requested = config.backend if config.backend != "auto" else environment_backend
+    effective = _apply_pure_mode(requested, pure)
+    if effective == "python":
+        return None
+
+    probe = _probe_native()
+    if probe.module is None:
+        return None
+    factory = cast(Any, _rust_factory(probe))
+    negotiation = factory.negotiate_encoded_input(ontology)
+    if negotiation.handoff is None:
+        return None
+
+    session = factory.create_encoded_session(
+        negotiation.handoff,
+        cast(BackendConfig, config),
+    )
+    try:
+        metadata_method = getattr(session, "compiler_metadata", None)
+        if not callable(metadata_method):
+            raise BackendProtocolError(
+                "compiler_metadata on an encoded native session",
+                metadata_method,
+            )
+        metadata = metadata_method()
+        if not isinstance(metadata, CompilerMetadata):
+            raise BackendProtocolError("CompilerMetadata from native session", metadata)
+        return EncodedBackendSelection(session=session, metadata=metadata)
+    except BaseException:
+        with suppress(BaseException):
+            session.close()
+        raise
 
 
 def create_backend_session(

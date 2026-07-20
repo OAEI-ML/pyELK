@@ -7,7 +7,7 @@ from typing import TypeVar, cast
 
 import pyowl_core as owl
 
-from pyelk.backends import create_backend_session
+from pyelk.backends import create_backend_session, try_create_encoded_backend_session
 from pyelk.config import ReasonerConfig
 from pyelk.exceptions import BackendProtocolError, FreshEntityError, ReasonerClosedError
 from pyelk.indexing.compiler import (
@@ -18,12 +18,16 @@ from pyelk.indexing.compiler import (
 from pyelk.indexing.conversion import entity_record
 from pyelk.indexing.ir import (
     FEATURE_VECTOR_LENGTH,
-    CompiledOntology,
     CompiledQuery,
     EntityRecord,
 )
 from pyelk.indexing.ir import (
     EntityKind as IREntityKind,
+)
+from pyelk.indexing.metadata import (
+    CompilerMetadata,
+    CompilerSymbolTable,
+    metadata_from_compiled,
 )
 from pyelk.inputs import InputCapture, capture_input, load_snapshot
 from pyelk.reasoning.completeness import issues_for
@@ -40,7 +44,7 @@ from pyelk.reasoning.contracts import (
 )
 from pyelk.reasoning.queries import named_object_property_query
 from pyelk.reasoning.realization import types as raw_types
-from pyelk.reasoning.taxonomy import validate_taxonomy
+from pyelk.reasoning.taxonomy import validate_taxonomy_entities
 from pyelk.result import EntityNode, InstanceTaxonomy, ReasoningResult, Taxonomy
 
 V = TypeVar("V")
@@ -54,10 +58,10 @@ class Reasoner:
         "_capture",
         "_class_taxonomy_value",
         "_closed",
-        "_compiled",
         "_config",
         "_entity_by_record",
         "_lock",
+        "_metadata",
         "_object_taxonomy_value",
         "_policy_features",
         "_raw_class_taxonomy_value",
@@ -65,6 +69,7 @@ class Reasoner:
         "_raw_realization_value",
         "_realization_value",
         "_session",
+        "_symbols",
     )
 
     def __init__(
@@ -106,15 +111,29 @@ class Reasoner:
         self._policy_features = (
             (PolicyFeature.IGNORED_IMPORT,) if capture.imports.requires_incomplete_imports else ()
         )
-        self._compiled: CompiledOntology | None = compile_ontology(
-            capture.ontology.view,
-            unsupported=self._config.unsupported,
-        )
-        self._entity_by_record = self._capture_entities(capture, self._compiled)
-        self._session: BackendSession | None = create_backend_session(
-            self._compiled,
-            self._config,
-        )
+        encoded = try_create_encoded_backend_session(capture.ontology.view, self._config)
+        if encoded is None:
+            compiled = compile_ontology(
+                capture.ontology.view,
+                unsupported=self._config.unsupported,
+            )
+            metadata = metadata_from_compiled(compiled)
+            symbols = CompilerSymbolTable(metadata)
+            entity_by_record = self._capture_entities(capture, metadata.entities)
+            session = create_backend_session(compiled, self._config)
+        else:
+            metadata = encoded.metadata
+            session = encoded.session
+            entity_by_record = {}
+            try:
+                symbols = CompilerSymbolTable(metadata)
+            except BaseException:
+                session.close()
+                raise
+        self._metadata: CompilerMetadata | None = metadata
+        self._symbols: CompilerSymbolTable | None = symbols
+        self._entity_by_record = entity_by_record
+        self._session: BackendSession | None = session
         self._raw_class_taxonomy_value: RawTaxonomy | None = None
         self._raw_object_taxonomy_value: RawTaxonomy | None = None
         self._raw_realization_value: RawRealization | None = None
@@ -134,7 +153,8 @@ class Reasoner:
             finally:
                 self._closed = True
                 self._session = None
-                self._compiled = None
+                self._metadata = None
+                self._symbols = None
                 self._capture = None
                 self._entity_by_record = {}
                 self._raw_class_taxonomy_value = None
@@ -300,12 +320,12 @@ class Reasoner:
                 raise TypeError("individual must be a pyowl-core NamedIndividual")
             self._require_bool(direct, "direct")
             inconsistent = self._inconsistent()
-            compiled = self._require_compiled()
+            metadata = self._require_metadata()
             record = EntityRecord(IREntityKind.NAMED_INDIVIDUAL, individual.iri.value)
             entity_id = self._entity_id(record)
             fresh_id: int | None = None
             if entity_id is None:
-                fresh_id = len(compiled.entities)
+                fresh_id = len(metadata.entities)
                 entity_id = fresh_id
                 if not inconsistent and not self._config.allow_fresh_entities:
                     raise FreshEntityError((individual,))
@@ -346,10 +366,9 @@ class Reasoner:
             self._ensure_open()
             if not isinstance(axiom, owl.AXIOM_TYPES):
                 raise TypeError("axiom must be a pyowl-core Axiom")
-            compiled = self._require_compiled()
             query = compile_entailment_query(
                 axiom,
-                compiled,
+                self._require_symbols(),
                 unsupported=self._config.unsupported,
             )
             self._validate_fresh(query, axiom)
@@ -396,7 +415,7 @@ class Reasoner:
                 raise TypeError("prop must be a pyowl-core ObjectProperty")
             self._require_bool(direct, "direct")
             inconsistent = self._inconsistent()
-            compiled = self._require_compiled()
+            metadata = self._require_metadata()
             record = EntityRecord(IREntityKind.OBJECT_PROPERTY, prop.iri.value)
             entity_id = self._entity_id(record)
             fresh_id: int | None = None
@@ -410,7 +429,7 @@ class Reasoner:
                 raw = RawQueryResult(kind=kind, nodes=raw_node_rows)
             else:
                 if entity_id is None:
-                    fresh_id = len(compiled.entities)
+                    fresh_id = len(metadata.entities)
                     entity_id = fresh_id
                     if not self._config.allow_fresh_entities:
                         raise FreshEntityError((prop,))
@@ -439,7 +458,7 @@ class Reasoner:
             raise TypeError("expression must be a pyowl-core ClassExpression")
         query = compile_query_expression(
             expression,
-            self._require_compiled(),
+            self._require_symbols(),
             unsupported=self._config.unsupported,
         )
         inconsistent = self._inconsistent()
@@ -480,10 +499,10 @@ class Reasoner:
         query_feature_counts: tuple[int, ...] = (),
         inconsistent: bool = False,
     ) -> ReasoningResult[V]:
-        compiled = self._require_compiled()
+        metadata = self._require_metadata()
         reasons = issues_for(
             task,
-            compiled.feature_counts,
+            metadata.feature_counts,
             query_feature_counts=query_feature_counts,
             policy_features=self._policy_features,
             inconsistent=inconsistent,
@@ -626,9 +645,9 @@ class Reasoner:
         source: owl.StructuralNode,
         kind: IREntityKind,
     ) -> tuple[EntityNode[owl.Entity], ...]:
-        compiled = self._require_compiled()
+        metadata = self._require_metadata()
         source_entities = {entity_record(entity): entity for entity in owl.signature(source)}
-        ontology_count = len(compiled.entities)
+        ontology_count = len(metadata.entities)
 
         def resolve(value: int) -> owl.Entity:
             if isinstance(value, bool) or not isinstance(value, int):
@@ -663,17 +682,17 @@ class Reasoner:
                 top=value.top,
                 bottom=value.bottom,
             )
-            return validate_taxonomy(self._require_compiled(), canonical, kind)
+            return validate_taxonomy_entities(self._require_metadata().entities, canonical, kind)
         except (TypeError, ValueError, IndexError, KeyError) as error:
             raise BackendProtocolError(
                 f"a valid complete {kind.name} taxonomy", str(error)
             ) from error
 
     def _validate_realization(self, value: RawRealization) -> None:
-        compiled = self._require_compiled()
+        metadata = self._require_metadata()
         expected = tuple(
             index
-            for index, record in enumerate(compiled.entities)
+            for index, record in enumerate(metadata.entities)
             if record.kind is IREntityKind.NAMED_INDIVIDUAL
         )
         actual = tuple(sorted(member for node in value.instance_nodes for member in node))
@@ -727,42 +746,43 @@ class Reasoner:
 
     def _entities(self, kind: IREntityKind) -> tuple[owl.Entity, ...]:
         self._ensure_open()
-        compiled = self._require_compiled()
+        metadata = self._require_metadata()
         return tuple(
             self._entity_for_id(index, kind)
-            for index, record in enumerate(compiled.entities)
+            for index, record in enumerate(metadata.entities)
             if record.kind is kind
         )
 
     def _entity_id(self, record: EntityRecord) -> int | None:
-        compiled = self._require_compiled()
-        for index, candidate in enumerate(compiled.entities):
-            if candidate == record:
-                return index
-        return None
+        value = self._require_symbols().lookup_entity(record)
+        return None if value is None else int(value)
 
     def _entity_for_id(self, value: int, expected_kind: IREntityKind | None = None) -> owl.Entity:
-        compiled = self._require_compiled()
+        metadata = self._require_metadata()
         if (
             isinstance(value, bool)
             or not isinstance(value, int)
-            or not 0 <= value < len(compiled.entities)
+            or not 0 <= value < len(metadata.entities)
         ):
             raise ValueError("backend entity ID is out of range")
-        record = compiled.entities[value]
+        record = metadata.entities[value]
         if expected_kind is not None and record.kind is not expected_kind:
             raise ValueError("backend entity ID has the wrong kind")
-        return self._entity_by_record[record]
+        entity = self._entity_by_record.get(record)
+        if entity is None:
+            entity = self._entity_from_record(record)
+            self._entity_by_record[record] = entity
+        return entity
 
     @staticmethod
     def _capture_entities(
         capture: InputCapture,
-        compiled: CompiledOntology,
+        entities: tuple[EntityRecord, ...],
     ) -> dict[EntityRecord, owl.Entity]:
         candidates = capture.ontology.view.signature(include_builtins=True)
         by_record = {entity_record(entity): entity for entity in candidates}
         result: dict[EntityRecord, owl.Entity] = {}
-        for record in compiled.entities:
+        for record in entities:
             if record.kind in {
                 IREntityKind.CLASS,
                 IREntityKind.NAMED_INDIVIDUAL,
@@ -806,11 +826,17 @@ class Reasoner:
             raise ReasonerClosedError
         return self._session
 
-    def _require_compiled(self) -> CompiledOntology:
+    def _require_metadata(self) -> CompilerMetadata:
         self._ensure_open()
-        if self._compiled is None:  # pragma: no cover - close invariant
+        if self._metadata is None:  # pragma: no cover - close invariant
             raise ReasonerClosedError
-        return self._compiled
+        return self._metadata
+
+    def _require_symbols(self) -> CompilerSymbolTable:
+        self._ensure_open()
+        if self._symbols is None:  # pragma: no cover - close invariant
+            raise ReasonerClosedError
+        return self._symbols
 
 
 __all__ = ["Reasoner", "load_snapshot"]
