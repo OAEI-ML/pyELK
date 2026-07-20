@@ -278,6 +278,12 @@ class Reasoner:
             info = session.info
             if not isinstance(info, BackendInfo):
                 raise BackendProtocolError("BackendInfo from backend session", info)
+            expected_backend = "python" if ingestion_path == "scalar-python" else "rust"
+            if info.name != expected_backend:
+                raise BackendProtocolError(
+                    "an ingestion path consistent with the selected backend",
+                    ingestion_path,
+                )
             stable: dict[str, int | str] = {
                 "compiler_cache_schema_version": COMPILER_SCHEMA_VERSION,
                 "implementation_version": info.implementation_version,
@@ -307,6 +313,8 @@ class Reasoner:
             native_abi = values.get("native_abi_version")
             if native_abi is not None and (type(native_abi) is not str or not native_abi):
                 raise BackendProtocolError("a nonempty native ABI version", native_abi)
+            if ingestion_path == "scalar-python" and native_abi is not None:
+                raise BackendProtocolError("no native ABI on scalar-python ingestion", native_abi)
 
             if ingestion_path != "encoded-native":
                 for name, expected in _ENCODED_COUNTER_DEFAULTS.items():
@@ -371,6 +379,11 @@ class Reasoner:
                         values["encoded_view_publication_seconds"],
                     )
                 values["encoded_view_publication_seconds"] = self._encoded_view_publication_seconds
+            elif "encoded_view_publication_seconds" in values:
+                raise BackendProtocolError(
+                    "no encoded-view publication on scalar ingestion",
+                    values["encoded_view_publication_seconds"],
+                )
             if "materialized_scalar_rows" in values and (
                 type(values["materialized_scalar_rows"]) is not type(self._materialized_scalar_rows)
                 or values["materialized_scalar_rows"] != self._materialized_scalar_rows

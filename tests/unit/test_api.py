@@ -404,11 +404,17 @@ def test_malformed_backend_diagnostics_are_rejected_without_value_leak(
     ("override", "message"),
     [
         ({"ingestion_path": "private-native"}, "public ingestion path"),
+        (
+            {"ingestion_path": "scalar-wire"},
+            "ingestion path consistent with the selected backend",
+        ),
         ({"compiler_digest": "not-a-digest"}, "scalar compiler digest"),
         ({"compiler_cache_schema_version": True}, "compiler_cache_schema_version"),
         ({"encoded_buffer_count": False}, "exact scalar encoded_buffer_count"),
         ({"encoded_validation_seconds": float("nan")}, "no scalar"),
         ({"native_abi_version": ""}, "native ABI version"),
+        ({"native_abi_version": "abi3-py310"}, "no native ABI"),
+        ({"encoded_view_publication_seconds": 0.25}, "no encoded-view publication"),
         ({"materialized_scalar_rows": -1}, "scalar materialization row count"),
     ],
 )
