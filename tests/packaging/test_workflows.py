@@ -75,11 +75,12 @@ def test_rust_workflow_pins_toolchains_and_enforces_quality_gates() -> None:
     assert workflow.count("persist-credentials: false") == 3
 
 
-def test_rust_workflow_fuzzes_both_decoders_with_bounded_pr_and_scheduled_runs() -> None:
+def test_rust_workflow_fuzzes_all_native_decoders_with_bounded_pr_and_scheduled_runs() -> None:
     workflow = (ROOT / ".github/workflows/rust.yml").read_text(encoding="utf-8")
 
-    assert "target: [ir_decoder, query_decoder]" in workflow
-    assert workflow.count("target: [ir_decoder, query_decoder]") == 2
+    targets = "target: [ir_decoder, query_decoder, encoded_compiler]"
+    assert workflow.count(targets) == 2
+    assert (ROOT / "rust/fuzz/fuzz_targets/encoded_compiler.rs").is_file()
     assert "if: github.event_name != 'schedule'" in workflow
     assert "if: github.event_name == 'schedule'" in workflow
     assert workflow.count('cargo +"$FUZZ_TOOLCHAIN" fuzz run --fuzz-dir rust/fuzz') == 2
