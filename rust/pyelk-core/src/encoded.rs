@@ -35,6 +35,9 @@ const COMPONENT_ENUM: u8 = 5;
 const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
+// Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
+const FEATURE_OBJECT_PROPERTY_CHAIN: usize = 40;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EntityKindRole {
     Class,
@@ -534,11 +537,11 @@ pub fn validate_columns<B: ByteSource>(
 ///
 /// This stage accepts unannotated declarations of classes, named individuals, and object
 /// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
-/// `SameIndividual`, `SubObjectPropertyOf`, and `EquivalentObjectProperties` axioms. Ontology
-/// annotations and annotation-property declarations have no ELK effect and are ignored. Every
-/// other logical constructor fails closed, irrespective of the scalar compiler's unsupported
-/// policy. Consequently this function is safe to extend and test while encoded-schema capability
-/// advertisement remains disabled.
+/// `SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`, and
+/// `TransitiveObjectProperty` axioms. Ontology annotations and annotation-property declarations
+/// have no ELK effect and are ignored. Every other logical constructor fails closed, irrespective
+/// of the scalar compiler's unsupported policy. Consequently this function is safe to extend and
+/// test while encoded-schema capability advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -567,6 +570,7 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
             70 => compile_named_subproperty(node, &columns, &mut builder)?,
             71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
+            82 => compile_transitive_named_property(node, &columns, &mut builder)?,
             110 => compile_same_named_individuals(node, &columns, &mut builder)?,
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
             tag => {
@@ -579,7 +583,6 @@ pub fn compile_named_hierarchy<B: ByteSource>(
     builder.freeze(source_fingerprint)
 }
 
-#[derive(Default)]
 struct NamedHierarchyBuilder {
     entities: BTreeSet<Entity>,
     occurrences: BTreeMap<Entity, Occurrence>,
@@ -588,6 +591,22 @@ struct NamedHierarchyBuilder {
     subclass_axioms: BTreeSet<(Entity, Entity)>,
     equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
+    feature_counts: Vec<u64>,
+}
+
+impl Default for NamedHierarchyBuilder {
+    fn default() -> Self {
+        Self {
+            entities: BTreeSet::new(),
+            occurrences: BTreeMap::new(),
+            property_occurrences: BTreeMap::new(),
+            property_chains: BTreeSet::new(),
+            subclass_axioms: BTreeSet::new(),
+            equivalent_class_axioms: BTreeSet::new(),
+            subproperty_axioms: BTreeSet::new(),
+            feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
+        }
+    }
 }
 
 impl NamedHierarchyBuilder {
@@ -678,8 +697,15 @@ impl NamedHierarchyBuilder {
             self.property_occurrences.entry(super_.clone()).or_default(),
             true,
         )?;
-        self.property_chains.insert(chain.clone());
-        self.subproperty_axioms.insert((chain, super_));
+        if chain.len() > 1 {
+            self.add_feature(
+                FEATURE_OBJECT_PROPERTY_CHAIN,
+                u64::try_from(chain.len() - 1).map_err(|_| {
+                    CoreError::capacity("encoded property-chain feature count exceeds u64")
+                })?,
+            )?;
+        }
+        self.insert_subproperty_rule(chain, super_);
         Ok(())
     }
 
@@ -700,6 +726,31 @@ impl NamedHierarchyBuilder {
             self.subproperty_axioms
                 .insert((vec![member], first.clone()));
         }
+        Ok(())
+    }
+
+    fn add_transitive_property(&mut self, property: Entity) -> CoreResult<()> {
+        self.entities.insert(property.clone());
+        let occurrence = self
+            .property_occurrences
+            .entry(property.clone())
+            .or_default();
+        increment_occurrence(occurrence, false)?;
+        increment_occurrence(occurrence, true)?;
+        self.add_feature(FEATURE_OBJECT_PROPERTY_CHAIN, 1)?;
+        self.insert_subproperty_rule(vec![property.clone(), property.clone()], property);
+        Ok(())
+    }
+
+    fn insert_subproperty_rule(&mut self, chain: Vec<Entity>, super_: Entity) {
+        self.property_chains.insert(chain.clone());
+        self.subproperty_axioms.insert((chain, super_));
+    }
+
+    fn add_feature(&mut self, index: usize, count: u64) -> CoreResult<()> {
+        self.feature_counts[index] = self.feature_counts[index]
+            .checked_add(count)
+            .ok_or_else(|| CoreError::capacity("encoded compiler feature count exceeds u64"))?;
         Ok(())
     }
 
@@ -824,7 +875,7 @@ impl NamedHierarchyBuilder {
             disjoint_groups: Vec::new(),
             subproperty_axioms,
             property_ranges: Vec::new(),
-            feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
+            feature_counts: self.feature_counts,
             source_fingerprint,
         })
     }
@@ -885,6 +936,16 @@ fn compile_equivalent_named_properties<B: ByteSource>(
         .map(|identifier| decode_named_object_property(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
     builder.add_equivalent_properties(members)
+}
+
+fn compile_transitive_named_property<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+    builder.add_transitive_property(property)
 }
 
 fn compile_named_class_assertion<B: ByteSource>(
@@ -2686,6 +2747,58 @@ mod tests {
         }
     }
 
+    fn named_property_chain_axiom() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[8]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 11, 70]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 10, 13]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SEQUENCE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 1, 30, 2, 45, 3, 0, 7, 6, 2]),
+            field_lengths: le64(&[5, 5, 5, 15, 0, 15, 0, 15, 0, 2, 0, 0, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[4, 5]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes: b"urn:purn:qurn:robject_propertyobject_propertyobject_property".to_vec(),
+        }
+    }
+
+    fn transitive_named_property() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[3]),
+            node_tags: le16(&[1, 2, 82]),
+            node_field_offsets: le64(&[0, 1, 3, 5]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 1, 2, 0]),
+            field_lengths: le64(&[5, 15, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:pobject_property".to_vec(),
+        }
+    }
+
     fn equivalent_class_pair() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -3428,6 +3541,64 @@ mod tests {
             ]
         );
         assert_eq!(compiled.subproperty_axioms, vec![(2, 5), (3, 4)]);
+    }
+
+    #[test]
+    fn complex_named_property_chain_preserves_order_and_feature_count() {
+        let compiled = compile_named_hierarchy(
+            named_property_chain_axiom().borrowed(),
+            EncodedLimits::default(),
+            [8; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.property_chains,
+            vec![vec![2], vec![3], vec![4], vec![4, 5], vec![5], vec![6]]
+        );
+        assert_eq!(compiled.subproperty_axioms, vec![(3, 6)]);
+        assert_eq!(
+            &compiled.property_occurrences[2..],
+            &[
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+                Occurrence {
+                    negative: 0,
+                    positive: 1,
+                },
+            ]
+        );
+        assert_eq!(compiled.feature_counts[FEATURE_OBJECT_PROPERTY_CHAIN], 1);
+    }
+
+    #[test]
+    fn transitive_named_property_uses_dual_occurrence_and_repeated_chain() {
+        let compiled = compile_named_hierarchy(
+            transitive_named_property().borrowed(),
+            EncodedLimits::default(),
+            [10; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.property_chains,
+            vec![vec![2], vec![3], vec![4], vec![4, 4]]
+        );
+        assert_eq!(compiled.subproperty_axioms, vec![(3, 4)]);
+        assert_eq!(
+            compiled.property_occurrences[2],
+            Occurrence {
+                negative: 1,
+                positive: 1,
+            }
+        );
+        assert_eq!(compiled.feature_counts[FEATURE_OBJECT_PROPERTY_CHAIN], 1);
     }
 
     #[test]
