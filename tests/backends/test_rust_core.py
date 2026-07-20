@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import weakref
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -387,6 +388,7 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
             value.nbytes for value in encoded.buffers.values()
         )
         assert diagnostics["encoded_zero_copy_buffers"] == 11
+        assert diagnostics["encoded_compiler_gil_released"] is True
         assert diagnostics["encoded_indexed_buffer_count"] == 0
         assert diagnostics["encoded_staging_copy_bytes"] == 0
         assert diagnostics["encoded_private_ir_bytes"] == 0
@@ -508,6 +510,7 @@ def test_hidden_noop_overlay_chain_reuses_direct_source_without_flattening(
     )
     try:
         diagnostics = native.diagnostics()
+        assert diagnostics["encoded_compiler_gil_released"] is True
         assert diagnostics["encoded_segment_count"] == 3
         assert diagnostics["encoded_referenced_view_count"] == 2
         assert diagnostics["encoded_buffer_bytes"] == sum(
@@ -753,6 +756,7 @@ def test_hidden_composite_members_merge_without_flattening(
     )
     try:
         diagnostics = native.diagnostics()
+        assert diagnostics["encoded_compiler_gil_released"] is True
         assert diagnostics["encoded_segment_count"] == 4
         assert diagnostics["encoded_referenced_view_count"] == 2
         assert diagnostics["encoded_buffer_count"] == 22
@@ -1531,6 +1535,7 @@ def test_hidden_encoded_mmap_view_matches_direct_and_survives_provider_close(
         )
         for session in (direct, mmap_session):
             diagnostics = session.diagnostics()
+            assert diagnostics["encoded_compiler_gil_released"] is True
             assert diagnostics["encoded_staging_copy_bytes"] == 0
             assert diagnostics["encoded_private_ir_bytes"] == 0
             assert diagnostics["encoded_zero_copy_buffers"] == 11
@@ -1731,6 +1736,47 @@ def test_hidden_encoded_session_serializes_concurrent_native_calls(
         assert len(set(results)) == 1
     finally:
         session.close()
+
+
+def test_hidden_direct_encoded_compiler_releases_gil(native_module: ModuleType) -> None:
+    axioms = " ".join(
+        f"SubClassOf(<urn:encoded-gil:C{index}> <urn:encoded-gil:C{index + 1}>)"
+        for index in range(500)
+    )
+    _snapshot_value, encoded = _direct_encoded_snapshot(
+        f"Ontology(<urn:encoded-gil> {axioms})".encode()
+    )
+    ready = threading.Event()
+    run = threading.Event()
+    stop = threading.Event()
+    counter = [0]
+
+    def spin() -> None:
+        ready.set()
+        assert run.wait(5)
+        while not stop.is_set():
+            counter[0] += 1
+
+    worker = threading.Thread(target=spin)
+    worker.start()
+    assert ready.wait(5)
+    previous_interval = sys.getswitchinterval()
+    session: Any | None = None
+    progress = 0
+    try:
+        sys.setswitchinterval(0.1)
+        before = counter[0]
+        run.set()
+        session = native_module.create_session_from_encoded(encoded, 1, "error")
+        progress = counter[0] - before
+    finally:
+        sys.setswitchinterval(previous_interval)
+        stop.set()
+        worker.join(5)
+        if session is not None:
+            session.close()
+    assert not worker.is_alive()
+    assert progress > 1_000
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")

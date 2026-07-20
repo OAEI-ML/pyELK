@@ -109,6 +109,7 @@ struct EncodedIngestionMetrics {
     buffer_count: u64,
     buffer_bytes: u64,
     zero_copy_buffers: u64,
+    compiler_gil_released: bool,
     segment_count: u64,
     referenced_view_count: u64,
     posting_bytes: u64,
@@ -128,6 +129,13 @@ struct ValidatedEncodedInput<'py> {
     posting: Option<EncodedPostingBinding<'py>>,
     composite_bindings: Option<Vec<EncodedCompilationTableBinding<'py>>>,
     composite_posting_bytes: usize,
+}
+
+#[derive(Clone, Copy)]
+struct DetachedSimpleInput<'a> {
+    columns: EncodedColumns<&'a [u8]>,
+    delta_columns: Option<EncodedColumns<&'a [u8]>>,
+    posting: Option<(EncodedPostingMode, &'a [u8])>,
 }
 
 #[derive(Clone)]
@@ -797,6 +805,10 @@ impl NativeSession {
             result.set_item("encoded_buffer_count", metrics.buffer_count)?;
             result.set_item("encoded_buffer_bytes", metrics.buffer_bytes)?;
             result.set_item("encoded_zero_copy_buffers", metrics.zero_copy_buffers)?;
+            result.set_item(
+                "encoded_compiler_gil_released",
+                metrics.compiler_gil_released,
+            )?;
             result.set_item("encoded_segment_count", metrics.segment_count)?;
             result.set_item(
                 "encoded_referenced_view_count",
@@ -909,7 +921,64 @@ fn create_session_from_encoded(
     };
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let input = validate_encoded_input(encoded_view)?;
-        let (mut compilation, metrics) = if let Some(composite) = &input.composite_bindings {
+        let detached_simple = input.detached_simple()?;
+        let (mut compilation, metrics) = if let Some(detached) = detached_simple {
+            let metric_columns = [
+                Some(input.bindings.columns()?),
+                input
+                    .delta_bindings
+                    .as_ref()
+                    .map(EncodedBufferBindings::columns)
+                    .transpose()?,
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+            let metrics = encoded_ingestion_metrics(
+                &metric_columns,
+                input.segment_count,
+                input.referenced_view_count,
+                detached.posting.map_or(0, |(_mode, values)| values.len()),
+            )?;
+            let metrics = EncodedIngestionMetrics {
+                compiler_gil_released: true,
+                ..metrics
+            };
+            let compilation =
+                py.detach(move || match (detached.delta_columns, detached.posting) {
+                    (Some(delta), Some((mode, postings))) => {
+                        compile_encoded_overlay_delta_selected_with_policy(
+                            detached.columns,
+                            delta,
+                            EncodedLimits::default(),
+                            policy,
+                            mode,
+                            postings,
+                        )
+                    }
+                    (Some(delta), None) => compile_encoded_overlay_delta_with_policy(
+                        detached.columns,
+                        delta,
+                        EncodedLimits::default(),
+                        policy,
+                    ),
+                    (None, Some((mode, postings))) => {
+                        compile_encoded_hierarchy_selected_with_policy(
+                            detached.columns,
+                            EncodedLimits::default(),
+                            policy,
+                            mode,
+                            postings,
+                        )
+                    }
+                    (None, None) => compile_encoded_hierarchy_with_policy(
+                        detached.columns,
+                        EncodedLimits::default(),
+                        policy,
+                    ),
+                })?;
+            (compilation, metrics)
+        } else if let Some(composite) = &input.composite_bindings {
             let mut posting_storage = Vec::new();
             posting_storage
                 .try_reserve_exact(composite.len())
@@ -924,42 +993,81 @@ fn create_session_from_encoded(
             for table in composite {
                 scope_storage.push(encoded_scope_map(&table.scope_map)?);
             }
-            let mut tables = Vec::new();
-            tables
-                .try_reserve_exact(composite.len())
-                .map_err(|_| CoreError::capacity("encoded composite table allocation failed"))?;
             let mut metric_columns = Vec::new();
             metric_columns
                 .try_reserve_exact(composite.len())
                 .map_err(|_| CoreError::capacity("encoded composite metric allocation failed"))?;
             let mut metric_views = BTreeSet::new();
-            for ((table, postings), scope_map) in
-                composite.iter().zip(&posting_storage).zip(&scope_storage)
-            {
+            for table in composite {
                 let columns = table.bindings.columns()?;
                 if metric_views.insert(table.view_id) {
                     metric_columns.push(columns);
                 }
-                if matches!(table.selection, EncodedRootPlan::Dropped) {
-                    continue;
-                }
-                tables.push(EncodedCompilationSegment {
-                    columns,
-                    posting_mode: table.selection.mode(),
-                    postings: postings.as_slice(),
-                    anonymous_scope_map: scope_map.as_slice(),
-                });
             }
-            let metrics = encoded_ingestion_metrics(
+            let mut metrics = encoded_ingestion_metrics(
                 &metric_columns,
                 input.segment_count,
                 input.referenced_view_count,
                 input.composite_posting_bytes,
             )?;
-            (
-                compile_encoded_segments_with_policy(&tables, EncodedLimits::default(), policy)?,
-                metrics,
-            )
+            let mut detached_columns = Vec::new();
+            detached_columns
+                .try_reserve_exact(composite.len())
+                .map_err(|_| CoreError::capacity("encoded detached composite allocation failed"))?;
+            let mut all_detached = true;
+            for table in composite {
+                let Some(columns) = table.bindings.detached_columns()? else {
+                    all_detached = false;
+                    break;
+                };
+                detached_columns.push(columns);
+            }
+            let compilation = if all_detached {
+                let mut tables = Vec::new();
+                tables.try_reserve_exact(composite.len()).map_err(|_| {
+                    CoreError::capacity("encoded detached composite table allocation failed")
+                })?;
+                for (((table, columns), postings), scope_map) in composite
+                    .iter()
+                    .zip(&detached_columns)
+                    .zip(&posting_storage)
+                    .zip(&scope_storage)
+                {
+                    if matches!(table.selection, EncodedRootPlan::Dropped) {
+                        continue;
+                    }
+                    tables.push(EncodedCompilationSegment {
+                        columns: *columns,
+                        posting_mode: table.selection.mode(),
+                        postings: postings.as_slice(),
+                        anonymous_scope_map: scope_map.as_slice(),
+                    });
+                }
+                metrics.compiler_gil_released = true;
+                py.detach(move || {
+                    compile_encoded_segments_with_policy(&tables, EncodedLimits::default(), policy)
+                })?
+            } else {
+                let mut tables = Vec::new();
+                tables.try_reserve_exact(composite.len()).map_err(|_| {
+                    CoreError::capacity("encoded composite table allocation failed")
+                })?;
+                for ((table, postings), scope_map) in
+                    composite.iter().zip(&posting_storage).zip(&scope_storage)
+                {
+                    if matches!(table.selection, EncodedRootPlan::Dropped) {
+                        continue;
+                    }
+                    tables.push(EncodedCompilationSegment {
+                        columns: table.bindings.columns()?,
+                        posting_mode: table.selection.mode(),
+                        postings: postings.as_slice(),
+                        anonymous_scope_map: scope_map.as_slice(),
+                    });
+                }
+                compile_encoded_segments_with_policy(&tables, EncodedLimits::default(), policy)?
+            };
+            (compilation, metrics)
         } else {
             let columns = input.bindings.columns()?;
             let delta_columns = input
@@ -1022,7 +1130,7 @@ fn create_session_from_encoded(
             (compilation, metrics)
         };
         let compatibility_spelling =
-            compatibility_spelling_digest(&compilation.compatibility_observations)?;
+            py.detach(|| compatibility_spelling_digest(&compilation.compatibility_observations))?;
         compilation.ontology.source_fingerprint = encoded_source_fingerprint(
             py,
             &input.source_parts.logical,
@@ -1031,10 +1139,10 @@ fn create_session_from_encoded(
             input.source_parts.model_schema,
             &compatibility_spelling,
         )?;
-        Ok((
-            NativeCoreSession::from_ontology(compilation.ontology, worker_count)?,
-            metrics,
-        ))
+        let ontology = compilation.ontology;
+        let session =
+            py.detach(move || NativeCoreSession::from_ontology(ontology, worker_count))?;
+        Ok((session, metrics))
     }));
     let (session, metrics) = match outcome {
         Ok(value) => value.map_err(core_error)?,
@@ -1106,6 +1214,56 @@ impl<'py> EncodedBufferBindings<'py> {
             scalar_bytes: self.scalar_bytes.source("scalar_bytes")?,
         })
     }
+
+    fn detached_columns(&self) -> CoreResult<Option<EncodedColumns<&[u8]>>> {
+        let columns = self.columns()?;
+        let Some(root_kinds) = columns.root_kinds.bytes else {
+            return Ok(None);
+        };
+        let Some(root_ids) = columns.root_ids.bytes else {
+            return Ok(None);
+        };
+        let Some(node_tags) = columns.node_tags.bytes else {
+            return Ok(None);
+        };
+        let Some(node_field_offsets) = columns.node_field_offsets.bytes else {
+            return Ok(None);
+        };
+        let Some(field_kinds) = columns.field_kinds.bytes else {
+            return Ok(None);
+        };
+        let Some(field_values) = columns.field_values.bytes else {
+            return Ok(None);
+        };
+        let Some(field_lengths) = columns.field_lengths.bytes else {
+            return Ok(None);
+        };
+        let Some(item_kinds) = columns.item_kinds.bytes else {
+            return Ok(None);
+        };
+        let Some(item_values) = columns.item_values.bytes else {
+            return Ok(None);
+        };
+        let Some(item_lengths) = columns.item_lengths.bytes else {
+            return Ok(None);
+        };
+        let Some(scalar_bytes) = columns.scalar_bytes.bytes else {
+            return Ok(None);
+        };
+        Ok(Some(EncodedColumns {
+            root_kinds,
+            root_ids,
+            node_tags,
+            node_field_offsets,
+            field_kinds,
+            field_values,
+            field_lengths,
+            item_kinds,
+            item_values,
+            item_lengths,
+            scalar_bytes,
+        }))
+    }
 }
 
 impl<'py> EncodedBufferBinding<'py> {
@@ -1119,6 +1277,41 @@ impl<'py> EncodedBufferBinding<'py> {
 
     fn source(&self, name: &str) -> CoreResult<BorrowedPyBytes<'_, 'py>> {
         borrowed_py_bytes(&self.view, self.bytes_owner.as_ref(), name)
+    }
+}
+
+impl ValidatedEncodedInput<'_> {
+    fn detached_simple(&self) -> CoreResult<Option<DetachedSimpleInput<'_>>> {
+        if self.composite_bindings.is_some() {
+            return Ok(None);
+        }
+        let Some(columns) = self.bindings.detached_columns()? else {
+            return Ok(None);
+        };
+        let delta_columns = match &self.delta_bindings {
+            Some(bindings) => {
+                let Some(columns) = bindings.detached_columns()? else {
+                    return Ok(None);
+                };
+                Some(columns)
+            }
+            None => None,
+        };
+        let posting = match &self.posting {
+            Some(binding) => {
+                let source = binding.root_ids.source("segment root_ids")?;
+                let Some(bytes) = source.bytes else {
+                    return Ok(None);
+                };
+                Some((binding.mode, bytes))
+            }
+            None => None,
+        };
+        Ok(Some(DetachedSimpleInput {
+            columns,
+            delta_columns,
+            posting,
+        }))
     }
 }
 
@@ -1162,6 +1355,7 @@ fn encoded_ingestion_metrics(
         buffer_count,
         buffer_bytes,
         zero_copy_buffers,
+        compiler_gil_released: false,
         segment_count,
         referenced_view_count,
         posting_bytes: u64::try_from(posting_bytes)
