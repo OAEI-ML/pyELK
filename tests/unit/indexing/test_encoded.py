@@ -6,8 +6,11 @@ from typing import Any, TypeVar, cast
 
 import pyowl_core as owl
 import pytest
+from pyowl_core.backends.native_views import ENCODED_STRUCTURAL_DESCRIPTOR_V1
 
 from pyelk.indexing.encoded import (
+    ENCODED_BUFFER_WIDTHS,
+    ENCODED_DESCRIPTOR_SHA256,
     ENCODED_SCHEMA_NAME,
     ENCODED_SCHEMA_VERSION,
     negotiate_encoded_structural_view,
@@ -31,11 +34,11 @@ class _EncodedStructuralView:
         self.model_schema = 1
         self.owner = owner
         self.scope = owl.AxiomScope.CLOSURE
-        self.descriptor = b'{"schema":"pyowl-core/structural-columns","version":1}'
+        self.descriptor = ENCODED_STRUCTURAL_DESCRIPTOR_V1
         self.descriptor_digest = sha256(self.descriptor).digest()
         self.buffers = {
-            "axiom_tags": memoryview(b"\x00"),
-            "axiom_arguments": memoryview(b"\x00\x00\x00\x00"),
+            name: memoryview(b"\x00" * (8 if name == "node_field_offsets" else 0))
+            for name in ENCODED_BUFFER_WIDTHS
         }
         self.segments: tuple[object, ...] = ()
         self.structural_fingerprint = owl.Fingerprint("sha256", 1, b"e" * 32)
@@ -149,11 +152,11 @@ def test_valid_handoff_retains_exact_owner_and_read_only_buffers(
     assert handoff.encoded_view is view.encoded
     assert handoff.structural_fingerprint is view.encoded.structural_fingerprint
     assert handoff.structural_fingerprint != view.structural_fingerprint
-    assert handoff.buffer_count == 2
-    assert handoff.buffer_bytes == 5
-    assert tuple(handoff.buffers) == ("axiom_arguments", "axiom_tags")
+    assert handoff.buffer_count == 11
+    assert handoff.buffer_bytes == 8
+    assert tuple(handoff.buffers) == tuple(sorted(ENCODED_BUFFER_WIDTHS))
     assert all(buffer.readonly for buffer in handoff.buffers.values())
-    assert len(handoff.descriptor_digest) == 32
+    assert handoff.descriptor_digest == ENCODED_DESCRIPTOR_SHA256
     assert view.requests == [
         (
             _EncodedStructuralView,
@@ -209,6 +212,39 @@ def test_owner_fingerprint_and_descriptor_digest_are_bound_to_the_request(
     digest_mismatch.encoded.descriptor_digest = b"x" * 32
     with pytest.raises(owl.BackendProtocolError, match="descriptor_digest"):
         negotiate_encoded_structural_view(_as_view(digest_mismatch))
+
+    descriptor_drift = _View()
+    descriptor_drift.encoded.descriptor += b" "
+    descriptor_drift.encoded.descriptor_digest = sha256(
+        descriptor_drift.encoded.descriptor
+    ).digest()
+    with pytest.raises(owl.BackendProtocolError, match="frozen"):
+        negotiate_encoded_structural_view(_as_view(descriptor_drift))
+
+
+@pytest.mark.parametrize(
+    "buffers",
+    [
+        {name: memoryview(b"") for name in ENCODED_BUFFER_WIDTHS if name != "root_ids"},
+        {
+            **{name: memoryview(b"") for name in ENCODED_BUFFER_WIDTHS},
+            "private_layout": memoryview(b""),
+        },
+        {
+            **{name: memoryview(b"") for name in ENCODED_BUFFER_WIDTHS},
+            "root_ids": memoryview(b"\x00"),
+        },
+    ],
+)
+def test_buffer_ledger_and_scalar_widths_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    buffers: dict[str, memoryview],
+) -> None:
+    monkeypatch.setattr(owl, "EncodedStructuralView", _EncodedStructuralView, raising=False)
+    view = _View()
+    view.encoded.buffers = buffers
+    with pytest.raises(owl.BackendProtocolError, match="buffers"):
+        negotiate_encoded_structural_view(_as_view(view))
 
 
 def test_advertised_acquisition_failure_is_a_compatibility_error(

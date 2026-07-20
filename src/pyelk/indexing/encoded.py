@@ -19,6 +19,24 @@ import pyowl_core as _core
 
 ENCODED_SCHEMA_NAME = "pyowl-core/structural-columns"
 ENCODED_SCHEMA_VERSION = 1
+ENCODED_DESCRIPTOR_SHA256 = bytes.fromhex(
+    "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+)
+ENCODED_BUFFER_WIDTHS: Mapping[str, int] = MappingProxyType(
+    {
+        "field_kinds": 1,
+        "field_lengths": 8,
+        "field_values": 8,
+        "item_kinds": 1,
+        "item_lengths": 8,
+        "item_values": 8,
+        "node_field_offsets": 8,
+        "node_tags": 2,
+        "root_ids": 4,
+        "root_kinds": 1,
+        "scalar_bytes": 1,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -178,6 +196,11 @@ def _validate_encoded_view(
     advertised_digest = getattr(encoded, "descriptor_digest", descriptor_digest)
     if not isinstance(advertised_digest, bytes) or advertised_digest != descriptor_digest:
         raise _protocol_error("descriptor_digest", "does not match SHA-256(descriptor)")
+    if descriptor_digest != ENCODED_DESCRIPTOR_SHA256:
+        raise _protocol_error(
+            "descriptor",
+            "does not match the frozen pyowl-core structural-columns v1 ledger",
+        )
 
     raw_fingerprint = _required_attribute(encoded, "structural_fingerprint")
     if not isinstance(raw_fingerprint, _core.Fingerprint):
@@ -197,8 +220,19 @@ def _validate_encoded_view(
         if name in buffers:  # pragma: no cover - Mapping keys are unique by construction
             raise _protocol_error("buffers", f"duplicate buffer name {name!r}")
         buffers[name] = _readonly_byte_view(name, value)
-    if not buffers:
-        raise _protocol_error("buffers", "schema 1 requires its named column buffers")
+    if set(buffers) != set(ENCODED_BUFFER_WIDTHS):
+        missing = sorted(set(ENCODED_BUFFER_WIDTHS) - set(buffers))
+        extra = sorted(set(buffers) - set(ENCODED_BUFFER_WIDTHS))
+        raise _protocol_error(
+            "buffers",
+            f"schema 1 buffer set differs (missing={missing!r}, extra={extra!r})",
+        )
+    for name, width in ENCODED_BUFFER_WIDTHS.items():
+        if buffers[name].nbytes % width:
+            raise _protocol_error(
+                "buffers",
+                f"{name!r} length is not divisible by its {width}-byte scalar width",
+            )
 
     raw_segments = getattr(encoded, "segments", ())
     try:
@@ -278,6 +312,8 @@ def _protocol_error(field: str, detail: str) -> _core.BackendProtocolError:
 
 
 __all__ = [
+    "ENCODED_BUFFER_WIDTHS",
+    "ENCODED_DESCRIPTOR_SHA256",
     "ENCODED_SCHEMA_NAME",
     "ENCODED_SCHEMA_VERSION",
     "EncodedStructuralHandoff",
