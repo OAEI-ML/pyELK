@@ -176,6 +176,40 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         scalar.close()
 
 
+def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleType) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+    from pyelk.indexing.conversion import FEATURE_INDEX
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-transaction#>) Ontology(<urn:encoded-transaction>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        Declaration(Class(:D))
+        Declaration(ObjectProperty(:p))
+        Declaration(NamedIndividual(:i))
+        SubClassOf(ObjectIntersectionOf(:A ObjectAllValuesFrom(:p :B)) :C)
+        SubClassOf(:A ObjectOneOf(:i _:anonymous))
+        SubClassOf(:D :A)
+        )"""
+    )
+    compiled = compile_ontology(snapshot, unsupported="ignore")
+    assert compiled.feature_counts[FEATURE_INDEX["ANONYMOUS_INDIVIDUAL"]] == 1
+    assert compiled.feature_counts[FEATURE_INDEX["OBJECT_ALL_VALUES_FROM"]] == 1
+    assert compiled.feature_counts[FEATURE_INDEX["OBJECT_ONE_OF"]] == 0
+
+    direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    try:
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        direct.close()
+        scalar.close()
+
+    with pytest.raises(ValueError, match=r"unsupported ELK feature"):
+        native_module.create_session_from_encoded(encoded, 1, "error")
+
+
 def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
     native_module: ModuleType,
 ) -> None:

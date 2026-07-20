@@ -37,20 +37,31 @@ const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
 // Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
+const FEATURE_ANONYMOUS_INDIVIDUAL: usize = 0;
 const FEATURE_BOTTOM_OBJECT_PROPERTY_POSITIVE: usize = 2;
+const FEATURE_DATA_ALL_VALUES_FROM: usize = 3;
+const FEATURE_DATA_EXACT_CARDINALITY: usize = 4;
+const FEATURE_DATA_MAX_CARDINALITY: usize = 6;
+const FEATURE_DATA_MIN_CARDINALITY: usize = 7;
+const FEATURE_DATA_SOME_VALUES_FROM: usize = 12;
 const FEATURE_OBJECT_PROPERTY_CHAIN: usize = 40;
 const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
 const FEATURE_DISJOINT_CLASSES: usize = 16;
 const FEATURE_DISJOINT_UNION: usize = 19;
+const FEATURE_OBJECT_ALL_VALUES_FROM: usize = 29;
 const FEATURE_OBJECT_COMPLEMENT_OF_NEGATIVE: usize = 30;
 const FEATURE_OBJECT_COMPLEMENT_OF_POSITIVE: usize = 31;
+const FEATURE_OBJECT_EXACT_CARDINALITY: usize = 32;
 const FEATURE_OBJECT_HAS_SELF_NEGATIVE: usize = 33;
 const FEATURE_OBJECT_HAS_VALUE_POSITIVE: usize = 34;
+const FEATURE_OBJECT_INVERSE_OF: usize = 35;
+const FEATURE_OBJECT_MAX_CARDINALITY: usize = 36;
+const FEATURE_OBJECT_MIN_CARDINALITY: usize = 37;
 const FEATURE_OBJECT_ONE_OF: usize = 38;
 const FEATURE_OBJECT_PROPERTY_ASSERTION: usize = 39;
-const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
 const FEATURE_OBJECT_UNION_OF_POSITIVE: usize = 42;
+const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
 const FEATURE_REFLEXIVE_OBJECT_PROPERTY: usize = 44;
 const FEATURE_TOP_OBJECT_PROPERTY_NEGATIVE: usize = 48;
 
@@ -317,6 +328,26 @@ pub enum EncodedUnsupportedPolicy {
     Ignore,
     Error,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum AxiomCompileError {
+    Core(CoreError),
+    Unsupported { feature: usize, name: &'static str },
+}
+
+impl AxiomCompileError {
+    fn unsupported(feature: usize, name: &'static str) -> Self {
+        Self::Unsupported { feature, name }
+    }
+}
+
+impl From<CoreError> for AxiomCompileError {
+    fn from(error: CoreError) -> Self {
+        Self::Core(error)
+    }
+}
+
+type AxiomCompileResult<T> = Result<T, AxiomCompileError>;
 
 #[derive(Clone, Copy, Debug)]
 struct DfsFrame {
@@ -592,6 +623,7 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
 ) -> CoreResult<Ontology> {
     let validated = validate_columns(columns, limits)?;
     let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
+    let mut transaction = NamedHierarchyBuilder::transaction();
     for root in 0..validated.root_count {
         let kind = byte_at(columns.root_kinds, root, "root kind")?;
         if kind == ROOT_ONTOLOGY_ANNOTATION {
@@ -614,34 +646,53 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
                 "validated encoded root has an unexpected category",
             ));
         }
-        match tag {
-            60 => compile_declaration(node, &columns, &mut builder)?,
-            61 => compile_named_subclass(node, &columns, &mut builder)?,
-            62 => compile_named_equivalence(node, &columns, &mut builder)?,
-            63 => compile_disjoint_named_classes(node, &columns, &mut builder)?,
-            64 => compile_named_disjoint_union(node, &columns, &mut builder)?,
-            70 => compile_named_subproperty(node, &columns, &mut builder)?,
-            71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
-            74 => compile_named_property_domain(node, &columns, &mut builder)?,
-            75 => compile_named_property_range(node, &columns, &mut builder)?,
-            78 => compile_reflexive_named_property(node, &columns, &mut builder)?,
-            82 => compile_transitive_named_property(node, &columns, &mut builder)?,
-            110 => compile_same_named_individuals(node, &columns, &mut builder)?,
-            111 => compile_different_named_individuals(node, &columns, &mut builder)?,
-            112 => compile_named_class_assertion(node, &columns, &mut builder)?,
-            113 => compile_named_object_property_assertion(node, &columns, &mut builder)?,
-            120..=123 => {}
+        let result = match tag {
+            60 => compile_declaration(node, &columns, &mut transaction),
+            61 => compile_named_subclass(node, &columns, &mut transaction),
+            62 => compile_named_equivalence(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            63 => compile_disjoint_named_classes(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            64 => compile_named_disjoint_union(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            70 => compile_named_subproperty(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            71 => compile_equivalent_named_properties(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            74 => compile_named_property_domain(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            75 => compile_named_property_range(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            78 => compile_reflexive_named_property(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            82 => compile_transitive_named_property(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            110 => compile_same_named_individuals(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            111 => compile_different_named_individuals(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            112 => compile_named_class_assertion(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            113 => compile_named_object_property_assertion(node, &columns, &mut transaction)
+                .map_err(AxiomCompileError::from),
+            120..=123 => Ok(()),
             tag if unsupported_axiom_feature(tag).is_some() => {
                 let (feature, name) = unsupported_axiom_feature(tag).ok_or_else(|| {
                     CoreError::internal("unsupported encoded axiom lost its feature mapping")
                 })?;
+                Err(AxiomCompileError::unsupported(feature, name))
+            }
+            tag => Err(AxiomCompileError::Core(CoreError::invalid(format!(
+                "encoded named-hierarchy compiler does not support axiom tag {tag}"
+            )))),
+        };
+        match result {
+            Ok(()) => builder.commit_axiom(&mut transaction)?,
+            Err(AxiomCompileError::Unsupported { feature, name }) => {
+                transaction.reset_axiom();
                 builder.handle_unsupported(feature, name)?;
             }
-            tag => {
-                return Err(CoreError::invalid(format!(
-                    "encoded named-hierarchy compiler does not support axiom tag {tag}"
-                )));
-            }
+            Err(AxiomCompileError::Core(error)) => return Err(error),
         }
     }
     builder.freeze(source_fingerprint)
@@ -736,15 +787,101 @@ impl NamedHierarchyBuilder {
         builder
     }
 
-    fn add_declaration(&mut self, entity: Entity) -> CoreResult<()> {
+    fn transaction() -> Self {
+        Self::default()
+    }
+
+    fn reset_axiom(&mut self) {
+        self.entities.clear();
+        self.expressions.clear();
+        self.expression_ids.clear();
+        self.expression_occurrences.clear();
+        self.property_occurrences.clear();
+        self.property_chains.clear();
+        self.subclass_axioms.clear();
+        self.equivalent_class_axioms.clear();
+        self.disjoint_groups.clear();
+        self.subproperty_axioms.clear();
+        self.property_ranges.clear();
+        self.feature_counts.fill(0);
+    }
+
+    fn commit_axiom(&mut self, transaction: &mut Self) -> CoreResult<()> {
+        if transaction.expressions.len() != transaction.expression_occurrences.len() {
+            return Err(CoreError::internal(
+                "encoded axiom transaction expression ledgers diverged",
+            ));
+        }
+        self.entities.extend(transaction.entities.iter().cloned());
+
+        let mut handles = Vec::new();
+        handles
+            .try_reserve_exact(transaction.expressions.len())
+            .map_err(|_| CoreError::capacity("encoded axiom handle allocation failed"))?;
+        for (expression, occurrence) in transaction
+            .expressions
+            .iter()
+            .zip(&transaction.expression_occurrences)
+        {
+            let expression = expression.remap_dependencies(&handles)?;
+            let handle = self.intern_expression(expression, false, false)?;
+            merge_occurrence(&mut self.expression_occurrences[handle], *occurrence)?;
+            handles.push(handle);
+        }
+
+        for (property, occurrence) in &transaction.property_occurrences {
+            let target = self
+                .property_occurrences
+                .entry(property.clone())
+                .or_default();
+            merge_occurrence(target, *occurrence)?;
+        }
+        self.property_chains
+            .extend(transaction.property_chains.iter().cloned());
+        for (sub, super_) in &transaction.subclass_axioms {
+            self.subclass_axioms.insert((
+                remapped_axiom_handle(&handles, *sub)?,
+                remapped_axiom_handle(&handles, *super_)?,
+            ));
+        }
+        for (first, second) in &transaction.equivalent_class_axioms {
+            self.equivalent_class_axioms.insert((
+                remapped_axiom_handle(&handles, *first)?,
+                remapped_axiom_handle(&handles, *second)?,
+            ));
+        }
+        for group in &transaction.disjoint_groups {
+            self.disjoint_groups.insert(
+                group
+                    .iter()
+                    .map(|member| remapped_axiom_handle(&handles, *member))
+                    .collect::<CoreResult<Vec<_>>>()?,
+            );
+        }
+        self.subproperty_axioms
+            .extend(transaction.subproperty_axioms.iter().cloned());
+        for (property, range) in &transaction.property_ranges {
+            self.property_ranges
+                .insert((property.clone(), remapped_axiom_handle(&handles, *range)?));
+        }
+        for (index, count) in transaction.feature_counts.iter().copied().enumerate() {
+            if count != 0 {
+                self.add_feature(index, count)?;
+            }
+        }
+        transaction.reset_axiom();
+        Ok(())
+    }
+
+    fn add_declaration(&mut self, entity: Entity) -> AxiomCompileResult<()> {
         match entity.kind {
             EntityKind::Class | EntityKind::NamedIndividual | EntityKind::ObjectProperty => {
                 self.entities.insert(entity);
                 Ok(())
             }
             EntityKind::AnnotationProperty => Ok(()),
-            EntityKind::DataProperty => self.handle_unsupported(8, "DATA_PROPERTY"),
-            EntityKind::Datatype => self.handle_unsupported(13, "DATATYPE"),
+            EntityKind::DataProperty => Err(AxiomCompileError::unsupported(8, "DATA_PROPERTY")),
+            EntityKind::Datatype => Err(AxiomCompileError::unsupported(13, "DATATYPE")),
         }
     }
 
@@ -1284,6 +1421,31 @@ impl NamedHierarchyBuilder {
 }
 
 impl CompilerExpression {
+    fn remap_dependencies(&self, handles: &[usize]) -> CoreResult<Self> {
+        let remap = |handle: usize| {
+            handles.get(handle).copied().ok_or_else(|| {
+                CoreError::internal("encoded axiom expression dependency is not committed")
+            })
+        };
+        match self {
+            Self::Named(entity) => Ok(Self::Named(entity.clone())),
+            Self::Intersection(first, second) => {
+                Ok(Self::Intersection(remap(*first)?, remap(*second)?))
+            }
+            Self::Existential(property, filler) => {
+                Ok(Self::Existential(property.clone(), remap(*filler)?))
+            }
+            Self::HasSelf(property) => Ok(Self::HasSelf(property.clone())),
+            Self::Complement(operand) => Ok(Self::Complement(remap(*operand)?)),
+            Self::Union(operands) => Ok(Self::Union(
+                operands
+                    .iter()
+                    .map(|operand| remap(*operand))
+                    .collect::<CoreResult<Vec<_>>>()?,
+            )),
+        }
+    }
+
     fn dependencies(&self) -> CoreResult<BTreeSet<usize>> {
         Ok(match self {
             Self::Named(_) | Self::HasSelf(_) => BTreeSet::new(),
@@ -1352,7 +1514,7 @@ fn compile_declaration<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
     builder.add_declaration(decode_entity(node_field(node, 0, columns)?, columns)?)
 }
@@ -1361,7 +1523,7 @@ fn compile_named_subclass<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 2, columns)?;
     let sub =
         decode_class_expression(node_field(node, 0, columns)?, true, false, columns, builder)?;
@@ -1545,7 +1707,7 @@ fn decode_class_expression<B: ByteSource>(
     positive: bool,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<usize> {
+) -> AxiomCompileResult<usize> {
     let mut tasks = vec![ExpressionTask::Visit {
         identifier,
         negative,
@@ -1576,6 +1738,12 @@ fn decode_class_expression<B: ByteSource>(
                 let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
                 let node = node_index(identifier, node_count)?;
                 match u16_at(columns.node_tags, node, "class-expression node tag")? {
+                    3 => {
+                        return Err(AxiomCompileError::unsupported(
+                            FEATURE_ANONYMOUS_INDIVIDUAL,
+                            "ANONYMOUS_INDIVIDUAL",
+                        ));
+                    }
                     2 => {
                         let entity = decode_named_class(identifier, columns)?;
                         let handle = builder.add_named_occurrence(&entity, negative, positive)?;
@@ -1627,7 +1795,7 @@ fn decode_class_expression<B: ByteSource>(
                             CoreError::capacity("encoded one-of expression allocation failed")
                         })?;
                         for member in members {
-                            let individual = decode_named_individual(member, columns)?;
+                            let individual = decode_individual_for_axiom(member, columns)?;
                             children.push(builder.add_named_occurrence(
                                 &individual,
                                 negative,
@@ -1643,8 +1811,10 @@ fn decode_class_expression<B: ByteSource>(
                         )?);
                     }
                     34 => {
-                        let property =
-                            decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+                        let property = decode_object_property_for_axiom(
+                            node_field(node, 0, columns)?,
+                            columns,
+                        )?;
                         builder.add_property_occurrence(&property, negative, positive)?;
                         tasks.push(ExpressionTask::Finish {
                             operation: ExpressionFinish::Existential(property),
@@ -1659,11 +1829,13 @@ fn decode_class_expression<B: ByteSource>(
                         });
                     }
                     36 => {
-                        let property =
-                            decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+                        let property = decode_object_property_for_axiom(
+                            node_field(node, 0, columns)?,
+                            columns,
+                        )?;
                         builder.add_property_occurrence(&property, negative, positive)?;
                         let individual =
-                            decode_named_individual(node_field(node, 1, columns)?, columns)?;
+                            decode_individual_for_axiom(node_field(node, 1, columns)?, columns)?;
                         let child =
                             builder.add_named_occurrence(&individual, negative, positive)?;
                         results.push(finish_compiler_expression(
@@ -1675,8 +1847,10 @@ fn decode_class_expression<B: ByteSource>(
                         )?);
                     }
                     37 => {
-                        let property =
-                            decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+                        let property = decode_object_property_for_axiom(
+                            node_field(node, 0, columns)?,
+                            columns,
+                        )?;
                         builder.add_property_occurrence(&property, negative, positive)?;
                         if negative {
                             builder.add_feature(FEATURE_OBJECT_HAS_SELF_NEGATIVE, 1)?;
@@ -1687,23 +1861,32 @@ fn decode_class_expression<B: ByteSource>(
                             positive,
                         )?);
                     }
+                    tag @ (35 | 38..=42 | 44..=46) => {
+                        let (feature, name) =
+                            unsupported_expression_feature(tag).ok_or_else(|| {
+                                CoreError::internal(
+                                    "unsupported encoded expression lost its feature mapping",
+                                )
+                            })?;
+                        return Err(AxiomCompileError::unsupported(feature, name));
+                    }
                     tag => {
-                        return Err(CoreError::invalid(format!(
+                        return Err(AxiomCompileError::Core(CoreError::invalid(format!(
                             "encoded compiler does not support class-expression tag {tag}"
-                        )));
+                        ))));
                     }
                 }
             }
         }
     }
     if results.len() != 1 {
-        return Err(CoreError::internal(
+        return Err(AxiomCompileError::Core(CoreError::internal(
             "encoded expression conversion did not produce exactly one root",
-        ));
+        )));
     }
-    results
+    Ok(results
         .pop()
-        .ok_or_else(|| CoreError::internal("encoded expression conversion lost its root"))
+        .ok_or_else(|| CoreError::internal("encoded expression conversion lost its root"))?)
 }
 
 fn finish_compiler_expression(
@@ -1792,6 +1975,21 @@ fn finish_compiler_expression(
     }
 }
 
+fn decode_individual_for_axiom<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> AxiomCompileResult<Entity> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    if u16_at(columns.node_tags, node, "individual node tag")? == 3 {
+        return Err(AxiomCompileError::unsupported(
+            FEATURE_ANONYMOUS_INDIVIDUAL,
+            "ANONYMOUS_INDIVIDUAL",
+        ));
+    }
+    Ok(decode_named_individual(identifier, columns)?)
+}
+
 fn decode_named_individual<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
@@ -1803,6 +2001,26 @@ fn decode_named_individual<B: ByteSource>(
         ));
     }
     Ok(entity)
+}
+
+fn decode_object_property_for_axiom<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> AxiomCompileResult<Entity> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    if u16_at(
+        columns.node_tags,
+        node,
+        "object-property expression node tag",
+    )? == 10
+    {
+        return Err(AxiomCompileError::unsupported(
+            FEATURE_OBJECT_INVERSE_OF,
+            "OBJECT_INVERSE_OF",
+        ));
+    }
+    Ok(decode_named_object_property(identifier, columns)?)
 }
 
 fn decode_named_object_property<B: ByteSource>(
@@ -1965,6 +2183,40 @@ fn increment_occurrence(occurrence: &mut Occurrence, positive: bool) -> CoreResu
         .checked_add(1)
         .ok_or_else(|| CoreError::capacity("encoded expression occurrence exceeds u64"))?;
     Ok(())
+}
+
+fn merge_occurrence(target: &mut Occurrence, source: Occurrence) -> CoreResult<()> {
+    target.negative = target
+        .negative
+        .checked_add(source.negative)
+        .ok_or_else(|| CoreError::capacity("encoded negative occurrence exceeds u64"))?;
+    target.positive = target
+        .positive
+        .checked_add(source.positive)
+        .ok_or_else(|| CoreError::capacity("encoded positive occurrence exceeds u64"))?;
+    Ok(())
+}
+
+fn remapped_axiom_handle(handles: &[usize], handle: usize) -> CoreResult<usize> {
+    handles
+        .get(handle)
+        .copied()
+        .ok_or_else(|| CoreError::internal("encoded axiom references an unknown expression"))
+}
+
+fn unsupported_expression_feature(tag: u16) -> Option<(usize, &'static str)> {
+    match tag {
+        35 => Some((FEATURE_OBJECT_ALL_VALUES_FROM, "OBJECT_ALL_VALUES_FROM")),
+        38 => Some((FEATURE_OBJECT_MIN_CARDINALITY, "OBJECT_MIN_CARDINALITY")),
+        39 => Some((FEATURE_OBJECT_MAX_CARDINALITY, "OBJECT_MAX_CARDINALITY")),
+        40 => Some((FEATURE_OBJECT_EXACT_CARDINALITY, "OBJECT_EXACT_CARDINALITY")),
+        41 => Some((FEATURE_DATA_SOME_VALUES_FROM, "DATA_SOME_VALUES_FROM")),
+        42 => Some((FEATURE_DATA_ALL_VALUES_FROM, "DATA_ALL_VALUES_FROM")),
+        44 => Some((FEATURE_DATA_MIN_CARDINALITY, "DATA_MIN_CARDINALITY")),
+        45 => Some((FEATURE_DATA_MAX_CARDINALITY, "DATA_MAX_CARDINALITY")),
+        46 => Some((FEATURE_DATA_EXACT_CARDINALITY, "DATA_EXACT_CARDINALITY")),
+        _ => None,
+    }
 }
 
 fn unsupported_axiom_feature(tag: u16) -> Option<(usize, &'static str)> {
