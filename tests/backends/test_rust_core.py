@@ -187,15 +187,19 @@ def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleT
         Declaration(Class(:C))
         Declaration(Class(:D))
         Declaration(ObjectProperty(:p))
+        Declaration(ObjectProperty(:q))
         Declaration(NamedIndividual(:i))
         SubClassOf(ObjectIntersectionOf(:A ObjectAllValuesFrom(:p :B)) :C)
         SubClassOf(:A ObjectOneOf(:i _:anonymous))
+        EquivalentObjectProperties(:p ObjectInverseOf(:q))
+        SubObjectPropertyOf(ObjectPropertyChain(:p ObjectInverseOf(:q)) :p)
         SubClassOf(:D :A)
         )"""
     )
     compiled = compile_ontology(snapshot, unsupported="ignore")
     assert compiled.feature_counts[FEATURE_INDEX["ANONYMOUS_INDIVIDUAL"]] == 1
     assert compiled.feature_counts[FEATURE_INDEX["OBJECT_ALL_VALUES_FROM"]] == 1
+    assert compiled.feature_counts[FEATURE_INDEX["OBJECT_INVERSE_OF"]] == 2
     assert compiled.feature_counts[FEATURE_INDEX["OBJECT_ONE_OF"]] == 0
 
     direct = native_module.create_session_from_encoded(encoded, 1, "ignore")

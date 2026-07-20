@@ -652,16 +652,12 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
             62 => compile_named_equivalence(node, &columns, &mut transaction),
             63 => compile_disjoint_named_classes(node, &columns, &mut transaction),
             64 => compile_named_disjoint_union(node, &columns, &mut transaction),
-            70 => compile_named_subproperty(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            71 => compile_equivalent_named_properties(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
+            70 => compile_named_subproperty(node, &columns, &mut transaction),
+            71 => compile_equivalent_named_properties(node, &columns, &mut transaction),
             74 => compile_named_property_domain(node, &columns, &mut transaction),
             75 => compile_named_property_range(node, &columns, &mut transaction),
-            78 => compile_reflexive_named_property(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
-            82 => compile_transitive_named_property(node, &columns, &mut transaction)
-                .map_err(AxiomCompileError::from),
+            78 => compile_reflexive_named_property(node, &columns, &mut transaction),
+            82 => compile_transitive_named_property(node, &columns, &mut transaction),
             110 => compile_same_named_individuals(node, &columns, &mut transaction),
             111 => compile_different_named_individuals(node, &columns, &mut transaction),
             112 => compile_named_class_assertion(node, &columns, &mut transaction),
@@ -1550,24 +1546,28 @@ fn compile_named_subproperty<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let chain = decode_named_property_chain(node_field(node, 0, columns)?, columns)?;
-    let super_ = decode_named_object_property(node_field(node, 1, columns)?, columns)?;
-    builder.add_subproperty(chain, super_)
+    let chain = decode_property_chain_for_axiom(node_field(node, 0, columns)?, columns)?;
+    let super_ = decode_object_property_for_axiom(node_field(node, 1, columns)?, columns)?;
+    Ok(builder.add_subproperty(chain, super_)?)
 }
 
 fn compile_equivalent_named_properties<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let members = node_collection(node, 0, columns)?
-        .into_iter()
-        .map(|identifier| decode_named_object_property(identifier, columns))
-        .collect::<CoreResult<Vec<_>>>()?;
-    builder.add_equivalent_properties(members)
+    let identifiers = node_collection(node, 0, columns)?;
+    let mut members = Vec::new();
+    members
+        .try_reserve_exact(identifiers.len())
+        .map_err(|_| CoreError::capacity("encoded equivalent-property allocation failed"))?;
+    for identifier in identifiers {
+        members.push(decode_object_property_for_axiom(identifier, columns)?);
+    }
+    Ok(builder.add_equivalent_properties(members)?)
 }
 
 fn compile_named_property_domain<B: ByteSource>(
@@ -1612,20 +1612,20 @@ fn compile_reflexive_named_property<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-    builder.add_reflexive_property(property)
+    let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
+    Ok(builder.add_reflexive_property(property)?)
 }
 
 fn compile_transitive_named_property<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
     builder: &mut NamedHierarchyBuilder,
-) -> CoreResult<()> {
+) -> AxiomCompileResult<()> {
     require_empty_annotations(node, 1, columns)?;
-    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-    builder.add_transitive_property(property)
+    let property = decode_object_property_for_axiom(node_field(node, 0, columns)?, columns)?;
+    Ok(builder.add_transitive_property(property)?)
 }
 
 fn compile_named_class_assertion<B: ByteSource>(
@@ -2048,29 +2048,37 @@ fn decode_named_object_property<B: ByteSource>(
     Ok(entity)
 }
 
-fn decode_named_property_chain<B: ByteSource>(
+fn decode_property_chain_for_axiom<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
-) -> CoreResult<Vec<Entity>> {
+) -> AxiomCompileResult<Vec<Entity>> {
     let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
     let node = node_index(identifier, node_count)?;
     match u16_at(columns.node_tags, node, "sub-property node tag")? {
-        2 => Ok(vec![decode_named_object_property(identifier, columns)?]),
+        2 => Ok(vec![decode_object_property_for_axiom(identifier, columns)?]),
+        10 => Err(AxiomCompileError::unsupported(
+            FEATURE_OBJECT_INVERSE_OF,
+            "OBJECT_INVERSE_OF",
+        )),
         11 => {
             let members = node_collection(node, 0, columns)?;
             if members.len() < 2 {
-                return Err(CoreError::invalid(
+                return Err(AxiomCompileError::Core(CoreError::invalid(
                     "encoded object property chain must contain at least two members",
-                ));
+                )));
             }
-            members
-                .into_iter()
-                .map(|member| decode_named_object_property(member, columns))
-                .collect()
+            let mut properties = Vec::new();
+            properties
+                .try_reserve_exact(members.len())
+                .map_err(|_| CoreError::capacity("encoded property-chain allocation failed"))?;
+            for member in members {
+                properties.push(decode_object_property_for_axiom(member, columns)?);
+            }
+            Ok(properties)
         }
-        _ => Err(CoreError::invalid(
+        _ => Err(AxiomCompileError::Core(CoreError::invalid(
             "encoded named-hierarchy compiler does not support inverse object properties",
-        )),
+        ))),
     }
 }
 
