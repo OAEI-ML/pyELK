@@ -590,6 +590,7 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             111 => compile_different_named_individuals(node, &columns, &mut builder)?,
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
             113 => compile_named_object_property_assertion(node, &columns, &mut builder)?,
+            120..=123 => {}
             tag => {
                 return Err(CoreError::invalid(format!(
                     "encoded named-hierarchy compiler does not support axiom tag {tag}"
@@ -2932,6 +2933,30 @@ mod tests {
         }
     }
 
+    fn annotation_property_domain() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[4]),
+            node_tags: le16(&[1, 1, 2, 122]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 7]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 2, 3, 1, 0]),
+            field_lengths: le64(&[5, 5, 19, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:durn:pannotation_property".to_vec(),
+        }
+    }
+
     fn property_chain() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -4380,6 +4405,21 @@ mod tests {
             ),
             Err(CoreError::Protocol(message)) if message.contains("one-based")
         ));
+    }
+
+    #[test]
+    fn annotation_axioms_are_semantically_ignored_after_validation() {
+        let compiled = compile_named_hierarchy(
+            annotation_property_domain().borrowed(),
+            EncodedLimits::default(),
+            [19; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.entities.len(), 4);
+        assert_eq!(compiled.expressions.len(), 2);
+        assert!(compiled.subclass_axioms.is_empty());
+        assert!(compiled.feature_counts.iter().all(|count| *count == 0));
     }
 
     #[test]
