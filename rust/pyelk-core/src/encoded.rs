@@ -306,6 +306,13 @@ pub struct ValidatedEncodedColumns {
     pub work: u64,
 }
 
+/// Whole-axiom policy matching pyELK's scalar compiler option.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EncodedUnsupportedPolicy {
+    Ignore,
+    Error,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct DfsFrame {
     node: usize,
@@ -563,21 +570,46 @@ pub fn compile_named_hierarchy<B: ByteSource>(
     limits: EncodedLimits,
     source_fingerprint: [u8; 32],
 ) -> CoreResult<Ontology> {
+    compile_named_hierarchy_with_policy(
+        columns,
+        limits,
+        source_fingerprint,
+        EncodedUnsupportedPolicy::Error,
+    )
+}
+
+/// Compile the installed exact slice with scalar-compatible unsupported-axiom handling.
+pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    source_fingerprint: [u8; 32],
+    unsupported: EncodedUnsupportedPolicy,
+) -> CoreResult<Ontology> {
     let validated = validate_columns(columns, limits)?;
-    let mut builder = NamedHierarchyBuilder::new();
+    let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
     for root in 0..validated.root_count {
         let kind = byte_at(columns.root_kinds, root, "root kind")?;
         if kind == ROOT_ONTOLOGY_ANNOTATION {
             continue;
         }
-        if kind != ROOT_AXIOM {
-            return Err(CoreError::invalid(
-                "encoded named-hierarchy compiler does not support extensions",
-            ));
-        }
         let identifier = u32_at(columns.root_ids, root, "root ID")?;
         let node = node_index(identifier, validated.node_count)?;
-        match u16_at(columns.node_tags, node, "root node tag")? {
+        let tag = u16_at(columns.node_tags, node, "root node tag")?;
+        if kind == ROOT_EXTENSION {
+            if tag == 148 {
+                builder.handle_unsupported(46, "SWRL_RULE")?;
+                continue;
+            }
+            return Err(CoreError::internal(
+                "validated extension root has an unexpected constructor tag",
+            ));
+        }
+        if kind != ROOT_AXIOM {
+            return Err(CoreError::internal(
+                "validated encoded root has an unexpected category",
+            ));
+        }
+        match tag {
             60 => compile_declaration(node, &columns, &mut builder)?,
             61 => compile_named_subclass(node, &columns, &mut builder)?,
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
@@ -594,6 +626,12 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
             113 => compile_named_object_property_assertion(node, &columns, &mut builder)?,
             120..=123 => {}
+            tag if unsupported_axiom_feature(tag).is_some() => {
+                let (feature, name) = unsupported_axiom_feature(tag).ok_or_else(|| {
+                    CoreError::internal("unsupported encoded axiom lost its feature mapping")
+                })?;
+                builder.handle_unsupported(feature, name)?;
+            }
             tag => {
                 return Err(CoreError::invalid(format!(
                     "encoded named-hierarchy compiler does not support axiom tag {tag}"
@@ -626,6 +664,7 @@ struct NamedHierarchyBuilder {
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
     property_ranges: BTreeSet<(Entity, Entity)>,
     feature_counts: Vec<u64>,
+    unsupported: EncodedUnsupportedPolicy,
 }
 
 impl Default for NamedHierarchyBuilder {
@@ -644,13 +683,17 @@ impl Default for NamedHierarchyBuilder {
             subproperty_axioms: BTreeSet::new(),
             property_ranges: BTreeSet::new(),
             feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
+            unsupported: EncodedUnsupportedPolicy::Error,
         }
     }
 }
 
 impl NamedHierarchyBuilder {
-    fn new() -> Self {
-        let mut builder = Self::default();
+    fn with_policy(unsupported: EncodedUnsupportedPolicy) -> Self {
+        let mut builder = Self {
+            unsupported,
+            ..Self::default()
+        };
         for (kind, iri) in [
             (EntityKind::Class, OWL_THING_IRI),
             (EntityKind::Class, OWL_NOTHING_IRI),
@@ -672,10 +715,8 @@ impl NamedHierarchyBuilder {
                 Ok(())
             }
             EntityKind::AnnotationProperty => Ok(()),
-            EntityKind::DataProperty | EntityKind::Datatype => Err(CoreError::invalid(format!(
-                "encoded named-hierarchy compiler does not support {:?} declarations",
-                entity.kind
-            ))),
+            EntityKind::DataProperty => self.handle_unsupported(8, "DATA_PROPERTY"),
+            EntityKind::Datatype => self.handle_unsupported(13, "DATATYPE"),
         }
     }
 
@@ -1038,6 +1079,15 @@ impl NamedHierarchyBuilder {
             .checked_add(count)
             .ok_or_else(|| CoreError::capacity("encoded compiler feature count exceeds u64"))?;
         Ok(())
+    }
+
+    fn handle_unsupported(&mut self, feature: usize, name: &'static str) -> CoreResult<()> {
+        match self.unsupported {
+            EncodedUnsupportedPolicy::Ignore => self.add_feature(feature, 1),
+            EncodedUnsupportedPolicy::Error => Err(CoreError::invalid(format!(
+                "encoded ontology contains unsupported ELK feature {name}"
+            ))),
+        }
     }
 
     fn freeze(self, source_fingerprint: [u8; 32]) -> CoreResult<Ontology> {
@@ -1654,6 +1704,30 @@ fn increment_occurrence(occurrence: &mut Occurrence, positive: bool) -> CoreResu
         .checked_add(1)
         .ok_or_else(|| CoreError::capacity("encoded expression occurrence exceeds u64"))?;
     Ok(())
+}
+
+fn unsupported_axiom_feature(tag: u16) -> Option<(usize, &'static str)> {
+    match tag {
+        72 => Some((18, "DISJOINT_OBJECT_PROPERTIES")),
+        73 => Some((25, "INVERSE_OBJECT_PROPERTIES")),
+        76 => Some((22, "FUNCTIONAL_OBJECT_PROPERTY")),
+        77 => Some((24, "INVERSE_FUNCTIONAL_OBJECT_PROPERTY")),
+        79 => Some((26, "IRREFLEXIVE_OBJECT_PROPERTY")),
+        80 => Some((47, "SYMMETRIC_OBJECT_PROPERTY")),
+        81 => Some((1, "ASYMMETRIC_OBJECT_PROPERTY")),
+        90 => Some((20, "EQUIVALENT_DATA_PROPERTIES")),
+        91 => Some((17, "DISJOINT_DATA_PROPERTIES")),
+        92 => Some((45, "SUB_DATA_PROPERTY_OF")),
+        93 => Some((10, "DATA_PROPERTY_DOMAIN")),
+        94 => Some((11, "DATA_PROPERTY_RANGE")),
+        95 => Some((21, "FUNCTIONAL_DATA_PROPERTY")),
+        100 => Some((14, "DATATYPE_DEFINITION")),
+        101 => Some((23, "HAS_KEY")),
+        114 => Some((28, "NEGATIVE_OBJECT_PROPERTY_ASSERTION")),
+        115 => Some((9, "DATA_PROPERTY_ASSERTION")),
+        116 => Some((27, "NEGATIVE_DATA_PROPERTY_ASSERTION")),
+        _ => None,
+    }
 }
 
 fn validate_graph_and_lengths<B: ByteSource>(
@@ -3477,6 +3551,12 @@ mod tests {
         }
     }
 
+    fn functional_named_property() -> OwnedColumns {
+        let mut columns = transitive_named_property();
+        columns.node_tags = le16(&[1, 2, 76]);
+        columns
+    }
+
     fn named_property_range() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -4209,9 +4289,54 @@ mod tests {
                     EncodedLimits::default(),
                     [0; 32],
                 ),
-                Err(CoreError::InvalidInput(message)) if message.contains("does not support")
+                Err(CoreError::InvalidInput(message)) if message.contains("unsupported ELK feature")
             ));
         }
+
+        let ignored = compile_named_hierarchy_with_policy(
+            declaration_of("data_property").borrowed(),
+            EncodedLimits::default(),
+            [0; 32],
+            EncodedUnsupportedPolicy::Ignore,
+        )
+        .unwrap();
+        assert_eq!(ignored.feature_counts[8], 1);
+        assert!(
+            !ignored
+                .entities
+                .iter()
+                .any(|entity| entity.kind == EntityKind::DataProperty)
+        );
+    }
+
+    #[test]
+    fn unsupported_axioms_follow_whole_axiom_policy() {
+        let ignored = compile_named_hierarchy_with_policy(
+            functional_named_property().borrowed(),
+            EncodedLimits::default(),
+            [24; 32],
+            EncodedUnsupportedPolicy::Ignore,
+        )
+        .unwrap();
+        assert_eq!(ignored.feature_counts[22], 1);
+        assert_eq!(ignored.entities.len(), 4);
+        assert!(
+            ignored
+                .property_occurrences
+                .iter()
+                .all(|value| *value == Occurrence::default())
+        );
+
+        assert!(matches!(
+            compile_named_hierarchy_with_policy(
+                functional_named_property().borrowed(),
+                EncodedLimits::default(),
+                [24; 32],
+                EncodedUnsupportedPolicy::Error,
+            ),
+            Err(CoreError::InvalidInput(message))
+                if message.contains("FUNCTIONAL_OBJECT_PROPERTY")
+        ));
     }
 
     #[test]
@@ -4652,7 +4777,7 @@ mod tests {
             kind: EntityKind::ObjectProperty,
             iri: OWL_BOTTOM_OBJECT_PROPERTY_IRI.to_owned(),
         };
-        let mut builder = NamedHierarchyBuilder::new();
+        let mut builder = NamedHierarchyBuilder::with_policy(EncodedUnsupportedPolicy::Error);
         builder.add_subproperty(vec![top], bottom).unwrap();
         let compiled = builder.freeze([23; 32]).unwrap();
 
