@@ -7,8 +7,14 @@
 //! compilation remains a separate gate.
 
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::{CoreError, CoreResult};
+use crate::ir::{
+    Entity, EntityKind, Expression, ExpressionTag, FEATURE_VECTOR_LENGTH,
+    OWL_BOTTOM_OBJECT_PROPERTY_IRI, OWL_NOTHING_IRI, OWL_THING_IRI, OWL_TOP_OBJECT_PROPERTY_IRI,
+    Occurrence, Ontology,
+};
 
 /// Frozen SHA-256 of the canonical pyowl-core structural-columns v1 descriptor.
 pub const DESCRIPTOR_SHA256_V1: [u8; 32] = [
@@ -522,6 +528,305 @@ pub fn validate_columns<B: ByteSource>(
         scalar_bytes: columns.scalar_bytes.len(),
         work,
     })
+}
+
+/// Compile the first exact, deliberately narrow encoded-ontology slice.
+///
+/// This stage accepts unannotated declarations of classes, named individuals, and object
+/// properties plus unannotated `SubClassOf` axioms whose operands are named classes. Ontology
+/// annotations and annotation-property declarations have no ELK effect and are ignored. Every
+/// other logical constructor fails closed, irrespective of the scalar compiler's unsupported
+/// policy. Consequently this function is safe to extend and test while encoded-schema capability
+/// advertisement remains disabled.
+///
+/// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
+/// the structural columns intentionally do not carry pyELK's private cache-key material.
+pub fn compile_named_hierarchy<B: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    source_fingerprint: [u8; 32],
+) -> CoreResult<Ontology> {
+    let validated = validate_columns(columns, limits)?;
+    let mut builder = NamedHierarchyBuilder::new();
+    for root in 0..validated.root_count {
+        let kind = byte_at(columns.root_kinds, root, "root kind")?;
+        if kind == ROOT_ONTOLOGY_ANNOTATION {
+            continue;
+        }
+        if kind != ROOT_AXIOM {
+            return Err(CoreError::invalid(
+                "encoded named-hierarchy compiler does not support extensions",
+            ));
+        }
+        let identifier = u32_at(columns.root_ids, root, "root ID")?;
+        let node = node_index(identifier, validated.node_count)?;
+        match u16_at(columns.node_tags, node, "root node tag")? {
+            60 => compile_declaration(node, &columns, &mut builder)?,
+            61 => compile_named_subclass(node, &columns, &mut builder)?,
+            tag => {
+                return Err(CoreError::invalid(format!(
+                    "encoded named-hierarchy compiler does not support axiom tag {tag}"
+                )));
+            }
+        }
+    }
+    builder.freeze(source_fingerprint)
+}
+
+#[derive(Default)]
+struct NamedHierarchyBuilder {
+    entities: BTreeSet<Entity>,
+    occurrences: BTreeMap<Entity, Occurrence>,
+    subclass_axioms: BTreeSet<(Entity, Entity)>,
+}
+
+impl NamedHierarchyBuilder {
+    fn new() -> Self {
+        let mut builder = Self::default();
+        for (kind, iri) in [
+            (EntityKind::Class, OWL_THING_IRI),
+            (EntityKind::Class, OWL_NOTHING_IRI),
+            (EntityKind::ObjectProperty, OWL_TOP_OBJECT_PROPERTY_IRI),
+            (EntityKind::ObjectProperty, OWL_BOTTOM_OBJECT_PROPERTY_IRI),
+        ] {
+            builder.entities.insert(Entity {
+                kind,
+                iri: iri.to_owned(),
+            });
+        }
+        builder
+    }
+
+    fn add_declaration(&mut self, entity: Entity) -> CoreResult<()> {
+        match entity.kind {
+            EntityKind::Class | EntityKind::NamedIndividual | EntityKind::ObjectProperty => {
+                self.entities.insert(entity);
+                Ok(())
+            }
+            EntityKind::AnnotationProperty => Ok(()),
+            EntityKind::DataProperty | EntityKind::Datatype => Err(CoreError::invalid(format!(
+                "encoded named-hierarchy compiler does not support {:?} declarations",
+                entity.kind
+            ))),
+        }
+    }
+
+    fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
+        self.entities.insert(sub.clone());
+        self.entities.insert(super_.clone());
+        if self.subclass_axioms.insert((sub.clone(), super_.clone())) {
+            increment_occurrence(self.occurrences.entry(sub).or_default(), false)?;
+            increment_occurrence(self.occurrences.entry(super_).or_default(), true)?;
+        }
+        Ok(())
+    }
+
+    fn freeze(self, source_fingerprint: [u8; 32]) -> CoreResult<Ontology> {
+        let entities = self.entities.into_iter().collect::<Vec<_>>();
+        if entities.len() >= u32::MAX as usize {
+            return Err(CoreError::capacity(
+                "encoded compiler entity table exceeds the reserved u32 namespace",
+            ));
+        }
+        let entity_ids = entities
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, entity)| {
+                u32::try_from(index)
+                    .map(|identifier| (entity, identifier))
+                    .map_err(|_| CoreError::capacity("encoded compiler entity ID exceeds u32"))
+            })
+            .collect::<CoreResult<BTreeMap<_, _>>>()?;
+
+        let mut expressions = Vec::new();
+        let mut expression_occurrences = Vec::new();
+        let mut expression_ids = BTreeMap::new();
+        for (tag, kind) in [
+            (ExpressionTag::Class, EntityKind::Class),
+            (ExpressionTag::Individual, EntityKind::NamedIndividual),
+        ] {
+            for entity in entities.iter().filter(|entity| entity.kind == kind) {
+                let identifier = u32::try_from(expressions.len()).map_err(|_| {
+                    CoreError::capacity("encoded compiler expression ID exceeds u32")
+                })?;
+                if identifier == u32::MAX {
+                    return Err(CoreError::capacity(
+                        "encoded compiler expression table reaches the reserved u32 ID",
+                    ));
+                }
+                expressions.push(Expression {
+                    tag,
+                    payload: Vec::new(),
+                    arguments: vec![entity_ids[entity]],
+                });
+                expression_occurrences
+                    .push(self.occurrences.get(entity).copied().unwrap_or_default());
+                expression_ids.insert(entity.clone(), identifier);
+            }
+        }
+
+        let object_property_ids = entities
+            .iter()
+            .filter(|entity| entity.kind == EntityKind::ObjectProperty)
+            .map(|entity| entity_ids[entity])
+            .collect::<Vec<_>>();
+        let subclass_axioms = self
+            .subclass_axioms
+            .into_iter()
+            .map(|(sub, super_)| Ok((expression_ids[&sub], expression_ids[&super_])))
+            .collect::<CoreResult<Vec<_>>>()?;
+
+        Ok(Ontology {
+            entities,
+            expressions,
+            expression_occurrences,
+            property_occurrences: vec![Occurrence::default(); object_property_ids.len()],
+            property_chains: object_property_ids
+                .into_iter()
+                .map(|identifier| vec![identifier])
+                .collect(),
+            subclass_axioms,
+            equivalent_class_axioms: Vec::new(),
+            disjoint_groups: Vec::new(),
+            subproperty_axioms: Vec::new(),
+            property_ranges: Vec::new(),
+            feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
+            source_fingerprint,
+        })
+    }
+}
+
+fn compile_declaration<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    builder.add_declaration(decode_entity(node_field(node, 0, columns)?, columns)?)
+}
+
+fn compile_named_subclass<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 2, columns)?;
+    let sub = decode_named_class(node_field(node, 0, columns)?, columns)?;
+    let super_ = decode_named_class(node_field(node, 1, columns)?, columns)?;
+    builder.add_subclass(sub, super_)
+}
+
+fn decode_named_class<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Entity> {
+    let entity = decode_entity(identifier, columns)?;
+    if entity.kind != EntityKind::Class {
+        return Err(CoreError::internal(
+            "validated named class expression resolved to a non-class entity",
+        ));
+    }
+    Ok(entity)
+}
+
+fn decode_entity<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Entity> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    if u16_at(columns.node_tags, node, "entity node tag")? != 2 {
+        return Err(CoreError::invalid(
+            "encoded named-hierarchy compiler requires named entities",
+        ));
+    }
+    let kind = match entity_kind_at_node(node, columns)? {
+        EntityKindRole::Class => EntityKind::Class,
+        EntityKindRole::NamedIndividual => EntityKind::NamedIndividual,
+        EntityKindRole::ObjectProperty => EntityKind::ObjectProperty,
+        EntityKindRole::DataProperty => EntityKind::DataProperty,
+        EntityKindRole::Datatype => EntityKind::Datatype,
+        EntityKindRole::AnnotationProperty => EntityKind::AnnotationProperty,
+    };
+    let iri_node = node_field(node, 1, columns)?;
+    let iri_index = node_index(iri_node, node_count)?;
+    if u16_at(columns.node_tags, iri_index, "IRI node tag")? != 1 {
+        return Err(CoreError::internal(
+            "validated entity IRI resolved to a non-IRI node",
+        ));
+    }
+    let iri = text_field(iri_index, 0, columns)?;
+    if iri.is_empty() {
+        return Err(CoreError::protocol("encoded entity IRI must be nonempty"));
+    }
+    Ok(Entity { kind, iri })
+}
+
+fn node_field<B: ByteSource>(
+    node: usize,
+    position: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<u32> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let field = start
+        .checked_add(position)
+        .ok_or_else(|| CoreError::capacity("encoded compiler field index overflow"))?;
+    node_id_at(columns.field_values, field, "field node ID")
+}
+
+fn require_empty_annotations<B: ByteSource>(
+    node: usize,
+    position: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<()> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let field = start
+        .checked_add(position)
+        .ok_or_else(|| CoreError::capacity("encoded compiler field index overflow"))?;
+    if usize_at(columns.field_lengths, field, "annotation count")? != 0 {
+        return Err(CoreError::invalid(
+            "encoded named-hierarchy compiler does not yet deduplicate annotated axioms",
+        ));
+    }
+    Ok(())
+}
+
+fn text_field<B: ByteSource>(
+    node: usize,
+    position: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<String> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let field = start
+        .checked_add(position)
+        .ok_or_else(|| CoreError::capacity("encoded compiler field index overflow"))?;
+    let scalar_start = usize_at(columns.field_values, field, "text scalar offset")?;
+    let length = usize_at(columns.field_lengths, field, "text scalar length")?;
+    let end = scalar_start
+        .checked_add(length)
+        .ok_or_else(|| CoreError::capacity("encoded compiler text range overflow"))?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(length)
+        .map_err(|_| CoreError::capacity("encoded compiler text allocation failed"))?;
+    for index in scalar_start..end {
+        bytes.push(byte_at(columns.scalar_bytes, index, "text scalar byte")?);
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| CoreError::internal("validated encoded text was not UTF-8"))
+}
+
+fn increment_occurrence(occurrence: &mut Occurrence, positive: bool) -> CoreResult<()> {
+    let value = if positive {
+        &mut occurrence.positive
+    } else {
+        &mut occurrence.negative
+    };
+    *value = value
+        .checked_add(1)
+        .ok_or_else(|| CoreError::capacity("encoded expression occurrence exceeds u64"))?;
+    Ok(())
 }
 
 fn validate_graph_and_lengths<B: ByteSource>(
@@ -1983,6 +2288,32 @@ mod tests {
         }
     }
 
+    fn named_subclass() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 1, 2, 2, 61]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 9]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 3, 4, 0]),
+            field_lengths: le64(&[5, 5, 5, 0, 5, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:Bclassclass".to_vec(),
+        }
+    }
+
     fn equivalent_class_pair() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -2436,6 +2767,178 @@ mod tests {
         assert_eq!(declaration.node_count, 3);
         assert_eq!(declaration.field_count, 5);
         assert_eq!(declaration.scalar_bytes, 10);
+    }
+
+    #[test]
+    fn named_hierarchy_compiler_matches_the_frozen_ir_contract() {
+        let fingerprint = [7; 32];
+        let compiled = compile_named_hierarchy(
+            named_subclass().borrowed(),
+            EncodedLimits::default(),
+            fingerprint,
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.entities,
+            vec![
+                Entity {
+                    kind: EntityKind::Class,
+                    iri: OWL_NOTHING_IRI.to_owned(),
+                },
+                Entity {
+                    kind: EntityKind::Class,
+                    iri: OWL_THING_IRI.to_owned(),
+                },
+                Entity {
+                    kind: EntityKind::Class,
+                    iri: "urn:A".to_owned(),
+                },
+                Entity {
+                    kind: EntityKind::Class,
+                    iri: "urn:B".to_owned(),
+                },
+                Entity {
+                    kind: EntityKind::ObjectProperty,
+                    iri: OWL_BOTTOM_OBJECT_PROPERTY_IRI.to_owned(),
+                },
+                Entity {
+                    kind: EntityKind::ObjectProperty,
+                    iri: OWL_TOP_OBJECT_PROPERTY_IRI.to_owned(),
+                },
+            ]
+        );
+        assert_eq!(
+            compiled.expressions,
+            (0..4)
+                .map(|identifier| Expression {
+                    tag: ExpressionTag::Class,
+                    payload: Vec::new(),
+                    arguments: vec![identifier],
+                })
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            compiled.expression_occurrences,
+            vec![
+                Occurrence::default(),
+                Occurrence::default(),
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+                Occurrence {
+                    negative: 0,
+                    positive: 1,
+                },
+            ]
+        );
+        assert_eq!(
+            compiled.property_occurrences,
+            vec![Occurrence::default(), Occurrence::default()]
+        );
+        assert_eq!(compiled.property_chains, vec![vec![4], vec![5]]);
+        assert_eq!(compiled.subclass_axioms, vec![(2, 3)]);
+        assert_eq!(compiled.feature_counts, vec![0; FEATURE_VECTOR_LENGTH]);
+        assert_eq!(compiled.source_fingerprint, fingerprint);
+        assert!(compiled.equivalent_class_axioms.is_empty());
+        assert!(compiled.disjoint_groups.is_empty());
+        assert!(compiled.subproperty_axioms.is_empty());
+        assert!(compiled.property_ranges.is_empty());
+
+        assert_eq!(
+            compile_named_hierarchy(
+                named_subclass().indexed(),
+                EncodedLimits::default(),
+                fingerprint,
+            )
+            .unwrap(),
+            compiled
+        );
+    }
+
+    #[test]
+    fn named_hierarchy_declarations_follow_exact_elk_entity_policy() {
+        fn declaration_of(kind: &str) -> OwnedColumns {
+            let mut columns = declaration();
+            columns.field_lengths = le64(&[5, kind.len() as u64, 0, 0, 0]);
+            columns.scalar_bytes = format!("urn:C{kind}").into_bytes();
+            columns
+        }
+
+        let classes = compile_named_hierarchy(
+            declaration_of("class").borrowed(),
+            EncodedLimits::default(),
+            [0; 32],
+        )
+        .unwrap();
+        assert!(
+            classes
+                .entities
+                .iter()
+                .any(|entity| { entity.kind == EntityKind::Class && entity.iri == "urn:C" })
+        );
+
+        let individuals = compile_named_hierarchy(
+            declaration_of("named_individual").borrowed(),
+            EncodedLimits::default(),
+            [0; 32],
+        )
+        .unwrap();
+        assert!(individuals.expressions.iter().any(|expression| {
+            expression.tag == ExpressionTag::Individual && expression.arguments == [2]
+        }));
+
+        let properties = compile_named_hierarchy(
+            declaration_of("object_property").borrowed(),
+            EncodedLimits::default(),
+            [0; 32],
+        )
+        .unwrap();
+        assert_eq!(properties.property_chains.len(), 3);
+        assert_eq!(properties.property_occurrences.len(), 3);
+
+        let ignored = compile_named_hierarchy(
+            declaration_of("annotation_property").borrowed(),
+            EncodedLimits::default(),
+            [0; 32],
+        )
+        .unwrap();
+        assert_eq!(ignored.entities.len(), 4);
+
+        for kind in ["data_property", "datatype"] {
+            assert!(matches!(
+                compile_named_hierarchy(
+                    declaration_of(kind).borrowed(),
+                    EncodedLimits::default(),
+                    [0; 32],
+                ),
+                Err(CoreError::InvalidInput(message)) if message.contains("does not support")
+            ));
+        }
+    }
+
+    #[test]
+    fn named_hierarchy_compiler_fails_closed_outside_its_exact_slice() {
+        assert!(matches!(
+            compile_named_hierarchy(
+                equivalent_classes().borrowed(),
+                EncodedLimits::default(),
+                [0; 32],
+            ),
+            Err(CoreError::InvalidInput(message)) if message.contains("axiom tag 62")
+        ));
+
+        let mut malformed = named_subclass();
+        malformed.root_ids = le32(&[0]);
+        assert!(matches!(
+            compile_named_hierarchy(
+                malformed.borrowed(),
+                EncodedLimits::default(),
+                [0; 32],
+            ),
+            Err(CoreError::Protocol(message)) if message.contains("one-based")
+        ));
     }
 
     #[test]
