@@ -1,7 +1,8 @@
 # Native structural ingestion and compilation
 
-Status: normative successor optimization for the implemented `0.1.x` reasoner. It changes the
-native compilation path, not the ELK `0.6.0` compatibility profile, public results, or complete
+Status: normative successor optimization with a complete repository-owned hidden-path checkpoint
+at pyELK `886f6a3`. Capability promotion and release acceptance remain open. It changes the native
+compilation path, not the ELK `0.6.0` compatibility profile, public results, or complete
 pure-Python fallback.
 
 ## 1. Objective
@@ -158,3 +159,10 @@ encoded-native Rust produce exact results; direct/mmap/overlay/composite lifetim
 descriptors pass; release-scale time/RSS/copy evidence passes; public documentation and
 provenance identify the selected ingestion path; and Exact-OM/OAEI handoff tests observe the same
 core snapshot with no repeated parse or ontology-sized materialization.
+
+The implementation checkpoint satisfies the repository-owned adapter/compiler, semantic parity,
+hostile-input, lifecycle, and diagnostic portions above while keeping
+`encoded_view_schemas` empty. Completion is still blocked on the advertised pyowl-core WP17/WP18
+producer contract, a gate-eligible labelled run of the full time/RSS matrix using that producer,
+same-machine Java evidence, the installed native-wheel release audit matrix, and final downstream
+revision pins. See the [WP14 handoff report](../reports/workpackages/WP14.md) for exact evidence.

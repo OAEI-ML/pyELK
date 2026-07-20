@@ -104,6 +104,10 @@ backend differential sign-off remains a WP13 gate.
 | [WP13](WP13-integration.md) | exact full parity, performance, final hardening | WP0–WP12 | cross-system fixes/benchmarks |
 | [WP14](WP14-native-structural-compiler.md) | direct encoded-view-to-Rust ELK compilation and release evidence | WP13, pyowl-core WP17 | native structural compiler, adapter, differential/performance evidence |
 
+WP14's repository-owned hidden implementation checkpoint and its still-open external gates are
+recorded in the [WP14 handoff report](../../reports/workpackages/WP14.md). A checkpoint report is
+not permission to advertise the encoded capability.
+
 ## 6. Contract change protocol
 
 Frozen after WP0: IR major/minor framing, backend protocol, raw result framing, public

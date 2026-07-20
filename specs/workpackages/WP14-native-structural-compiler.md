@@ -3,9 +3,13 @@
 **Goal:** replace scalar Python ontology compilation on the optimized Rust path with direct,
 segment-aware compilation from pyowl-core's public `EncodedStructuralView`.
 
-**Status:** specified, not implemented. **Depends on:** WP13 and a released/candidate pyowl-core
-WP17 encoded-view contract. It may proceed in parallel with the corresponding pyHermiT and
-projector consumer packages once that schema candidate is frozen.
+**Status:** repository-owned implementation checkpoint complete on 2026-07-20; capability and
+release acceptance remain open. **Depends on:** WP13 and a released/candidate pyowl-core WP17
+encoded-view contract. The compiler stays unadvertised until that core contract and the required
+performance/release evidence are frozen.
+
+The exact checkpoint, verification commands, revisions, and blockers are recorded in the
+[WP14 handoff report](../../reports/workpackages/WP14.md).
 
 ## Read first
 
@@ -69,3 +73,19 @@ negotiated dependency or feature declaration.
 Publish the supported core package/API/adapter/encoded-schema range, pyELK compiler schema,
 canonical fixture digests, benchmark evidence, and the exact consumer revisions tested. pyELK
 must remain independently usable with older compatible scalar-only core providers.
+
+## Implementation checkpoint
+
+The contiguous WP14 implementation series from `7edbb07` through `886f6a3` now provides the
+hidden public-core adapter, defensive Rust decoder/compiler, direct session construction,
+direct/mmap/overlay/composite traversal, transactional unsupported handling, compiler summary
+parity, lifecycle hardening, ingestion timing/copy accounting, and bounded public handoff
+diagnostics. The complete frozen constructor ledger is either compiled with scalar-equivalent
+semantics or rejected through the same whole-axiom unsupported policy. Scalar Python and
+scalar-wire behavior remain complete.
+
+This is not WP14 acceptance. Both pyELK and the candidate core continue to advertise no encoded
+schema. The core WP17/WP18 capability and version range, gate-eligible real-producer benchmark
+matrix, labelled time/RSS/Java evidence, installed native-wheel audit matrix, and final consumer
+revision pins remain open. No local test-hook or experimental fallback result may be used to
+promote the capability.
