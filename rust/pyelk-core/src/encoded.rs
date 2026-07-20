@@ -430,6 +430,7 @@ pub fn validate_columns<B: ByteSource>(
                         "encoded collection field exceeds item rows",
                     ));
                 }
+                let mut previous_set_item = None;
                 for item in value..end {
                     claim_work(&mut work, 1, limits.max_work)?;
                     let item_kind = byte_at(columns.item_kinds, item, "item kind")?;
@@ -438,6 +439,16 @@ pub fn validate_columns<B: ByteSource>(
                     validate_collection_item_role(
                         location, item_role, item_kind, item_value, &columns, node_count,
                     )?;
+                    if expected_kind == COMPONENT_SET {
+                        let identifier =
+                            node_id_at(columns.item_values, item, "canonical-set item node ID")?;
+                        if previous_set_item.is_some_and(|prior| prior >= identifier) {
+                            return Err(CoreError::protocol(
+                                "encoded canonical-set node IDs are not strictly ascending and unique",
+                            ));
+                        }
+                        previous_set_item = Some(identifier);
+                    }
                     validate_leaf_component(
                         item_kind,
                         item_value,
@@ -1275,11 +1286,40 @@ mod tests {
         }
     }
 
-    fn assert_role_error(columns: &OwnedColumns) {
+    fn equivalent_classes() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 2, 1, 2, 62]),
+            node_field_offsets: le64(&[0, 1, 3, 4, 6, 8]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 1, 10, 15, 3, 0, 2]),
+            field_lengths: le64(&[5, 5, 0, 5, 5, 0, 2, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[2, 4]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes: b"urn:Aclassurn:Bclass".to_vec(),
+        }
+    }
+
+    fn assert_protocol_contains(columns: &OwnedColumns, expected: &str) {
         assert!(matches!(
             validate_columns(columns.borrowed(), EncodedLimits::default()),
-            Err(CoreError::Protocol(message)) if message.contains("schema role")
+            Err(CoreError::Protocol(message)) if message.contains(expected)
         ));
+    }
+
+    fn assert_role_error(columns: &OwnedColumns) {
+        assert_protocol_contains(columns, "schema role");
     }
 
     #[test]
@@ -1354,6 +1394,141 @@ mod tests {
             validate_columns(malformed.borrowed(), EncodedLimits::default()),
             Err(CoreError::Protocol(message)) if message.contains("model-schema-1")
         ));
+    }
+
+    #[test]
+    fn column_offsets_and_arenas_require_exact_nonoverlapping_coverage() {
+        validate_columns(equivalent_classes().borrowed(), EncodedLimits::default()).unwrap();
+
+        let mut malformed = equivalent_classes();
+        malformed.node_field_offsets = le64(&[1, 1, 3, 4, 6, 8]);
+        assert_protocol_contains(&malformed, "offsets must start at zero");
+
+        let mut malformed = equivalent_classes();
+        malformed.node_field_offsets = le64(&[0, 1, 3, 4, 6, 9]);
+        assert_protocol_contains(&malformed, "offsets are not contiguous and bounded");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_kinds.push(COMPONENT_NONE);
+        malformed.field_values.extend(le64(&[0]));
+        malformed.field_lengths.extend(le64(&[0]));
+        assert_protocol_contains(&malformed, "offsets do not cover every field");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_values = le64(&[0, 5, 1, 10, 15, 3, 1, 2]);
+        assert_protocol_contains(&malformed, "exactly cover item rows");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_values = le64(&[0, 5, 1, 10, 15, 3, 0, 1]);
+        assert_protocol_contains(&malformed, "exactly cover item rows");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_lengths = le64(&[5, 5, 0, 5, 5, 0, 3, 0]);
+        assert_protocol_contains(&malformed, "collection field exceeds item rows");
+
+        let mut malformed = equivalent_classes();
+        malformed.item_kinds.push(COMPONENT_NODE);
+        malformed.item_values.extend(le64(&[4]));
+        malformed.item_lengths.extend(le64(&[0]));
+        assert_protocol_contains(&malformed, "item rows are not exactly covered");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_values = le64(&[1, 5, 1, 10, 15, 3, 0, 2]);
+        assert_protocol_contains(&malformed, "exactly cover the scalar arena");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_values = le64(&[0, 5, 1, 9, 15, 3, 0, 2]);
+        assert_protocol_contains(&malformed, "exactly cover the scalar arena");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_lengths = le64(&[21, 5, 0, 5, 5, 0, 2, 0]);
+        assert_protocol_contains(&malformed, "scalar component is out of bounds");
+
+        let mut malformed = equivalent_classes();
+        malformed.scalar_bytes.push(b'x');
+        assert_protocol_contains(&malformed, "scalar arena is not exactly covered");
+    }
+
+    #[test]
+    fn node_references_are_one_based_bounded_and_canonical_sets_are_sorted() {
+        let mut malformed = declaration();
+        malformed.root_ids = le32(&[0]);
+        assert_protocol_contains(&malformed, "one-based and nonzero");
+
+        let mut malformed = declaration();
+        malformed.root_ids = le32(&[4]);
+        assert_protocol_contains(&malformed, "node ID is out of range");
+
+        let mut malformed = declaration();
+        malformed.field_values = le64(&[0, 5, 0, 2, 0]);
+        assert_protocol_contains(&malformed, "one-based and nonzero");
+
+        let mut malformed = declaration();
+        malformed.field_values = le64(&[0, 5, 4, 2, 0]);
+        assert_protocol_contains(&malformed, "node ID is out of range");
+
+        let mut malformed = equivalent_classes();
+        malformed.item_values = le64(&[0, 4]);
+        assert_protocol_contains(&malformed, "one-based and nonzero");
+
+        let mut malformed = equivalent_classes();
+        malformed.item_values = le64(&[2, 6]);
+        assert_protocol_contains(&malformed, "node ID is out of range");
+
+        let mut malformed = equivalent_classes();
+        malformed.item_values = le64(&[4, 2]);
+        assert_protocol_contains(&malformed, "not strictly ascending and unique");
+
+        let mut malformed = equivalent_classes();
+        malformed.item_values = le64(&[2, 2]);
+        assert_protocol_contains(&malformed, "not strictly ascending and unique");
+
+        let mut ordered_sequence = property_chain();
+        ordered_sequence.field_values = le64(&[0, 5, 1, 0, 3, 2, 2]);
+        ordered_sequence.field_lengths = le64(&[5, 15, 0, 2, 0, 0, 0]);
+        ordered_sequence.item_kinds = vec![COMPONENT_NODE, COMPONENT_NODE];
+        ordered_sequence.item_values = le64(&[2, 2]);
+        ordered_sequence.item_lengths = le64(&[0, 0]);
+        validate_columns(ordered_sequence.borrowed(), EncodedLimits::default()).unwrap();
+    }
+
+    #[test]
+    fn root_kind_tag_and_order_rules_cover_the_frozen_constructor_ledger() {
+        const AXIOM_TAGS: [u16; 37] = [
+            60, 61, 62, 63, 64, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 90, 91, 92, 93,
+            94, 95, 100, 101, 110, 111, 112, 113, 114, 115, 116, 120, 121, 122, 123,
+        ];
+        for (tag, _roles) in CONSTRUCTOR_ROLE_LEDGER {
+            assert_eq!(root_accepts(ROOT_ONTOLOGY_ANNOTATION, *tag), *tag == 5);
+            assert_eq!(root_accepts(ROOT_AXIOM, *tag), AXIOM_TAGS.contains(tag));
+            assert_eq!(root_accepts(ROOT_EXTENSION, *tag), *tag == 148);
+            assert!(!root_accepts(0, *tag));
+            assert!(!root_accepts(4, *tag));
+        }
+        for tag in [0, 6, 59, 65, 83, 96, 102, 117, 124, 139, 149] {
+            assert!(!root_accepts(ROOT_ONTOLOGY_ANNOTATION, tag));
+            assert!(!root_accepts(ROOT_AXIOM, tag));
+            assert!(!root_accepts(ROOT_EXTENSION, tag));
+        }
+
+        validate_columns(annotation().borrowed(), EncodedLimits::default()).unwrap();
+
+        let mut malformed = declaration();
+        malformed.root_kinds[0] = ROOT_ONTOLOGY_ANNOTATION;
+        assert_protocol_contains(&malformed, "inconsistent with its constructor tag");
+
+        let mut malformed = annotation();
+        malformed.root_kinds[0] = ROOT_AXIOM;
+        assert_protocol_contains(&malformed, "inconsistent with its constructor tag");
+
+        let mut malformed = equivalent_classes();
+        malformed.root_ids = le32(&[2]);
+        assert_protocol_contains(&malformed, "inconsistent with its constructor tag");
+
+        let mut malformed = equivalent_classes();
+        malformed.root_kinds = vec![ROOT_AXIOM, ROOT_AXIOM];
+        malformed.root_ids = le32(&[5, 5]);
+        assert_protocol_contains(&malformed, "strictly ordered and unique");
     }
 
     #[test]
