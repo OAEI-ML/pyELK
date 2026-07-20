@@ -36,6 +36,7 @@ const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
 // Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
+const FEATURE_BOTTOM_OBJECT_PROPERTY_POSITIVE: usize = 2;
 const FEATURE_OBJECT_PROPERTY_CHAIN: usize = 40;
 const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
@@ -46,6 +47,7 @@ const FEATURE_OBJECT_HAS_VALUE_POSITIVE: usize = 34;
 const FEATURE_OBJECT_PROPERTY_ASSERTION: usize = 39;
 const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
 const FEATURE_REFLEXIVE_OBJECT_PROPERTY: usize = 44;
+const FEATURE_TOP_OBJECT_PROPERTY_NEGATIVE: usize = 48;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EntityKindRole {
@@ -1042,6 +1044,12 @@ impl NamedHierarchyBuilder {
         if positive {
             increment_occurrence(occurrence, true)?;
         }
+        if positive && property.iri == OWL_BOTTOM_OBJECT_PROPERTY_IRI {
+            self.add_feature(FEATURE_BOTTOM_OBJECT_PROPERTY_POSITIVE, 1)?;
+        }
+        if negative && property.iri == OWL_TOP_OBJECT_PROPERTY_IRI {
+            self.add_feature(FEATURE_TOP_OBJECT_PROPERTY_NEGATIVE, 1)?;
+        }
         Ok(())
     }
 
@@ -1481,6 +1489,11 @@ fn decode_simple_class_expression<B: ByteSource>(
         34 => {
             let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
             let filler = decode_named_class(node_field(node, 1, columns)?, columns)?;
+            Ok(CompilerExpression::Existential(property, filler))
+        }
+        36 => {
+            let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+            let filler = decode_named_individual(node_field(node, 1, columns)?, columns)?;
             Ok(CompilerExpression::Existential(property, filler))
         }
         37 => {
@@ -3298,6 +3311,37 @@ mod tests {
         }
     }
 
+    fn named_has_value_superclass() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[8]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 36, 61]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 11, 14]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 1, 20, 3, 35, 2, 5, 6, 4, 7, 0]),
+            field_lengths: le64(&[5, 5, 5, 5, 0, 15, 0, 16, 0, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:iurn:pclassobject_propertynamed_individual".to_vec(),
+        }
+    }
+
     fn named_class_assertion() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -4107,6 +4151,31 @@ mod tests {
         assert_eq!(compiled.expression_occurrences[3].negative, 1);
         assert_eq!(compiled.property_occurrences[2].negative, 1);
         assert_eq!(compiled.feature_counts[FEATURE_OBJECT_HAS_SELF_NEGATIVE], 1);
+    }
+
+    #[test]
+    fn named_has_value_superclass_reuses_nominal_existential() {
+        let compiled = compile_named_hierarchy(
+            named_has_value_superclass().borrowed(),
+            EncodedLimits::default(),
+            [22; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[4].tag,
+            ExpressionTag::ObjectSomeValuesFrom
+        );
+        assert_eq!(compiled.expressions[4].arguments, [6, 3]);
+        assert_eq!(compiled.subclass_axioms, vec![(2, 4)]);
+        assert_eq!(compiled.expression_occurrences[2].negative, 1);
+        assert_eq!(compiled.expression_occurrences[3].positive, 1);
+        assert_eq!(compiled.expression_occurrences[4].positive, 1);
+        assert_eq!(compiled.property_occurrences[2].positive, 1);
+        assert_eq!(
+            compiled.feature_counts[FEATURE_OBJECT_HAS_VALUE_POSITIVE],
+            1
+        );
     }
 
     #[test]
