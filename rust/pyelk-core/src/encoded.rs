@@ -533,11 +533,11 @@ pub fn validate_columns<B: ByteSource>(
 /// Compile the first exact, deliberately narrow encoded-ontology slice.
 ///
 /// This stage accepts unannotated declarations of classes, named individuals, and object
-/// properties plus unannotated `SubClassOf` and `EquivalentClasses` axioms whose operands are
-/// named classes. Ontology annotations and annotation-property declarations have no ELK effect
-/// and are ignored. Every other logical constructor fails closed, irrespective of the scalar
-/// compiler's unsupported policy. Consequently this function is safe to extend and test while
-/// encoded-schema capability advertisement remains disabled.
+/// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`, and
+/// `SameIndividual` axioms. Ontology annotations and annotation-property declarations have no ELK
+/// effect and are ignored. Every other logical constructor fails closed, irrespective of the
+/// scalar compiler's unsupported policy. Consequently this function is safe to extend and test
+/// while encoded-schema capability advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -564,6 +564,8 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             60 => compile_declaration(node, &columns, &mut builder)?,
             61 => compile_named_subclass(node, &columns, &mut builder)?,
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
+            110 => compile_same_named_individuals(node, &columns, &mut builder)?,
+            112 => compile_named_class_assertion(node, &columns, &mut builder)?,
             tag => {
                 return Err(CoreError::invalid(format!(
                     "encoded named-hierarchy compiler does not support axiom tag {tag}"
@@ -616,10 +618,9 @@ impl NamedHierarchyBuilder {
     fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
         self.entities.insert(sub.clone());
         self.entities.insert(super_.clone());
-        if self.subclass_axioms.insert((sub.clone(), super_.clone())) {
-            increment_occurrence(self.occurrences.entry(sub).or_default(), false)?;
-            increment_occurrence(self.occurrences.entry(super_).or_default(), true)?;
-        }
+        increment_occurrence(self.occurrences.entry(sub.clone()).or_default(), false)?;
+        increment_occurrence(self.occurrences.entry(super_.clone()).or_default(), true)?;
+        self.subclass_axioms.insert((sub, super_));
         Ok(())
     }
 
@@ -635,6 +636,23 @@ impl NamedHierarchyBuilder {
         }
         for member in members.into_iter().skip(1) {
             self.equivalent_class_axioms.insert((first.clone(), member));
+        }
+        Ok(())
+    }
+
+    fn add_same_individuals(&mut self, members: Vec<Entity>) -> CoreResult<()> {
+        let Some(first) = members.first().cloned() else {
+            return Ok(());
+        };
+        for member in &members {
+            self.entities.insert(member.clone());
+            let occurrence = self.occurrences.entry(member.clone()).or_default();
+            increment_occurrence(occurrence, false)?;
+            increment_occurrence(occurrence, true)?;
+        }
+        for member in members.into_iter().skip(1) {
+            self.subclass_axioms.insert((first.clone(), member.clone()));
+            self.subclass_axioms.insert((member, first.clone()));
         }
         Ok(())
     }
@@ -753,6 +771,30 @@ fn compile_named_equivalence<B: ByteSource>(
     builder.add_equivalent_classes(members)
 }
 
+fn compile_named_class_assertion<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 2, columns)?;
+    let class = decode_named_class(node_field(node, 0, columns)?, columns)?;
+    let individual = decode_named_individual(node_field(node, 1, columns)?, columns)?;
+    builder.add_subclass(individual, class)
+}
+
+fn compile_same_named_individuals<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    let members = node_collection(node, 0, columns)?
+        .into_iter()
+        .map(|identifier| decode_named_individual(identifier, columns))
+        .collect::<CoreResult<Vec<_>>>()?;
+    builder.add_same_individuals(members)
+}
+
 fn decode_named_class<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
@@ -761,6 +803,19 @@ fn decode_named_class<B: ByteSource>(
     if entity.kind != EntityKind::Class {
         return Err(CoreError::internal(
             "validated named class expression resolved to a non-class entity",
+        ));
+    }
+    Ok(entity)
+}
+
+fn decode_named_individual<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Entity> {
+    let entity = decode_entity(identifier, columns)?;
+    if entity.kind != EntityKind::NamedIndividual {
+        return Err(CoreError::internal(
+            "validated named individual resolved to the wrong entity kind",
         ));
     }
     Ok(entity)
@@ -2374,6 +2429,57 @@ mod tests {
         }
     }
 
+    fn named_class_assertion() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 1, 2, 2, 112]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 9]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 3, 4, 0]),
+            field_lengths: le64(&[5, 5, 5, 0, 16, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:iclassnamed_individual".to_vec(),
+        }
+    }
+
+    fn same_named_individuals() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 1, 2, 2, 110]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 8]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 26, 2, 0, 2]),
+            field_lengths: le64(&[5, 5, 16, 0, 16, 0, 2, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[3, 4]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes: b"urn:iurn:jnamed_individualnamed_individual".to_vec(),
+        }
+    }
+
     fn equivalent_class_pair() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -2994,6 +3100,62 @@ mod tests {
             vec![
                 Occurrence::default(),
                 Occurrence::default(),
+                Occurrence {
+                    negative: 1,
+                    positive: 1,
+                },
+                Occurrence {
+                    negative: 1,
+                    positive: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn named_class_assertion_compiles_as_individual_subsumption() {
+        let compiled = compile_named_hierarchy(
+            named_class_assertion().borrowed(),
+            EncodedLimits::default(),
+            [3; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.subclass_axioms, vec![(3, 2)]);
+        assert_eq!(compiled.expressions[3].tag, ExpressionTag::Individual);
+        assert_eq!(compiled.expressions[3].arguments, [3]);
+        assert_eq!(
+            compiled.expression_occurrences,
+            vec![
+                Occurrence::default(),
+                Occurrence::default(),
+                Occurrence {
+                    negative: 0,
+                    positive: 1,
+                },
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn same_named_individuals_compile_as_dual_bidirectional_rows() {
+        let compiled = compile_named_hierarchy(
+            same_named_individuals().borrowed(),
+            EncodedLimits::default(),
+            [4; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.subclass_axioms, vec![(2, 3), (3, 2)]);
+        assert_eq!(compiled.expressions[2].tag, ExpressionTag::Individual);
+        assert_eq!(compiled.expressions[3].tag, ExpressionTag::Individual);
+        assert_eq!(
+            &compiled.expression_occurrences[2..],
+            &[
                 Occurrence {
                     negative: 1,
                     positive: 1,
