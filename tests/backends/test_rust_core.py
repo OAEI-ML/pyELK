@@ -1814,6 +1814,30 @@ def test_hidden_encoded_session_rejects_use_after_fork_without_locking(
         session.close()
 
 
+def test_hidden_encoded_session_survives_interpreter_shutdown(
+    native_module: ModuleType,
+) -> None:
+    native_path = Path(native_module.__file__).resolve()
+    runner = Path(__file__).with_name("_encoded_shutdown_runner.py")
+    root = Path(__file__).parents[2]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(root / "src"), str(root.parent / "pyOWLCore" / "src"))
+    )
+    completed = subprocess.run(
+        [sys.executable, os.fspath(runner), os.fspath(native_path)],
+        cwd=root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "encoded native session ready for interpreter shutdown\n"
+    assert completed.stderr == ""
+
+
 def test_native_session_close_is_idempotent_and_terminal(native_module: ModuleType) -> None:
     from tests.helpers.contracts import TinyCompiledOntologyBuilder
 
