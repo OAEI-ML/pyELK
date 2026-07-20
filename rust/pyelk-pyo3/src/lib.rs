@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 
 use std::any::Any;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process;
 use std::sync::{Arc, Mutex};
@@ -122,12 +122,468 @@ struct ValidatedEncodedInput<'py> {
     referenced_view_count: u64,
     posting: Option<EncodedPostingBinding<'py>>,
     composite_bindings: Option<Vec<EncodedCompilationTableBinding<'py>>>,
+    composite_posting_bytes: usize,
 }
 
+#[derive(Clone)]
 struct EncodedCompilationTableBinding<'py> {
     bindings: EncodedBufferBindings<'py>,
-    posting_mode: Option<EncodedPostingMode>,
-    root_ids: EncodedBufferBinding<'py>,
+    view_id: usize,
+    selection: EncodedRootPlan,
+}
+
+#[derive(Clone, Debug)]
+enum EncodedRootPlan {
+    All,
+    Include(BTreeSet<u32>),
+    Exclude(BTreeSet<u32>),
+    Dropped,
+}
+
+impl EncodedRootPlan {
+    fn mode(&self) -> Option<EncodedPostingMode> {
+        match self {
+            Self::All | Self::Dropped => None,
+            Self::Include(_) => Some(EncodedPostingMode::Include),
+            Self::Exclude(_) => Some(EncodedPostingMode::Exclude),
+        }
+    }
+
+    fn posting_bytes(&self) -> CoreResult<Vec<u8>> {
+        let postings = match self {
+            Self::Include(postings) | Self::Exclude(postings) => postings,
+            Self::All | Self::Dropped => return Ok(Vec::new()),
+        };
+        let capacity = postings
+            .len()
+            .checked_mul(4)
+            .ok_or_else(|| CoreError::capacity("encoded resolved posting bytes overflow"))?;
+        let mut encoded = Vec::new();
+        encoded
+            .try_reserve_exact(capacity)
+            .map_err(|_| CoreError::capacity("encoded resolved posting allocation failed"))?;
+        for posting in postings {
+            encoded.extend_from_slice(&posting.to_le_bytes());
+        }
+        Ok(encoded)
+    }
+
+    fn apply(&mut self, mode: EncodedPostingMode, postings: &BTreeSet<u32>) {
+        let next = match (&*self, mode) {
+            (Self::Dropped, _) => Self::Dropped,
+            (Self::All, EncodedPostingMode::Include) => Self::included(postings.clone()),
+            (Self::All, EncodedPostingMode::Exclude) => Self::excluded(postings.clone()),
+            (Self::Include(current), EncodedPostingMode::Include) => {
+                Self::included(current.intersection(postings).copied().collect())
+            }
+            (Self::Include(current), EncodedPostingMode::Exclude) => {
+                Self::included(current.difference(postings).copied().collect())
+            }
+            (Self::Exclude(current), EncodedPostingMode::Include) => {
+                Self::included(postings.difference(current).copied().collect())
+            }
+            (Self::Exclude(current), EncodedPostingMode::Exclude) => {
+                Self::excluded(current.union(postings).copied().collect())
+            }
+        };
+        *self = next;
+    }
+
+    fn included(postings: BTreeSet<u32>) -> Self {
+        if postings.is_empty() {
+            Self::Dropped
+        } else {
+            Self::Include(postings)
+        }
+    }
+
+    fn excluded(postings: BTreeSet<u32>) -> Self {
+        if postings.is_empty() {
+            Self::All
+        } else {
+            Self::Exclude(postings)
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ResolvedEncodedView<'py> {
+    tables: Vec<EncodedCompilationTableBinding<'py>>,
+    local_root_count: usize,
+}
+
+struct CompositeResolver<'py> {
+    model_schema: u64,
+    active: BTreeSet<usize>,
+    cache: BTreeMap<usize, ResolvedEncodedView<'py>>,
+    referenced: BTreeSet<usize>,
+    segment_count: u64,
+    posting_bytes: usize,
+}
+
+impl<'py> CompositeResolver<'py> {
+    fn new(model_schema: u64, top_view_id: usize) -> Self {
+        Self {
+            model_schema,
+            active: BTreeSet::from([top_view_id]),
+            cache: BTreeMap::new(),
+            referenced: BTreeSet::new(),
+            segment_count: 0,
+            posting_bytes: 0,
+        }
+    }
+
+    fn resolve(&mut self, view: &Bound<'py, PyAny>) -> CoreResult<ResolvedEncodedView<'py>> {
+        let view_id = view.as_ptr() as usize;
+        self.referenced.insert(view_id);
+        if self.active.contains(&view_id) {
+            return Err(CoreError::protocol(
+                "encoded structural segment graph is cyclic",
+            ));
+        }
+        if let Some(cached) = self.cache.get(&view_id) {
+            return Ok(cached.clone());
+        }
+        if self.cache.len() + self.active.len() >= 256 {
+            return Err(CoreError::capacity(
+                "encoded structural view graph exceeds the consumer limit",
+            ));
+        }
+        self.active.insert(view_id);
+        let result = self.resolve_uncached(view, view_id);
+        self.active.remove(&view_id);
+        let resolved = result?;
+        self.cache.insert(view_id, resolved.clone());
+        Ok(resolved)
+    }
+
+    fn resolve_top(&mut self, view: &Bound<'py, PyAny>) -> CoreResult<ResolvedEncodedView<'py>> {
+        let view_id = view.as_ptr() as usize;
+        self.active.remove(&view_id);
+        let resolved = self.resolve(view)?;
+        self.referenced.remove(&view_id);
+        Ok(resolved)
+    }
+
+    fn resolve_uncached(
+        &mut self,
+        view: &Bound<'py, PyAny>,
+        view_id: usize,
+    ) -> CoreResult<ResolvedEncodedView<'py>> {
+        let (owner, model_schema) = validate_encoded_envelope(view)?;
+        if model_schema != self.model_schema {
+            return Err(CoreError::protocol(
+                "referenced encoded view model schema differs from the top view",
+            ));
+        }
+        let bindings = EncodedBufferBindings::from_view(view)?;
+        let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
+        reject_anonymous_segment_nodes(&bindings, validated.node_count)?;
+        let raw_segments = required_attribute(view, "segments")?;
+        let segments = raw_segments.cast::<PyTuple>().map_err(|_| {
+            CoreError::protocol("encoded structural view segments must be an exact tuple")
+        })?;
+        if segments.is_empty() {
+            return Err(CoreError::protocol(
+                "encoded structural segment table must not be empty",
+            ));
+        }
+        validate_structural_fingerprint(view, &bindings, segments)?;
+        self.segment_count =
+            self.segment_count
+                .checked_add(u64::try_from(segments.len()).map_err(|_| {
+                    CoreError::capacity("encoded structural segment count exceeds u64")
+                })?)
+                .ok_or_else(|| CoreError::capacity("encoded structural segment count overflow"))?;
+        for index in 0..segments.len() {
+            let segment = segments
+                .get_item(index)
+                .map_err(|_| CoreError::protocol("encoded structural segment is inaccessible"))?;
+            let root_ids = EncodedBufferBinding::new(required_attribute(&segment, "root_ids")?);
+            self.posting_bytes = self
+                .posting_bytes
+                .checked_add(root_ids.source("segment root_ids")?.len())
+                .ok_or_else(|| CoreError::capacity("encoded posting byte count overflow"))?;
+        }
+
+        let first = segments
+            .get_item(0)
+            .map_err(|_| CoreError::protocol("encoded structural segment is inaccessible"))?;
+        let first_role = exact_nonnegative_integer(
+            &required_attribute(&first, "role")?,
+            "encoded segment role",
+        )?;
+        match first_role {
+            SEGMENT_DIRECT => {
+                validate_direct_segment(view, &owner)?;
+                Ok(ResolvedEncodedView {
+                    tables: vec![EncodedCompilationTableBinding {
+                        bindings,
+                        view_id,
+                        selection: EncodedRootPlan::All,
+                    }],
+                    local_root_count: validated.root_count,
+                })
+            }
+            SEGMENT_OVERLAY_BASE => self.resolve_overlay(
+                view,
+                &owner,
+                bindings,
+                validated.root_count,
+                segments,
+                &first,
+                view_id,
+            ),
+            SEGMENT_COMPOSITE_MEMBER => self.resolve_composite(
+                view,
+                &owner,
+                bindings,
+                validated.root_count,
+                segments,
+                view_id,
+            ),
+            _ => Err(CoreError::invalid(
+                "encoded composite source has an unsupported segment family",
+            )),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_overlay(
+        &mut self,
+        _view: &Bound<'py, PyAny>,
+        owner: &Bound<'py, PyAny>,
+        bindings: EncodedBufferBindings<'py>,
+        local_root_count: usize,
+        segments: &Bound<'py, PyTuple>,
+        base: &Bound<'py, PyAny>,
+        view_id: usize,
+    ) -> CoreResult<ResolvedEncodedView<'py>> {
+        if !(1..=2).contains(&segments.len()) {
+            return Err(CoreError::protocol(
+                "encoded overlay segment family must contain a base and optional delta",
+            ));
+        }
+        validate_empty_segment_bytes(base, "anonymous_scope_map")?;
+        if !required_attribute(base, "member_token")?.is_none() {
+            return Err(CoreError::protocol(
+                "overlay base segment must not carry a member token",
+            ));
+        }
+        let source = required_attribute(base, "source")?;
+        if source.is_none() {
+            return Err(CoreError::protocol(
+                "overlay base segment must reference a source view",
+            ));
+        }
+        let source_owner = required_attribute(&source, "owner")?;
+        if !required_attribute(base, "owner")?.is(&source_owner) {
+            return Err(CoreError::protocol(
+                "overlay base segment owner differs from its source owner",
+            ));
+        }
+        let mut resolved = self.resolve(&source)?;
+        let raw_mode = exact_nonnegative_integer(
+            &required_attribute(base, "posting_mode")?,
+            "encoded overlay posting_mode",
+        )?;
+        let root_ids = EncodedBufferBinding::new(required_attribute(base, "root_ids")?);
+        let postings = root_ids.source("overlay base root_ids")?;
+        match raw_mode {
+            POSTINGS_ALL => {
+                if !postings.is_empty() {
+                    return Err(CoreError::protocol(
+                        "ALL overlay base segment must not carry root postings",
+                    ));
+                }
+            }
+            POSTINGS_EXCLUDE => {
+                let selected = read_root_postings(postings, resolved.local_root_count)?;
+                apply_source_selection(
+                    &mut resolved.tables,
+                    source.as_ptr() as usize,
+                    EncodedPostingMode::Exclude,
+                    &selected,
+                );
+            }
+            _ => {
+                return Err(CoreError::protocol(
+                    "overlay base segment posting mode is invalid",
+                ));
+            }
+        }
+        if segments.len() == 1 {
+            if local_root_count != 0 {
+                return Err(CoreError::protocol(
+                    "single-segment overlay base must not carry local roots",
+                ));
+            }
+        } else {
+            let delta = segments.get_item(1).map_err(|_| {
+                CoreError::protocol("encoded overlay delta segment is inaccessible")
+            })?;
+            validate_overlay_delta_segment(&delta, owner, local_root_count)?;
+            resolved.tables.push(EncodedCompilationTableBinding {
+                bindings,
+                view_id,
+                selection: EncodedRootPlan::All,
+            });
+        }
+        enforce_resolved_table_limit(&resolved.tables)?;
+        Ok(ResolvedEncodedView {
+            tables: resolved.tables,
+            local_root_count,
+        })
+    }
+
+    fn resolve_composite(
+        &mut self,
+        _view: &Bound<'py, PyAny>,
+        owner: &Bound<'py, PyAny>,
+        bindings: EncodedBufferBindings<'py>,
+        local_root_count: usize,
+        segments: &Bound<'py, PyTuple>,
+        view_id: usize,
+    ) -> CoreResult<ResolvedEncodedView<'py>> {
+        let last = segments
+            .get_item(segments.len() - 1)
+            .map_err(|_| CoreError::protocol("encoded composite segment is inaccessible"))?;
+        let has_bridge = exact_nonnegative_integer(
+            &required_attribute(&last, "role")?,
+            "encoded composite segment role",
+        )? == SEGMENT_COMPOSITE_BRIDGE;
+        let member_count = segments.len() - usize::from(has_bridge);
+        if !(2..=255).contains(&member_count) {
+            return Err(CoreError::capacity(
+                "encoded composite member count is outside the consumer limit",
+            ));
+        }
+        let mut tables = Vec::new();
+        let mut previous_token: Option<[u8; 32]> = None;
+        for index in 0..member_count {
+            let segment = segments
+                .get_item(index)
+                .map_err(|_| CoreError::protocol("encoded composite member is inaccessible"))?;
+            let role = exact_nonnegative_integer(
+                &required_attribute(&segment, "role")?,
+                "encoded composite member role",
+            )?;
+            if role != SEGMENT_COMPOSITE_MEMBER {
+                return Err(CoreError::protocol(
+                    "encoded composite member roles are not contiguous and canonical",
+                ));
+            }
+            validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
+            let token = exact_member_token(&segment)?;
+            if previous_token.is_some_and(|previous| previous >= token) {
+                return Err(CoreError::protocol(
+                    "encoded composite member tokens must be sorted and unique",
+                ));
+            }
+            previous_token = Some(token);
+            let source = required_attribute(&segment, "source")?;
+            if source.is_none() {
+                return Err(CoreError::protocol(
+                    "encoded composite member must reference a source view",
+                ));
+            }
+            let source_owner = required_attribute(&source, "owner")?;
+            if !required_attribute(&segment, "owner")?.is(&source_owner) {
+                return Err(CoreError::protocol(
+                    "encoded composite member owner differs from its source owner",
+                ));
+            }
+            let mut resolved = self.resolve(&source)?;
+            let raw_mode = exact_nonnegative_integer(
+                &required_attribute(&segment, "posting_mode")?,
+                "encoded composite member posting_mode",
+            )?;
+            let root_ids = EncodedBufferBinding::new(required_attribute(&segment, "root_ids")?);
+            let postings = root_ids.source("composite member root_ids")?;
+            match raw_mode {
+                POSTINGS_ALL => {
+                    if !postings.is_empty() {
+                        return Err(CoreError::protocol(
+                            "encoded composite ALL member must not carry root postings",
+                        ));
+                    }
+                }
+                POSTINGS_INCLUDE | POSTINGS_EXCLUDE => {
+                    let selected = read_root_postings(postings, resolved.local_root_count)?;
+                    let mode = if raw_mode == POSTINGS_INCLUDE {
+                        EncodedPostingMode::Include
+                    } else {
+                        EncodedPostingMode::Exclude
+                    };
+                    apply_source_selection(
+                        &mut resolved.tables,
+                        source.as_ptr() as usize,
+                        mode,
+                        &selected,
+                    );
+                }
+                _ => {
+                    return Err(CoreError::protocol(
+                        "encoded composite member posting mode is invalid",
+                    ));
+                }
+            }
+            tables.extend(resolved.tables);
+            enforce_resolved_table_limit(&tables)?;
+        }
+        if has_bridge {
+            validate_composite_bridge_segment(&last, owner, local_root_count)?;
+            tables.push(EncodedCompilationTableBinding {
+                bindings,
+                view_id,
+                selection: EncodedRootPlan::All,
+            });
+        } else if local_root_count != 0 {
+            return Err(CoreError::protocol(
+                "encoded composite without a bridge must not carry local roots",
+            ));
+        }
+        enforce_resolved_table_limit(&tables)?;
+        Ok(ResolvedEncodedView {
+            tables,
+            local_root_count,
+        })
+    }
+}
+
+fn exact_member_token(segment: &Bound<'_, PyAny>) -> CoreResult<[u8; 32]> {
+    let member_token = required_attribute(segment, "member_token")?;
+    let member_token = member_token.cast::<PyBytes>().map_err(|_| {
+        CoreError::protocol("encoded composite member token must be exact immutable bytes")
+    })?;
+    member_token
+        .as_bytes()
+        .try_into()
+        .map_err(|_| CoreError::protocol("encoded composite member token must contain 32 bytes"))
+}
+
+fn apply_source_selection(
+    tables: &mut [EncodedCompilationTableBinding<'_>],
+    source_view_id: usize,
+    mode: EncodedPostingMode,
+    postings: &BTreeSet<u32>,
+) {
+    for table in tables {
+        if table.view_id == source_view_id {
+            table.selection.apply(mode, postings);
+        } else if mode == EncodedPostingMode::Include {
+            table.selection = EncodedRootPlan::Dropped;
+        }
+    }
+}
+
+fn enforce_resolved_table_limit(tables: &[EncodedCompilationTableBinding<'_>]) -> CoreResult<()> {
+    if tables.len() > 256 {
+        return Err(CoreError::capacity(
+            "encoded resolved segment table count exceeds the consumer limit",
+        ));
+    }
+    Ok(())
 }
 
 struct SessionState {
@@ -387,10 +843,9 @@ fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
 
 /// Coarse encoded-view compiler entry point retained behind absent capability advertising.
 ///
-/// This executable handoff accepts validated direct segments, all/exclude overlay-base chains,
-/// one local overlay-delta table, and named-only direct composite members without flattening the
-/// sources. Recursive composite sources, anonymous scope remapping, mmap-lifetime,
-/// exhaustive-constructor, and performance gates remain release blockers, so
+/// This executable handoff accepts validated direct, recursively segmented overlay, and
+/// named-only composite sources without flattening them. Anonymous scope remapping,
+/// mmap-lifetime, exhaustive-constructor, and performance gates remain release blockers, so
 /// `encoded_view_schemas()` intentionally stays empty.
 #[pyfunction]
 fn create_session_from_encoded(
@@ -419,6 +874,13 @@ fn create_session_from_encoded(
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let input = validate_encoded_input(encoded_view)?;
         let (mut compilation, metrics) = if let Some(composite) = &input.composite_bindings {
+            let mut posting_storage = Vec::new();
+            posting_storage
+                .try_reserve_exact(composite.len())
+                .map_err(|_| CoreError::capacity("encoded posting storage allocation failed"))?;
+            for table in composite {
+                posting_storage.push(table.selection.posting_bytes()?);
+            }
             let mut tables = Vec::new();
             tables
                 .try_reserve_exact(composite.len())
@@ -427,25 +889,26 @@ fn create_session_from_encoded(
             metric_columns
                 .try_reserve_exact(composite.len())
                 .map_err(|_| CoreError::capacity("encoded composite metric allocation failed"))?;
-            let mut posting_bytes = 0_usize;
-            for table in composite {
+            let mut metric_views = BTreeSet::new();
+            for (table, postings) in composite.iter().zip(&posting_storage) {
                 let columns = table.bindings.columns()?;
-                let postings = table.root_ids.source("composite segment root_ids")?;
-                posting_bytes = posting_bytes.checked_add(postings.len()).ok_or_else(|| {
-                    CoreError::capacity("encoded composite posting byte count overflow")
-                })?;
-                metric_columns.push(columns);
+                if metric_views.insert(table.view_id) {
+                    metric_columns.push(columns);
+                }
+                if matches!(table.selection, EncodedRootPlan::Dropped) {
+                    continue;
+                }
                 tables.push(EncodedCompilationSegment {
                     columns,
-                    posting_mode: table.posting_mode,
-                    postings,
+                    posting_mode: table.selection.mode(),
+                    postings: postings.as_slice(),
                 });
             }
             let metrics = encoded_ingestion_metrics(
                 &metric_columns,
                 input.segment_count,
                 input.referenced_view_count,
-                posting_bytes,
+                input.composite_posting_bytes,
             )?;
             (
                 compile_encoded_segments_with_policy(&tables, EncodedLimits::default(), policy)?,
@@ -723,11 +1186,9 @@ fn validate_encoded_input<'py>(
         )?;
         if first_role == SEGMENT_COMPOSITE_MEMBER {
             if seen.len() != 1 || posting.is_some() || delta_bindings.is_some() {
-                return Err(CoreError::invalid(
-                    "encoded composite sources are not yet recursively composable",
-                ));
+                return validate_recursive_encoded_input(encoded_view, source_parts, model_schema);
             }
-            return validate_direct_composite_input(
+            return validate_composite_input(
                 &current,
                 &owner,
                 bindings,
@@ -747,9 +1208,7 @@ fn validate_encoded_input<'py>(
         let mut local_bindings = Some(bindings);
         if has_delta {
             if delta_bindings.is_some() {
-                return Err(CoreError::invalid(
-                    "encoded compiler slice currently accepts only one overlay delta table",
-                ));
+                return validate_recursive_encoded_input(encoded_view, source_parts, model_schema);
             }
             let delta = segments.get_item(1).map_err(|_| {
                 CoreError::protocol("encoded overlay delta segment is inaccessible")
@@ -784,13 +1243,16 @@ fn validate_encoded_input<'py>(
                     referenced_view_count,
                     posting,
                     composite_bindings: None,
+                    composite_posting_bytes: 0,
                 });
             }
             (SEGMENT_OVERLAY_BASE, mode @ (POSTINGS_ALL | POSTINGS_EXCLUDE)) => {
                 if posting.is_some() {
-                    return Err(CoreError::invalid(
-                        "selected overlay sources currently require one direct source",
-                    ));
+                    return validate_recursive_encoded_input(
+                        encoded_view,
+                        source_parts,
+                        model_schema,
+                    );
                 }
                 if !has_delta && validated.root_count != 0 {
                     return Err(CoreError::protocol(
@@ -849,15 +1311,37 @@ fn validate_encoded_input<'py>(
     }
 }
 
+fn validate_recursive_encoded_input<'py>(
+    encoded_view: &Bound<'py, PyAny>,
+    source_parts: EncodedSourceParts,
+    model_schema: u64,
+) -> CoreResult<ValidatedEncodedInput<'py>> {
+    let top_bindings = EncodedBufferBindings::from_view(encoded_view)?;
+    let mut resolver = CompositeResolver::new(model_schema, encoded_view.as_ptr() as usize);
+    let resolved = resolver.resolve_top(encoded_view)?;
+    enforce_resolved_table_limit(&resolved.tables)?;
+    Ok(ValidatedEncodedInput {
+        bindings: top_bindings,
+        delta_bindings: None,
+        source_parts,
+        segment_count: resolver.segment_count,
+        referenced_view_count: u64::try_from(resolver.referenced.len())
+            .map_err(|_| CoreError::capacity("encoded reference count exceeds u64"))?,
+        posting: None,
+        composite_bindings: Some(resolved.tables),
+        composite_posting_bytes: resolver.posting_bytes,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
-fn validate_direct_composite_input<'py>(
+fn validate_composite_input<'py>(
     encoded_view: &Bound<'py, PyAny>,
     top_owner: &Bound<'py, PyAny>,
     top_bindings: EncodedBufferBindings<'py>,
     local_root_count: usize,
     segments: &Bound<'py, PyTuple>,
     source_parts: EncodedSourceParts,
-    mut segment_count: u64,
+    segment_count: u64,
     model_schema: u64,
 ) -> CoreResult<ValidatedEncodedInput<'py>> {
     let last = segments
@@ -884,6 +1368,8 @@ fn validate_direct_composite_input<'py>(
         .try_reserve_exact(member_count + usize::from(has_bridge))
         .map_err(|_| CoreError::capacity("encoded composite binding allocation failed"))?;
     let mut previous_token: Option<[u8; 32]> = None;
+    let mut composite_posting_bytes = 0_usize;
+    let mut resolver = CompositeResolver::new(model_schema, encoded_view.as_ptr() as usize);
     for index in 0..member_count {
         let segment = segments
             .get_item(index)
@@ -898,13 +1384,7 @@ fn validate_direct_composite_input<'py>(
             ));
         }
         validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
-        let member_token = required_attribute(&segment, "member_token")?;
-        let member_token = member_token.cast::<PyBytes>().map_err(|_| {
-            CoreError::protocol("encoded composite member token must be exact immutable bytes")
-        })?;
-        let member_token: [u8; 32] = member_token.as_bytes().try_into().map_err(|_| {
-            CoreError::protocol("encoded composite member token must contain 32 bytes")
-        })?;
+        let member_token = exact_member_token(&segment)?;
         if previous_token.is_some_and(|previous| previous >= member_token) {
             return Err(CoreError::protocol(
                 "encoded composite member tokens must be sorted and unique",
@@ -924,24 +1404,7 @@ fn validate_direct_composite_input<'py>(
                 "encoded composite member owner differs from its source owner",
             ));
         }
-        let (_validated_owner, source_model_schema) = validate_encoded_envelope(&source)?;
-        if source_model_schema != model_schema {
-            return Err(CoreError::protocol(
-                "encoded composite member model schema differs from the top view",
-            ));
-        }
-        let bindings = EncodedBufferBindings::from_view(&source)?;
-        let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
-        let raw_source_segments = required_attribute(&source, "segments")?;
-        let source_segments = raw_source_segments.cast::<PyTuple>().map_err(|_| {
-            CoreError::protocol("encoded composite source segments must be an exact tuple")
-        })?;
-        validate_structural_fingerprint(&source, &bindings, source_segments)?;
-        validate_direct_segment(&source, &source_owner)?;
-        reject_anonymous_segment_nodes(&bindings, validated.node_count)?;
-        segment_count = segment_count
-            .checked_add(1)
-            .ok_or_else(|| CoreError::capacity("encoded composite segment count overflow"))?;
+        let mut resolved = resolver.resolve(&source)?;
 
         let raw_mode = exact_nonnegative_integer(
             &required_attribute(&segment, "posting_mode")?,
@@ -949,48 +1412,60 @@ fn validate_direct_composite_input<'py>(
         )?;
         let root_ids = EncodedBufferBinding::new(required_attribute(&segment, "root_ids")?);
         let postings = root_ids.source("composite member root_ids")?;
-        let posting_mode = match raw_mode {
+        composite_posting_bytes = composite_posting_bytes
+            .checked_add(postings.len())
+            .ok_or_else(|| CoreError::capacity("encoded composite posting byte count overflow"))?;
+        match raw_mode {
             POSTINGS_ALL => {
                 if !postings.is_empty() {
                     return Err(CoreError::protocol(
                         "encoded composite ALL member must not carry root postings",
                     ));
                 }
-                None
             }
-            POSTINGS_INCLUDE => {
-                validate_root_postings(postings, validated.root_count)?;
-                Some(EncodedPostingMode::Include)
-            }
-            POSTINGS_EXCLUDE => {
-                validate_root_postings(postings, validated.root_count)?;
-                Some(EncodedPostingMode::Exclude)
+            POSTINGS_INCLUDE | POSTINGS_EXCLUDE => {
+                let selected = read_root_postings(postings, resolved.local_root_count)?;
+                let mode = if raw_mode == POSTINGS_INCLUDE {
+                    EncodedPostingMode::Include
+                } else {
+                    EncodedPostingMode::Exclude
+                };
+                apply_source_selection(
+                    &mut resolved.tables,
+                    source.as_ptr() as usize,
+                    mode,
+                    &selected,
+                );
             }
             _ => {
                 return Err(CoreError::protocol(
                     "encoded composite member posting mode is invalid",
                 ));
             }
-        };
-        compiled.push(EncodedCompilationTableBinding {
-            bindings,
-            posting_mode,
-            root_ids,
-        });
+        }
+        compiled.extend(resolved.tables);
+        enforce_resolved_table_limit(&compiled)?;
     }
 
     if has_bridge {
         validate_composite_bridge_segment(&last, top_owner, local_root_count)?;
         compiled.push(EncodedCompilationTableBinding {
             bindings: top_bindings.clone(),
-            posting_mode: None,
-            root_ids: EncodedBufferBinding::new(required_attribute(&last, "root_ids")?),
+            view_id: encoded_view.as_ptr() as usize,
+            selection: EncodedRootPlan::All,
         });
     } else if local_root_count != 0 {
         return Err(CoreError::protocol(
             "encoded composite without a bridge must not carry local roots",
         ));
     }
+    enforce_resolved_table_limit(&compiled)?;
+    let segment_count = segment_count
+        .checked_add(resolver.segment_count)
+        .ok_or_else(|| CoreError::capacity("encoded composite segment count overflow"))?;
+    composite_posting_bytes = composite_posting_bytes
+        .checked_add(resolver.posting_bytes)
+        .ok_or_else(|| CoreError::capacity("encoded composite posting byte count overflow"))?;
 
     Ok(ValidatedEncodedInput {
         bindings: if has_bridge {
@@ -1001,10 +1476,11 @@ fn validate_direct_composite_input<'py>(
         delta_bindings: None,
         source_parts,
         segment_count,
-        referenced_view_count: u64::try_from(member_count)
+        referenced_view_count: u64::try_from(resolver.referenced.len())
             .map_err(|_| CoreError::capacity("encoded composite reference count exceeds u64"))?,
         posting: None,
         composite_bindings: Some(compiled),
+        composite_posting_bytes,
     })
 }
 
@@ -1032,13 +1508,17 @@ fn reject_anonymous_segment_nodes(
     Ok(())
 }
 
-fn validate_root_postings(postings: BorrowedPyBytes<'_, '_>, root_count: usize) -> CoreResult<()> {
+fn read_root_postings(
+    postings: BorrowedPyBytes<'_, '_>,
+    root_count: usize,
+) -> CoreResult<BTreeSet<u32>> {
     if postings.is_empty() || postings.len() % 4 != 0 {
         return Err(CoreError::protocol(
             "encoded composite root postings must be nonempty u32 rows",
         ));
     }
     let mut previous = 0_usize;
+    let mut selected = BTreeSet::new();
     for row in 0..postings.len() / 4 {
         let offset = row
             .checked_mul(4)
@@ -1065,8 +1545,12 @@ fn validate_root_postings(postings: BorrowedPyBytes<'_, '_>, root_count: usize) 
             ));
         }
         previous = value;
+        selected.insert(
+            u32::try_from(value)
+                .map_err(|_| CoreError::capacity("encoded composite posting exceeds u32"))?,
+        );
     }
-    Ok(())
+    Ok(selected)
 }
 
 fn validate_composite_bridge_segment(

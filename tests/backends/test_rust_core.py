@@ -808,6 +808,233 @@ def test_hidden_composite_session_retains_every_member_owner(
     assert top_ref() is None
 
 
+def test_hidden_composite_recursively_resolves_segmented_member_sources(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    base, encoded_base = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-recursive#>)
+        Ontology(<urn:encoded-recursive-base>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        )"""
+    )
+    delta_source, encoded_delta = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-recursive#>)
+        Ontology(<urn:encoded-recursive-delta>
+        Declaration(Class(:C))
+        SubClassOf(:B :C)
+        )"""
+    )
+    overlay, encoded_overlay = _delta_overlay_encoded(
+        base,
+        encoded_base,
+        tuple(delta_source.iter_axioms()),
+        encoded_delta,
+    )
+    right, encoded_right = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-recursive#>)
+        Ontology(<urn:encoded-recursive-right>
+        Declaration(Class(:D))
+        SubClassOf(:C :D)
+        )"""
+    )
+    removed = next(
+        axiom for axiom in delta_source.iter_axioms() if type(axiom).__name__ == "SubClassOf"
+    )
+    local_axioms = sorted(delta_source.iter_axioms(), key=lambda axiom: axiom.canonical_bytes())
+    removed_ordinal = local_axioms.index(removed) + 1
+    composite = owl.compose_views(
+        overlay,
+        right,
+        delta=owl.OntologyDelta(
+            remove_axioms=owl.CanonicalSet((removed,)),
+            policy=owl.DeltaPolicy.IDEMPOTENT,
+        ),
+    )
+    encoded = _composite_encoded(
+        composite,
+        (
+            (encoded_overlay, 2, (removed_ordinal,), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(composite, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 6
+        assert diagnostics["encoded_referenced_view_count"] == 3
+        assert diagnostics["encoded_buffer_count"] == 33
+        assert diagnostics["encoded_zero_copy_buffers"] == 33
+        assert diagnostics["encoded_posting_bytes"] == 4
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+    include_composite = owl.compose_views(
+        overlay,
+        right,
+        delta=owl.OntologyDelta(
+            remove_axioms=owl.CanonicalSet(
+                axiom for axiom in overlay.iter_axioms() if axiom != removed
+            ),
+            policy=owl.DeltaPolicy.IDEMPOTENT,
+        ),
+    )
+    included = _composite_encoded(
+        include_composite,
+        (
+            (encoded_overlay, 1, (removed_ordinal,), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+    )
+    native = native_module.create_session_from_encoded(included, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(include_composite, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 6
+        assert diagnostics["encoded_referenced_view_count"] == 3
+        assert diagnostics["encoded_buffer_count"] == 33
+        assert diagnostics["encoded_posting_bytes"] == 4
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
+def test_hidden_nested_composite_members_share_one_recursive_merge(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    left, encoded_left = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-nested-composite#>)
+        Ontology(<urn:encoded-nested-composite-left>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        )"""
+    )
+    right, encoded_right = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-nested-composite#>)
+        Ontology(<urn:encoded-nested-composite-right>
+        Declaration(Class(:C))
+        SubClassOf(:B :C)
+        )"""
+    )
+    inner = owl.compose_views(left, right)
+    encoded_inner = _composite_encoded(
+        inner,
+        (
+            (encoded_left, 0, (), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+    )
+    third, encoded_third = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-nested-composite#>)
+        Ontology(<urn:encoded-nested-composite-third>
+        Declaration(Class(:D))
+        SubClassOf(:C :D)
+        )"""
+    )
+    outer = owl.compose_views(inner, third)
+    encoded_outer = _composite_encoded(
+        outer,
+        (
+            (encoded_inner, 0, (), b"c" * 32),
+            (encoded_third, 0, (), b"d" * 32),
+        ),
+    )
+    native = native_module.create_session_from_encoded(encoded_outer, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(outer, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 7
+        assert diagnostics["encoded_referenced_view_count"] == 4
+        assert diagnostics["encoded_buffer_count"] == 33
+        assert diagnostics["encoded_zero_copy_buffers"] == 33
+        assert diagnostics["encoded_posting_bytes"] == 0
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
+def test_hidden_overlay_delta_recursively_resolves_composite_base(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    left, encoded_left = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-overlay-composite:A>)))"
+    )
+    right, encoded_right = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-overlay-composite:B>)))"
+    )
+    composite = owl.compose_views(left, right)
+    encoded_composite = _composite_encoded(
+        composite,
+        (
+            (encoded_left, 0, (), b"a" * 32),
+            (encoded_right, 0, (), b"b" * 32),
+        ),
+    )
+    delta_source, encoded_delta = _direct_encoded_snapshot(
+        b"""Ontology(
+        Declaration(Class(<urn:encoded-overlay-composite:C>))
+        SubClassOf(
+          <urn:encoded-overlay-composite:B>
+          <urn:encoded-overlay-composite:C>
+        )
+        )"""
+    )
+    overlay, encoded_overlay = _delta_overlay_encoded(
+        composite,
+        encoded_composite,
+        tuple(delta_source.iter_axioms()),
+        encoded_delta,
+    )
+    native = native_module.create_session_from_encoded(encoded_overlay, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(overlay, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 6
+        assert diagnostics["encoded_referenced_view_count"] == 3
+        assert diagnostics["encoded_buffer_count"] == 33
+        assert diagnostics["encoded_zero_copy_buffers"] == 33
+        assert diagnostics["encoded_posting_bytes"] == 0
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
 def test_hidden_overlay_slice_rejects_malformed_selected_or_local_base_segments(
     native_module: ModuleType,
 ) -> None:
