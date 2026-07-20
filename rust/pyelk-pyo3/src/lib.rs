@@ -10,7 +10,7 @@ use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use pyelk_core::encoded::{
     ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedLimits, EncodedUnsupportedPolicy,
-    compile_named_hierarchy_with_policy,
+    compile_encoded_hierarchy_with_policy,
 };
 use pyelk_core::wire::{encode_query, encode_realization, encode_taxonomy};
 use pyelk_core::{
@@ -321,18 +321,23 @@ fn create_session_from_encoded(
         _ => unreachable!("unsupported policy was validated above"),
     };
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let (bindings, source_fingerprint) =
-            validate_direct_encoded_input(py, encoded_view, unsupported)?;
+        let (bindings, source_parts) = validate_direct_encoded_input(encoded_view)?;
         let columns = bindings.columns()?;
         let metrics = encoded_ingestion_metrics(columns)?;
-        let ontology = compile_named_hierarchy_with_policy(
-            columns,
-            EncodedLimits::default(),
-            source_fingerprint,
-            policy,
+        let mut compilation =
+            compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?;
+        let compatibility_spelling =
+            compatibility_spelling_digest(&compilation.compatibility_observations)?;
+        compilation.ontology.source_fingerprint = encoded_source_fingerprint(
+            py,
+            &source_parts.logical,
+            &source_parts.signature,
+            unsupported,
+            source_parts.model_schema,
+            &compatibility_spelling,
         )?;
         Ok((
-            NativeCoreSession::from_ontology(ontology, worker_count)?,
+            NativeCoreSession::from_ontology(compilation.ontology, worker_count)?,
             metrics,
         ))
     }));
@@ -456,10 +461,8 @@ fn encoded_ingestion_metrics(
 }
 
 fn validate_direct_encoded_input<'py>(
-    py: Python<'py>,
     encoded_view: &Bound<'py, PyAny>,
-    unsupported: &str,
-) -> CoreResult<(EncodedBufferBindings<'py>, [u8; 32])> {
+) -> CoreResult<(EncodedBufferBindings<'py>, EncodedSourceParts)> {
     let schema_name = required_attribute(encoded_view, "schema_name")?
         .extract::<String>()
         .map_err(|_| CoreError::protocol("encoded view schema_name must be text"))?;
@@ -514,15 +517,17 @@ fn validate_direct_encoded_input<'py>(
     validate_direct_segment(encoded_view, &owner)?;
     let logical = read_fingerprint(&owner, "logical_fingerprint")?;
     let signature = read_fingerprint(&owner, "signature_fingerprint")?;
-    let source_fingerprint =
-        encoded_source_fingerprint(py, &logical, &signature, unsupported, model_schema)?;
 
     // The encoded structural fingerprint is a required owner/segment identity even though the
     // private semantic cache fingerprint intentionally follows the scalar logical/signature key.
     let _ = structural;
     Ok((
         EncodedBufferBindings::from_view(encoded_view)?,
-        source_fingerprint,
+        EncodedSourceParts {
+            logical,
+            signature,
+            model_schema,
+        },
     ))
 }
 
@@ -602,6 +607,12 @@ struct FingerprintParts {
     digest: [u8; 32],
 }
 
+struct EncodedSourceParts {
+    logical: FingerprintParts,
+    signature: FingerprintParts,
+    model_schema: u64,
+}
+
 fn read_fingerprint(owner: &Bound<'_, PyAny>, name: &str) -> CoreResult<FingerprintParts> {
     let fingerprint = required_attribute(owner, name)?;
     let algorithm = required_attribute(&fingerprint, "algorithm")?
@@ -636,12 +647,26 @@ fn read_fingerprint(owner: &Bound<'_, PyAny>, name: &str) -> CoreResult<Fingerpr
     })
 }
 
+fn compatibility_spelling_digest(observations: &[Vec<u8>]) -> CoreResult<[u8; 32]> {
+    let mut digest = Sha256::new();
+    digest.update(b"pyelk:elk-literal-compatibility-inputs:v1\0");
+    for value in observations {
+        let length = u64::try_from(value.len()).map_err(|_| {
+            CoreError::capacity("literal compatibility observation length exceeds u64")
+        })?;
+        digest.update(length.to_be_bytes());
+        digest.update(value);
+    }
+    Ok(digest.finalize().into())
+}
+
 fn encoded_source_fingerprint(
     py: Python<'_>,
     logical: &FingerprintParts,
     signature: &FingerprintParts,
     unsupported: &str,
     model_schema: u64,
+    compatibility_spelling: &[u8; 32],
 ) -> CoreResult<[u8; 32]> {
     let core = PyModule::import(py, "pyowl_core")
         .map_err(|_| CoreError::protocol("cannot import public pyowl_core version metadata"))?;
@@ -674,7 +699,6 @@ fn encoded_source_fingerprint(
     semantic_options.update(b"pyelk:compiler-semantic-options:v1\0");
     semantic_options.update(unsupported.as_bytes());
     let semantic_options = semantic_options.finalize();
-    let compatibility_spelling = Sha256::digest(b"pyelk:elk-literal-compatibility-inputs:v1\0");
     let api_text = format!("{}.{}", api_version.0, api_version.1);
     let wire_text = format!("{}.{}", wire_version.0, wire_version.1);
 

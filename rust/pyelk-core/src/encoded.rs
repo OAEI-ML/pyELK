@@ -36,11 +36,14 @@ const COMPONENT_ENUM: u8 = 5;
 const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
+const RDF_PLAIN_LITERAL_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral";
+
 // Frozen pyELK compiler feature-vector positions shared with indexing/conversion.py.
 const FEATURE_ANONYMOUS_INDIVIDUAL: usize = 0;
 const FEATURE_BOTTOM_OBJECT_PROPERTY_POSITIVE: usize = 2;
 const FEATURE_DATA_ALL_VALUES_FROM: usize = 3;
 const FEATURE_DATA_EXACT_CARDINALITY: usize = 4;
+const FEATURE_DATA_HAS_VALUE: usize = 5;
 const FEATURE_DATA_MAX_CARDINALITY: usize = 6;
 const FEATURE_DATA_MIN_CARDINALITY: usize = 7;
 const FEATURE_DATA_SOME_VALUES_FROM: usize = 12;
@@ -322,6 +325,13 @@ pub struct ValidatedEncodedColumns {
     pub work: u64,
 }
 
+/// Rust-owned compiler result plus the exact scalar cache-key observations it consumed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EncodedCompilation {
+    pub ontology: Ontology,
+    pub compatibility_observations: Vec<Vec<u8>>,
+}
+
 /// Whole-axiom policy matching pyELK's scalar compiler option.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EncodedUnsupportedPolicy {
@@ -593,17 +603,11 @@ pub fn validate_columns<B: ByteSource>(
     })
 }
 
-/// Compile the first exact, deliberately narrow encoded-ontology slice.
+/// Compile the installed encoded-ontology slice with strict unsupported handling.
 ///
-/// This stage accepts unannotated declarations of classes, named individuals, and object
-/// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
-/// `DisjointClasses`, named `DisjointUnion`, `SameIndividual`, `DifferentIndividuals`,
-/// named object-property assertions, `SubObjectPropertyOf`, `EquivalentObjectProperties`,
-/// object-property domain/range, reflexivity, and transitivity axioms. Ontology annotations and
-/// annotation-property declarations have no ELK effect and are ignored. Every other logical
-/// constructor fails closed, irrespective of the scalar compiler's unsupported policy.
-/// Consequently this function is safe to extend and test while encoded-schema capability
-/// advertisement remains disabled.
+/// The compatibility wrapper binds the caller-provided private source fingerprint after direct
+/// compilation. Capability advertisement remains disabled until the complete schema slice and
+/// segment/lifecycle/performance gates pass.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -627,6 +631,17 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
     source_fingerprint: [u8; 32],
     unsupported: EncodedUnsupportedPolicy,
 ) -> CoreResult<Ontology> {
+    let mut compilation = compile_encoded_hierarchy_with_policy(columns, limits, unsupported)?;
+    compilation.ontology.source_fingerprint = source_fingerprint;
+    Ok(compilation.ontology)
+}
+
+/// Compile structural columns and return cache-key observations before fingerprint binding.
+pub fn compile_encoded_hierarchy_with_policy<B: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+) -> CoreResult<EncodedCompilation> {
     let validated = validate_columns(columns, limits)?;
     let mut annotated_axioms = annotated_axiom_states(&columns, validated.root_count)?;
     let mut observed_axiom_roots = BTreeSet::new();
@@ -703,7 +718,7 @@ pub fn compile_named_hierarchy_with_policy<B: ByteSource>(
             Err(AxiomCompileError::Core(error)) => return Err(error),
         }
     }
-    builder.freeze(source_fingerprint)
+    builder.freeze([0; 32])
 }
 
 fn annotated_axiom_states<B: ByteSource>(
@@ -821,6 +836,7 @@ enum CompilerExpression {
     Intersection(usize, usize),
     Existential(Entity, usize),
     HasSelf(Entity),
+    DataHasValue(Entity, Vec<u8>),
     Complement(usize),
     Union(Vec<usize>),
 }
@@ -861,6 +877,7 @@ struct NamedHierarchyBuilder {
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
     property_ranges: BTreeSet<(Entity, usize)>,
     feature_counts: Vec<u64>,
+    compatibility_observations: BTreeSet<Vec<u8>>,
     unsupported: EncodedUnsupportedPolicy,
 }
 
@@ -879,6 +896,7 @@ impl Default for NamedHierarchyBuilder {
             subproperty_axioms: BTreeSet::new(),
             property_ranges: BTreeSet::new(),
             feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
+            compatibility_observations: BTreeSet::new(),
             unsupported: EncodedUnsupportedPolicy::Error,
         }
     }
@@ -921,6 +939,7 @@ impl NamedHierarchyBuilder {
         self.subproperty_axioms.clear();
         self.property_ranges.clear();
         self.feature_counts.fill(0);
+        self.compatibility_observations.clear();
     }
 
     fn commit_axiom(&mut self, transaction: &mut Self) -> CoreResult<()> {
@@ -986,6 +1005,8 @@ impl NamedHierarchyBuilder {
                 self.add_feature(index, count)?;
             }
         }
+        self.compatibility_observations
+            .extend(transaction.compatibility_observations.iter().cloned());
         transaction.reset_axiom();
         Ok(())
     }
@@ -1021,6 +1042,14 @@ impl NamedHierarchyBuilder {
                 }
             }
             CompilerExpression::HasSelf(property) => {
+                self.entities.insert(property.clone());
+            }
+            CompilerExpression::DataHasValue(property, payload) => {
+                if property.kind != EntityKind::DataProperty || payload.is_empty() {
+                    return Err(CoreError::internal(
+                        "encoded data-has-value expression has an invalid structural key",
+                    ));
+                }
                 self.entities.insert(property.clone());
             }
             CompilerExpression::Intersection(first, second) => {
@@ -1259,7 +1288,7 @@ impl NamedHierarchyBuilder {
         }
     }
 
-    fn freeze(mut self, source_fingerprint: [u8; 32]) -> CoreResult<Ontology> {
+    fn freeze(mut self, source_fingerprint: [u8; 32]) -> CoreResult<EncodedCompilation> {
         self.ensure_named_expressions()?;
         let entities = self.entities.iter().cloned().collect::<Vec<_>>();
         if entities.len() >= u32::MAX as usize {
@@ -1355,28 +1384,34 @@ impl NamedHierarchyBuilder {
             .into_iter()
             .map(|(property, range)| (entity_ids[&property], expression_ids[range]))
             .collect();
+        let compatibility_observations = std::mem::take(&mut self.compatibility_observations)
+            .into_iter()
+            .collect();
 
-        Ok(Ontology {
-            entities,
-            expressions,
-            expression_occurrences,
-            property_occurrences: object_properties
-                .iter()
-                .map(|property| {
-                    self.property_occurrences
-                        .get(property)
-                        .copied()
-                        .unwrap_or_default()
-                })
-                .collect(),
-            property_chains,
-            subclass_axioms: subclass_axioms.into_iter().collect(),
-            equivalent_class_axioms,
-            disjoint_groups,
-            subproperty_axioms,
-            property_ranges,
-            feature_counts: self.feature_counts,
-            source_fingerprint,
+        Ok(EncodedCompilation {
+            ontology: Ontology {
+                entities,
+                expressions,
+                expression_occurrences,
+                property_occurrences: object_properties
+                    .iter()
+                    .map(|property| {
+                        self.property_occurrences
+                            .get(property)
+                            .copied()
+                            .unwrap_or_default()
+                    })
+                    .collect(),
+                property_chains,
+                subclass_axioms: subclass_axioms.into_iter().collect(),
+                equivalent_class_axioms,
+                disjoint_groups,
+                subproperty_axioms,
+                property_ranges,
+                feature_counts: self.feature_counts,
+                source_fingerprint,
+            },
+            compatibility_observations,
         })
     }
 
@@ -1402,7 +1437,7 @@ impl NamedHierarchyBuilder {
         let mut dependents = vec![Vec::<usize>::new(); count];
         let mut remaining = vec![0_usize; count];
         let mut final_ids = vec![u32::MAX; count];
-        let mut available = BinaryHeap::<Reverse<((u8, Vec<u32>), usize)>>::new();
+        let mut available = BinaryHeap::<Reverse<((u8, Vec<u8>, Vec<u32>), usize)>>::new();
         for (handle, expression) in self.expressions.iter().enumerate() {
             let dependencies = expression.dependencies()?;
             remaining[handle] = dependencies.len();
@@ -1418,6 +1453,7 @@ impl NamedHierarchyBuilder {
                 available.push(Reverse((
                     (
                         expression.tag()? as u8,
+                        expression.payload(),
                         expression.rewritten_arguments(entity_ids, &final_ids)?,
                     ),
                     handle,
@@ -1438,7 +1474,7 @@ impl NamedHierarchyBuilder {
             final_ids[handle] = identifier;
             expressions.push(Expression {
                 tag: expression.tag()?,
-                payload: Vec::new(),
+                payload: expression.payload(),
                 arguments,
             });
             occurrences.push(self.expression_occurrences[handle]);
@@ -1451,6 +1487,7 @@ impl NamedHierarchyBuilder {
                     available.push(Reverse((
                         (
                             dependent_expression.tag()? as u8,
+                            dependent_expression.payload(),
                             dependent_expression.rewritten_arguments(entity_ids, &final_ids)?,
                         ),
                         *dependent,
@@ -1483,6 +1520,9 @@ impl CompilerExpression {
                 Ok(Self::Existential(property.clone(), remap(*filler)?))
             }
             Self::HasSelf(property) => Ok(Self::HasSelf(property.clone())),
+            Self::DataHasValue(property, payload) => {
+                Ok(Self::DataHasValue(property.clone(), payload.clone()))
+            }
             Self::Complement(operand) => Ok(Self::Complement(remap(*operand)?)),
             Self::Union(operands) => Ok(Self::Union(
                 operands
@@ -1495,7 +1535,7 @@ impl CompilerExpression {
 
     fn dependencies(&self) -> CoreResult<BTreeSet<usize>> {
         Ok(match self {
-            Self::Named(_) | Self::HasSelf(_) => BTreeSet::new(),
+            Self::Named(_) | Self::HasSelf(_) | Self::DataHasValue(_, _) => BTreeSet::new(),
             Self::Existential(_, filler) => BTreeSet::from([*filler]),
             Self::Intersection(first, second) => BTreeSet::from([*first, *second]),
             Self::Complement(operand) => BTreeSet::from([*operand]),
@@ -1515,6 +1555,7 @@ impl CompilerExpression {
             Self::Intersection(_, _) => Ok(ExpressionTag::ObjectIntersectionOf),
             Self::Existential(_, _) => Ok(ExpressionTag::ObjectSomeValuesFrom),
             Self::HasSelf(_) => Ok(ExpressionTag::ObjectHasSelf),
+            Self::DataHasValue(_, _) => Ok(ExpressionTag::DataHasValue),
             Self::Complement(_) => Ok(ExpressionTag::ObjectComplementOf),
             Self::Union(_) => Ok(ExpressionTag::ObjectUnionOf),
         }
@@ -1541,7 +1582,9 @@ impl CompilerExpression {
                 })
         };
         match self {
-            Self::Named(value) | Self::HasSelf(value) => Ok(vec![entity(value)?]),
+            Self::Named(value) | Self::HasSelf(value) | Self::DataHasValue(value, _) => {
+                Ok(vec![entity(value)?])
+            }
             Self::Existential(property, filler) => {
                 Ok(vec![entity(property)?, expression(*filler)?])
             }
@@ -1553,6 +1596,13 @@ impl CompilerExpression {
                 .iter()
                 .map(|operand| expression(*operand))
                 .collect(),
+        }
+    }
+
+    fn payload(&self) -> Vec<u8> {
+        match self {
+            Self::DataHasValue(_, payload) => payload.clone(),
+            _ => Vec::new(),
         }
     }
 }
@@ -2003,6 +2053,21 @@ fn decode_class_expression<B: ByteSource>(
                             positive,
                         )?);
                     }
+                    43 => {
+                        let property =
+                            decode_data_property(node_field(node, 0, columns)?, columns)?;
+                        let (payload, observation) = decode_literal_compatibility_key(
+                            node_field(node, 1, columns)?,
+                            columns,
+                        )?;
+                        builder.add_feature(FEATURE_DATA_HAS_VALUE, 1)?;
+                        builder.compatibility_observations.insert(observation);
+                        results.push(builder.intern_expression(
+                            CompilerExpression::DataHasValue(property, payload),
+                            negative,
+                            positive,
+                        )?);
+                    }
                     tag @ (35 | 38..=42 | 44..=46) => {
                         let (feature, name) =
                             unsupported_expression_feature(tag).ok_or_else(|| {
@@ -2176,6 +2241,99 @@ fn decode_named_object_property<B: ByteSource>(
         ));
     }
     Ok(entity)
+}
+
+fn decode_data_property<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Entity> {
+    let entity = decode_entity(identifier, columns)?;
+    if entity.kind != EntityKind::DataProperty {
+        return Err(CoreError::internal(
+            "validated data property resolved to the wrong entity kind",
+        ));
+    }
+    Ok(entity)
+}
+
+fn decode_literal_compatibility_key<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<(Vec<u8>, Vec<u8>)> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    if u16_at(columns.node_tags, node, "literal node tag")? != 4 {
+        return Err(CoreError::internal(
+            "validated data-has-value operand is not a literal",
+        ));
+    }
+    let lexical = text_field(node, 0, columns)?;
+    let datatype = decode_entity(node_field(node, 1, columns)?, columns)?;
+    if datatype.kind != EntityKind::Datatype {
+        return Err(CoreError::internal(
+            "validated literal datatype has the wrong entity kind",
+        ));
+    }
+    let language = optional_text_field(node, 2, columns)?;
+    let mut lexical_bytes = lexical.into_bytes();
+    if datatype.iri == RDF_PLAIN_LITERAL_IRI {
+        let language_length = language.as_ref().map_or(0, String::len);
+        lexical_bytes
+            .try_reserve(
+                language_length
+                    .checked_add(1)
+                    .ok_or_else(|| CoreError::capacity("literal language length overflow"))?,
+            )
+            .map_err(|_| CoreError::capacity("literal compatibility allocation failed"))?;
+        lexical_bytes.push(b'@');
+        if let Some(language) = language {
+            lexical_bytes.extend_from_slice(language.as_bytes());
+        }
+    }
+
+    let mut payload = Vec::new();
+    append_compatibility_bytes(&mut payload, b"pyelk:elk-literal-key:v1\0")?;
+    append_big_endian_frame(&mut payload, &lexical_bytes)?;
+    append_big_endian_frame(&mut payload, datatype.iri.as_bytes())?;
+
+    let mut observation = Vec::new();
+    append_compatibility_bytes(&mut observation, b"pyelk:elk-literal-spelling:v1\0")?;
+    append_big_endian_frame(&mut observation, b"canonical-fallback")?;
+    append_big_endian_frame(&mut observation, &payload)?;
+    Ok((payload, observation))
+}
+
+fn optional_text_field<B: ByteSource>(
+    node: usize,
+    position: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Option<String>> {
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let field = start
+        .checked_add(position)
+        .ok_or_else(|| CoreError::capacity("encoded compiler field index overflow"))?;
+    match byte_at(columns.field_kinds, field, "optional text field kind")? {
+        COMPONENT_NONE => Ok(None),
+        COMPONENT_TEXT => Ok(Some(text_field(node, position, columns)?)),
+        _ => Err(CoreError::internal(
+            "validated optional text field has an unexpected component kind",
+        )),
+    }
+}
+
+fn append_compatibility_bytes(target: &mut Vec<u8>, value: &[u8]) -> CoreResult<()> {
+    target
+        .try_reserve(value.len())
+        .map_err(|_| CoreError::capacity("literal compatibility allocation failed"))?;
+    target.extend_from_slice(value);
+    Ok(())
+}
+
+fn append_big_endian_frame(target: &mut Vec<u8>, value: &[u8]) -> CoreResult<()> {
+    let length = u64::try_from(value.len())
+        .map_err(|_| CoreError::capacity("literal compatibility frame exceeds u64"))?;
+    append_compatibility_bytes(target, &length.to_be_bytes())?;
+    append_compatibility_bytes(target, value)
 }
 
 fn decode_property_chain_for_axiom<B: ByteSource>(
@@ -4142,6 +4300,44 @@ mod tests {
         }
     }
 
+    fn data_has_value_subclass() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[9]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 4, 43, 61]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 12, 14, 17]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_TEXT,
+                COMPONENT_NODE,
+                COMPONENT_TEXT,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[
+                0, 7, 15, 70, 1, 75, 3, 83, 2, 96, 5, 101, 6, 7, 8, 4, 0,
+            ]),
+            field_lengths: le64(&[7, 8, 55, 5, 0, 8, 0, 13, 0, 5, 0, 2, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes:
+                b"urn:d#Aurn:d#dphttp://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteralclassdatatypedata_propertyhelloen"
+                    .to_vec(),
+        }
+    }
+
     fn named_class_assertion() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -5008,6 +5204,43 @@ mod tests {
     }
 
     #[test]
+    fn data_has_value_preserves_scalar_literal_key_and_cache_observation() {
+        let owned = data_has_value_subclass();
+        let compilation = compile_encoded_hierarchy_with_policy(
+            owned.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        let compiled = &compilation.ontology;
+
+        let mut payload = Vec::new();
+        append_compatibility_bytes(&mut payload, b"pyelk:elk-literal-key:v1\0").unwrap();
+        append_big_endian_frame(&mut payload, b"hello@en").unwrap();
+        append_big_endian_frame(&mut payload, RDF_PLAIN_LITERAL_IRI.as_bytes()).unwrap();
+        let mut observation = Vec::new();
+        append_compatibility_bytes(&mut observation, b"pyelk:elk-literal-spelling:v1\0").unwrap();
+        append_big_endian_frame(&mut observation, b"canonical-fallback").unwrap();
+        append_big_endian_frame(&mut observation, &payload).unwrap();
+
+        assert_eq!(compiled.expressions[3].tag, ExpressionTag::DataHasValue);
+        assert_eq!(compiled.expressions[3].arguments, [5]);
+        assert_eq!(compiled.expressions[3].payload, payload);
+        assert_eq!(compiled.expression_occurrences[3].negative, 1);
+        assert_eq!(compiled.subclass_axioms, vec![(3, 2)]);
+        assert_eq!(compiled.feature_counts[FEATURE_DATA_HAS_VALUE], 1);
+        assert_eq!(compilation.compatibility_observations, vec![observation]);
+        assert_eq!(compiled.source_fingerprint, [0; 32]);
+
+        assert_eq!(
+            compile_named_hierarchy(owned.indexed(), EncodedLimits::default(), [30; 32])
+                .unwrap()
+                .source_fingerprint,
+            [30; 32]
+        );
+    }
+
+    #[test]
     fn named_has_self_subclass_tracks_negative_incompleteness() {
         let compiled = compile_named_hierarchy(
             named_has_self_subclass().borrowed(),
@@ -5596,7 +5829,7 @@ mod tests {
         };
         let mut builder = NamedHierarchyBuilder::with_policy(EncodedUnsupportedPolicy::Error);
         builder.add_subproperty(vec![top], bottom).unwrap();
-        let compiled = builder.freeze([23; 32]).unwrap();
+        let compiled = builder.freeze([23; 32]).unwrap().ontology;
 
         assert_eq!(
             compiled.feature_counts[FEATURE_TOP_OBJECT_PROPERTY_NEGATIVE],

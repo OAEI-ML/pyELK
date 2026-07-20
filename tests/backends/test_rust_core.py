@@ -257,6 +257,35 @@ def test_hidden_direct_encoded_general_class_axioms_match_scalar(
         scalar.close()
 
 
+def test_hidden_direct_encoded_data_values_match_scalar_literal_keys(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+    from pyelk.indexing.conversion import FEATURE_INDEX
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-data#>)
+        Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+        Ontology(<urn:encoded-data>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        EquivalentClasses(:A DataHasValue(:dp "1"^^xsd:integer))
+        EquivalentClasses(:B DataHasValue(:dp "1"^^xsd:integer))
+        SubClassOf(DataHasValue(:dp "hello"@EN) :C)
+        )"""
+    )
+    compiled = compile_ontology(snapshot, unsupported="error")
+    assert compiled.feature_counts[FEATURE_INDEX["DATA_HAS_VALUE"]] == 3
+    direct = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    try:
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        direct.close()
+        scalar.close()
+
+
 def test_hidden_encoded_session_deduplicates_annotated_axioms(
     native_module: ModuleType,
 ) -> None:
