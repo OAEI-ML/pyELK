@@ -18,6 +18,7 @@ blake2 = "0.10.6"
 criterion = "0.5.1"
 pyo3 = "0.29.0"
 rayon = "1.11.0"
+sha2 = "0.10.9"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

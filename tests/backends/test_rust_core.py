@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import gc
 import importlib.util
 import shutil
 import sys
+import weakref
 from collections.abc import Iterator
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -72,13 +75,121 @@ def _reasoners(snapshot: object, *, workers: int = 1) -> tuple[Reasoner, Reasone
     )
 
 
+def _direct_encoded_snapshot(source: bytes) -> tuple[Any, Any]:
+    import pyowl_core as owl
+
+    native_views = pytest.importorskip("pyowl_core.backends.native_views")
+    produce = getattr(native_views, "produce_encoded_structural_view_v1", None)
+    if not callable(produce):
+        pytest.skip("installed pyowl-core does not provide structural-columns v1")
+    options = owl.LoadOptions(backend=owl.BackendPreference.PYTHON)
+    document = owl.parse_document(source, format=owl.DocumentFormat.FUNCTIONAL, options=options)
+    snapshot = owl.load_snapshot(
+        document,
+        options=owl.LoadOptions(
+            backend=owl.BackendPreference.PYTHON,
+            imports=owl.ImportPolicy.IGNORE,
+        ),
+    )
+    return snapshot, produce(snapshot)
+
+
+def _encoded_wrapper(encoded: Any, **changes: object) -> SimpleNamespace:
+    values = {
+        name: getattr(encoded, name)
+        for name in (
+            "schema_name",
+            "schema_version",
+            "model_schema",
+            "owner",
+            "buffers",
+            "descriptor",
+            "structural_fingerprint",
+            "segments",
+            "scope",
+            "document_key",
+        )
+    }
+    values.update(changes)
+    return SimpleNamespace(**values)
+
+
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
     assert native_module.implementation_version() == "0.1.0.dev0"
     assert native_module.ir_version() == (1, 0)
     assert native_module.self_check() is True
+    assert native_module.encoded_view_schemas() == {}
     with pytest.raises(ValueError, match=r"IR|payload|header|magic"):
         native_module.create_session(b"not a compiled ontology", 1)
+
+
+def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: ModuleType) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded#>) Ontology(<urn:encoded>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        Declaration(ObjectProperty(:p))
+        Declaration(NamedIndividual(:i))
+        SubClassOf(:A :B)
+        SubClassOf(:B ObjectSomeValuesFrom(:p :C))
+        ClassAssertion(:A :i)
+        ObjectPropertyDomain(:p :A)
+        ObjectPropertyRange(:p :C)
+        )"""
+    )
+    direct = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(snapshot, unsupported="error").encode(),
+        1,
+    )
+    try:
+        for operation in (
+            "is_inconsistent",
+            "class_taxonomy",
+            "object_property_taxonomy",
+            "realization",
+        ):
+            assert getattr(direct, operation)() == getattr(scalar, operation)()
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        direct.close()
+        scalar.close()
+
+
+def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
+    native_module: ModuleType,
+) -> None:
+    _snapshot_value, encoded = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded:A>)))"
+    )
+    buffers = dict(encoded.buffers)
+    buffers["root_kinds"] = memoryview(bytearray(buffers["root_kinds"]))
+    cases = (
+        _encoded_wrapper(encoded, descriptor=encoded.descriptor + b" "),
+        _encoded_wrapper(encoded, segments=()),
+        _encoded_wrapper(encoded, buffers=buffers),
+    )
+    for candidate in cases:
+        with pytest.raises(ValueError, match=r"encoded|descriptor|segment|buffer"):
+            native_module.create_session_from_encoded(candidate, 1, "error")
+
+
+def test_hidden_encoded_session_retains_owner_until_close(native_module: ModuleType) -> None:
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded:retained>)))"
+    )
+    encoded_ref = weakref.ref(encoded)
+    session = native_module.create_session_from_encoded(encoded, 1, "error")
+    del snapshot, encoded
+    gc.collect()
+    assert encoded_ref() is not None
+    session.close()
+    gc.collect()
+    assert encoded_ref() is None
 
 
 def test_native_session_close_is_idempotent_and_terminal(native_module: ModuleType) -> None:
