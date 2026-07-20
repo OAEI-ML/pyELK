@@ -41,7 +41,10 @@ const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
 const FEATURE_DISJOINT_CLASSES: usize = 16;
 const FEATURE_DISJOINT_UNION: usize = 19;
+const FEATURE_OBJECT_HAS_VALUE_POSITIVE: usize = 34;
+const FEATURE_OBJECT_PROPERTY_ASSERTION: usize = 39;
 const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
+const FEATURE_REFLEXIVE_OBJECT_PROPERTY: usize = 44;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EntityKindRole {
@@ -543,11 +546,12 @@ pub fn validate_columns<B: ByteSource>(
 /// This stage accepts unannotated declarations of classes, named individuals, and object
 /// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
 /// `DisjointClasses`, named `DisjointUnion`, `SameIndividual`, `DifferentIndividuals`,
-/// `SubObjectPropertyOf`, `EquivalentObjectProperties`, object-property range, and
-/// `TransitiveObjectProperty` axioms. Ontology annotations and annotation-property declarations
-/// have no ELK effect and are ignored. Every other logical constructor fails closed, irrespective
-/// of the scalar compiler's unsupported policy. Consequently this function is safe to extend and
-/// test while encoded-schema capability advertisement remains disabled.
+/// named object-property assertions, `SubObjectPropertyOf`, `EquivalentObjectProperties`,
+/// object-property domain/range, reflexivity, and transitivity axioms. Ontology annotations and
+/// annotation-property declarations have no ELK effect and are ignored. Every other logical
+/// constructor fails closed, irrespective of the scalar compiler's unsupported policy.
+/// Consequently this function is safe to extend and test while encoded-schema capability
+/// advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -578,11 +582,14 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             64 => compile_named_disjoint_union(node, &columns, &mut builder)?,
             70 => compile_named_subproperty(node, &columns, &mut builder)?,
             71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
+            74 => compile_named_property_domain(node, &columns, &mut builder)?,
             75 => compile_named_property_range(node, &columns, &mut builder)?,
+            78 => compile_reflexive_named_property(node, &columns, &mut builder)?,
             82 => compile_transitive_named_property(node, &columns, &mut builder)?,
             110 => compile_same_named_individuals(node, &columns, &mut builder)?,
             111 => compile_different_named_individuals(node, &columns, &mut builder)?,
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
+            113 => compile_named_object_property_assertion(node, &columns, &mut builder)?,
             tag => {
                 return Err(CoreError::invalid(format!(
                     "encoded named-hierarchy compiler does not support axiom tag {tag}"
@@ -601,6 +608,11 @@ struct NamedHierarchyBuilder {
     subclass_axioms: BTreeSet<(Entity, Entity)>,
     intersection_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
     intersection_subclass_axioms: BTreeSet<((Entity, Entity), Entity)>,
+    existential_occurrences: BTreeMap<(Entity, Entity), Occurrence>,
+    existential_subclass_axioms: BTreeSet<((Entity, Entity), Entity)>,
+    subclass_existential_axioms: BTreeSet<(Entity, (Entity, Entity))>,
+    has_self_occurrences: BTreeMap<Entity, Occurrence>,
+    subclass_has_self_axioms: BTreeSet<(Entity, Entity)>,
     equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
     disjoint_groups: BTreeSet<Vec<Entity>>,
     subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
@@ -618,6 +630,11 @@ impl Default for NamedHierarchyBuilder {
             subclass_axioms: BTreeSet::new(),
             intersection_occurrences: BTreeMap::new(),
             intersection_subclass_axioms: BTreeSet::new(),
+            existential_occurrences: BTreeMap::new(),
+            existential_subclass_axioms: BTreeSet::new(),
+            subclass_existential_axioms: BTreeSet::new(),
+            has_self_occurrences: BTreeMap::new(),
+            subclass_has_self_axioms: BTreeSet::new(),
             equivalent_class_axioms: BTreeSet::new(),
             disjoint_groups: BTreeSet::new(),
             subproperty_axioms: BTreeSet::new(),
@@ -856,6 +873,87 @@ impl NamedHierarchyBuilder {
         self.add_feature(FEATURE_OBJECT_PROPERTY_RANGE, 1)
     }
 
+    fn add_property_domain(&mut self, property: Entity, domain: Entity) -> CoreResult<()> {
+        let thing = Entity {
+            kind: EntityKind::Class,
+            iri: OWL_THING_IRI.to_owned(),
+        };
+        self.add_property_occurrence(&property, true, false)?;
+        self.add_named_occurrence(&thing, true, false)?;
+        self.add_named_occurrence(&domain, false, true)?;
+        let existential = (property, thing);
+        increment_occurrence(
+            self.existential_occurrences
+                .entry(existential.clone())
+                .or_default(),
+            false,
+        )?;
+        self.existential_subclass_axioms
+            .insert((existential, domain));
+        Ok(())
+    }
+
+    fn add_object_property_assertion(
+        &mut self,
+        property: Entity,
+        source: Entity,
+        target: Entity,
+    ) -> CoreResult<()> {
+        self.add_feature(FEATURE_OBJECT_PROPERTY_ASSERTION, 1)?;
+        self.add_named_occurrence(&source, true, false)?;
+        self.add_property_occurrence(&property, false, true)?;
+        self.add_named_occurrence(&target, false, true)?;
+        let existential = (property, target);
+        increment_occurrence(
+            self.existential_occurrences
+                .entry(existential.clone())
+                .or_default(),
+            true,
+        )?;
+        self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
+        self.subclass_existential_axioms
+            .insert((source, existential));
+        Ok(())
+    }
+
+    fn add_reflexive_property(&mut self, property: Entity) -> CoreResult<()> {
+        let thing = Entity {
+            kind: EntityKind::Class,
+            iri: OWL_THING_IRI.to_owned(),
+        };
+        self.add_feature(FEATURE_REFLEXIVE_OBJECT_PROPERTY, 1)?;
+        self.add_named_occurrence(&thing, true, false)?;
+        self.add_property_occurrence(&property, false, true)?;
+        increment_occurrence(
+            self.has_self_occurrences
+                .entry(property.clone())
+                .or_default(),
+            true,
+        )?;
+        self.subclass_has_self_axioms.insert((thing, property));
+        Ok(())
+    }
+
+    fn add_property_occurrence(
+        &mut self,
+        property: &Entity,
+        negative: bool,
+        positive: bool,
+    ) -> CoreResult<()> {
+        self.entities.insert(property.clone());
+        let occurrence = self
+            .property_occurrences
+            .entry(property.clone())
+            .or_default();
+        if negative {
+            increment_occurrence(occurrence, false)?;
+        }
+        if positive {
+            increment_occurrence(occurrence, true)?;
+        }
+        Ok(())
+    }
+
     fn insert_subproperty_rule(&mut self, chain: Vec<Entity>, super_: Entity) {
         self.property_chains.insert(chain.clone());
         self.subproperty_axioms.insert((chain, super_));
@@ -938,6 +1036,48 @@ impl NamedHierarchyBuilder {
             intersection_ids.insert((first, second), identifier);
         }
 
+        let mut existential_rows = self.existential_occurrences.into_iter().collect::<Vec<_>>();
+        existential_rows.sort_by_key(|((property, filler), _occurrence)| {
+            (entity_ids[property], expression_ids[filler])
+        });
+        let mut existential_ids = BTreeMap::new();
+        for ((property, filler), occurrence) in existential_rows {
+            let identifier = u32::try_from(expressions.len())
+                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
+            if identifier == u32::MAX {
+                return Err(CoreError::capacity(
+                    "encoded compiler expression table reaches the reserved u32 ID",
+                ));
+            }
+            expressions.push(Expression {
+                tag: ExpressionTag::ObjectSomeValuesFrom,
+                payload: Vec::new(),
+                arguments: vec![entity_ids[&property], expression_ids[&filler]],
+            });
+            expression_occurrences.push(occurrence);
+            existential_ids.insert((property, filler), identifier);
+        }
+
+        let mut has_self_rows = self.has_self_occurrences.into_iter().collect::<Vec<_>>();
+        has_self_rows.sort_by_key(|(property, _occurrence)| entity_ids[property]);
+        let mut has_self_ids = BTreeMap::new();
+        for (property, occurrence) in has_self_rows {
+            let identifier = u32::try_from(expressions.len())
+                .map_err(|_| CoreError::capacity("encoded compiler expression ID exceeds u32"))?;
+            if identifier == u32::MAX {
+                return Err(CoreError::capacity(
+                    "encoded compiler expression table reaches the reserved u32 ID",
+                ));
+            }
+            expressions.push(Expression {
+                tag: ExpressionTag::ObjectHasSelf,
+                payload: Vec::new(),
+                arguments: vec![entity_ids[&property]],
+            });
+            expression_occurrences.push(occurrence);
+            has_self_ids.insert(property, identifier);
+        }
+
         let object_properties = entities
             .iter()
             .filter(|entity| entity.kind == EntityKind::ObjectProperty)
@@ -951,6 +1091,23 @@ impl NamedHierarchyBuilder {
         subclass_axioms.extend(self.intersection_subclass_axioms.into_iter().map(
             |(intersection, super_)| (intersection_ids[&intersection], expression_ids[&super_]),
         ));
+        subclass_axioms.extend(
+            self.existential_subclass_axioms
+                .into_iter()
+                .map(|(existential, super_)| {
+                    (existential_ids[&existential], expression_ids[&super_])
+                }),
+        );
+        subclass_axioms.extend(
+            self.subclass_existential_axioms
+                .into_iter()
+                .map(|(sub, existential)| (expression_ids[&sub], existential_ids[&existential])),
+        );
+        subclass_axioms.extend(
+            self.subclass_has_self_axioms
+                .into_iter()
+                .map(|(sub, property)| (expression_ids[&sub], has_self_ids[&property])),
+        );
         let equivalent_class_axioms = self
             .equivalent_class_axioms
             .into_iter()
@@ -1124,6 +1281,17 @@ fn compile_equivalent_named_properties<B: ByteSource>(
     builder.add_equivalent_properties(members)
 }
 
+fn compile_named_property_domain<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 2, columns)?;
+    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+    let domain = decode_named_class(node_field(node, 1, columns)?, columns)?;
+    builder.add_property_domain(property, domain)
+}
+
 fn compile_named_property_range<B: ByteSource>(
     node: usize,
     columns: &EncodedColumns<B>,
@@ -1133,6 +1301,16 @@ fn compile_named_property_range<B: ByteSource>(
     let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
     let range = decode_named_class(node_field(node, 1, columns)?, columns)?;
     builder.add_property_range(property, range)
+}
+
+fn compile_reflexive_named_property<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+    builder.add_reflexive_property(property)
 }
 
 fn compile_transitive_named_property<B: ByteSource>(
@@ -1154,6 +1332,18 @@ fn compile_named_class_assertion<B: ByteSource>(
     let class = decode_named_class(node_field(node, 0, columns)?, columns)?;
     let individual = decode_named_individual(node_field(node, 1, columns)?, columns)?;
     builder.add_subclass(individual, class)
+}
+
+fn compile_named_object_property_assertion<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 3, columns)?;
+    let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+    let source = decode_named_individual(node_field(node, 1, columns)?, columns)?;
+    let target = decode_named_individual(node_field(node, 2, columns)?, columns)?;
+    builder.add_object_property_assertion(property, source, target)
 }
 
 fn compile_same_named_individuals<B: ByteSource>(
@@ -3104,6 +3294,49 @@ mod tests {
         }
     }
 
+    fn named_property_domain() -> OwnedColumns {
+        let mut columns = named_property_range();
+        columns.node_tags = le16(&[1, 1, 2, 2, 74]);
+        columns
+    }
+
+    fn reflexive_named_property() -> OwnedColumns {
+        let mut columns = transitive_named_property();
+        columns.node_tags = le16(&[1, 2, 78]);
+        columns
+    }
+
+    fn named_object_property_assertion() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[7]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 113]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 13]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 3, 30, 1, 46, 2, 4, 5, 6, 0]),
+            field_lengths: le64(&[5, 5, 5, 15, 0, 16, 0, 16, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:iurn:jurn:pobject_propertynamed_individualnamed_individual"
+                .to_vec(),
+        }
+    }
+
     fn equivalent_class_pair() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -4040,6 +4273,77 @@ mod tests {
             }
         );
         assert_eq!(compiled.feature_counts[FEATURE_OBJECT_PROPERTY_RANGE], 1);
+    }
+
+    #[test]
+    fn named_property_domain_compiles_through_negative_existential() {
+        let compiled = compile_named_hierarchy(
+            named_property_domain().borrowed(),
+            EncodedLimits::default(),
+            [16; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[3].tag,
+            ExpressionTag::ObjectSomeValuesFrom
+        );
+        assert_eq!(compiled.expressions[3].arguments, [5, 1]);
+        assert_eq!(compiled.subclass_axioms, vec![(3, 2)]);
+        assert_eq!(compiled.expression_occurrences[1].negative, 1);
+        assert_eq!(compiled.expression_occurrences[2].positive, 1);
+        assert_eq!(compiled.expression_occurrences[3].negative, 1);
+        assert_eq!(compiled.property_occurrences[2].negative, 1);
+    }
+
+    #[test]
+    fn reflexive_named_property_compiles_has_self_rule() {
+        let compiled = compile_named_hierarchy(
+            reflexive_named_property().borrowed(),
+            EncodedLimits::default(),
+            [17; 32],
+        )
+        .unwrap();
+
+        assert_eq!(compiled.expressions[2].tag, ExpressionTag::ObjectHasSelf);
+        assert_eq!(compiled.expressions[2].arguments, [4]);
+        assert_eq!(compiled.subclass_axioms, vec![(1, 2)]);
+        assert_eq!(compiled.expression_occurrences[1].negative, 1);
+        assert_eq!(compiled.expression_occurrences[2].positive, 1);
+        assert_eq!(compiled.property_occurrences[2].positive, 1);
+        assert_eq!(
+            compiled.feature_counts[FEATURE_REFLEXIVE_OBJECT_PROPERTY],
+            1
+        );
+    }
+
+    #[test]
+    fn named_object_property_assertion_compiles_nominal_existential() {
+        let compiled = compile_named_hierarchy(
+            named_object_property_assertion().borrowed(),
+            EncodedLimits::default(),
+            [18; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.expressions[4].tag,
+            ExpressionTag::ObjectSomeValuesFrom
+        );
+        assert_eq!(compiled.expressions[4].arguments, [6, 3]);
+        assert_eq!(compiled.subclass_axioms, vec![(2, 4)]);
+        assert_eq!(compiled.expression_occurrences[2].negative, 1);
+        assert_eq!(compiled.expression_occurrences[3].positive, 1);
+        assert_eq!(compiled.expression_occurrences[4].positive, 1);
+        assert_eq!(compiled.property_occurrences[2].positive, 1);
+        assert_eq!(
+            compiled.feature_counts[FEATURE_OBJECT_PROPERTY_ASSERTION],
+            1
+        );
+        assert_eq!(
+            compiled.feature_counts[FEATURE_OBJECT_HAS_VALUE_POSITIVE],
+            1
+        );
     }
 
     #[test]
