@@ -1,9 +1,12 @@
 //! Defensive structural validation for pyowl-core encoded-view schema 1.
 //!
 //! This module borrows the eleven public columns directly.  It establishes the
-//! shape, bounds, scalar arena, root-category, reachability, and acyclic graph
-//! invariants before the ELK-specific compiler allocates permanent IR.  It does
-//! not advertise schema support; semantic compilation remains a separate gate.
+//! shape, bounds, scalar arena, root-category, canonical dense ordering,
+//! reachability, and acyclic graph invariants before the ELK-specific compiler
+//! allocates permanent IR.  It does not advertise schema support; semantic
+//! compilation remains a separate gate.
+
+use std::cmp::Ordering;
 
 use crate::error::{CoreError, CoreResult};
 
@@ -449,6 +452,7 @@ pub fn validate_columns<B: ByteSource>(
                         }
                         previous_set_item = Some(identifier);
                     }
+                    claim_leaf_scan_work(item_kind, item_length, &mut work, limits.max_work)?;
                     validate_leaf_component(
                         item_kind,
                         item_value,
@@ -461,6 +465,7 @@ pub fn validate_columns<B: ByteSource>(
                 item_cursor = end;
             } else {
                 validate_field_role(location, role, kind, value, length, &columns, node_count)?;
+                claim_leaf_scan_work(kind, length, &mut work, limits.max_work)?;
                 validate_leaf_component(
                     kind,
                     value,
@@ -483,6 +488,9 @@ pub fn validate_columns<B: ByteSource>(
         ));
     }
 
+    // Dense-node validation below proves that the one-based IDs are ranks in
+    // canonical-model-v1 byte order, making this tuple comparison equivalent
+    // to the descriptor's `(root kind, canonical bytes)` ordering rule.
     let mut previous_root = None;
     for root in 0..root_count {
         claim_work(&mut work, 1, limits.max_work)?;
@@ -503,7 +511,9 @@ pub fn validate_columns<B: ByteSource>(
         previous_root = Some((kind, identifier));
     }
 
-    validate_reachability(&columns, root_count, node_count, &mut work, limits.max_work)?;
+    let canonical_lengths =
+        validate_graph_and_lengths(&columns, root_count, node_count, &mut work, limits.max_work)?;
+    validate_dense_node_order(&columns, &canonical_lengths, &mut work, limits.max_work)?;
     Ok(ValidatedEncodedColumns {
         root_count,
         node_count,
@@ -514,18 +524,23 @@ pub fn validate_columns<B: ByteSource>(
     })
 }
 
-fn validate_reachability<B: ByteSource>(
+fn validate_graph_and_lengths<B: ByteSource>(
     columns: &EncodedColumns<B>,
     root_count: usize,
     node_count: usize,
     work: &mut u64,
     max_work: u64,
-) -> CoreResult<()> {
+) -> CoreResult<Vec<u64>> {
     let mut states = Vec::new();
     states
         .try_reserve_exact(node_count)
         .map_err(|_| CoreError::capacity("encoded reachability state allocation failed"))?;
     states.resize(node_count, 0_u8);
+    let mut canonical_lengths = Vec::new();
+    canonical_lengths
+        .try_reserve_exact(node_count)
+        .map_err(|_| CoreError::capacity("encoded canonical length allocation failed"))?;
+    canonical_lengths.resize(node_count, 0_u64);
     let mut stack = Vec::<DfsFrame>::new();
     for root in 0..root_count {
         let identifier = u32_at(columns.root_ids, root, "root ID")?;
@@ -537,7 +552,7 @@ fn validate_reachability<B: ByteSource>(
             return Err(CoreError::protocol("encoded structural graph is cyclic"));
         }
         states[node] = 1;
-        stack.push(DfsFrame::new(node, columns)?);
+        push_dfs_frame(&mut stack, DfsFrame::new(node, columns)?)?;
         while let Some(frame) = stack.last_mut() {
             claim_work(work, 1, max_work)?;
             let child = if frame.item_cursor < frame.item_end {
@@ -572,6 +587,8 @@ fn validate_reachability<B: ByteSource>(
                 let completed = frame.node;
                 states[completed] = 2;
                 stack.pop();
+                canonical_lengths[completed] =
+                    canonical_node_length(completed, columns, &canonical_lengths, work, max_work)?;
                 continue;
             };
             let Some(child) = child else {
@@ -581,7 +598,7 @@ fn validate_reachability<B: ByteSource>(
             match states[child] {
                 0 => {
                     states[child] = 1;
-                    stack.push(DfsFrame::new(child, columns)?);
+                    push_dfs_frame(&mut stack, DfsFrame::new(child, columns)?)?;
                 }
                 1 => return Err(CoreError::protocol("encoded structural graph is cyclic")),
                 2 => {}
@@ -589,11 +606,627 @@ fn validate_reachability<B: ByteSource>(
             }
         }
     }
+    claim_work(
+        work,
+        u64::try_from(node_count)
+            .map_err(|_| CoreError::capacity("encoded reachability scan exceeds u64"))?,
+        max_work,
+    )?;
     if states.iter().any(|state| *state != 2) {
         return Err(CoreError::protocol(
             "encoded structural graph contains unreachable nodes",
         ));
     }
+    Ok(canonical_lengths)
+}
+
+fn push_dfs_frame(stack: &mut Vec<DfsFrame>, frame: DfsFrame) -> CoreResult<()> {
+    stack
+        .try_reserve(1)
+        .map_err(|_| CoreError::capacity("encoded graph stack allocation failed"))?;
+    stack.push(frame);
+    Ok(())
+}
+
+fn canonical_node_length<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<u64> {
+    let tag = u16_at(columns.node_tags, node, "node tag")?;
+    let mut total = u64::try_from(canonical_varint_width(u64::from(tag)))
+        .map_err(|_| CoreError::capacity("encoded canonical length exceeds u64"))?;
+    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+    let end = usize_at(columns.node_field_offsets, node + 1, "node field offset")?;
+    for field in start..end {
+        claim_work(work, 1, max_work)?;
+        let kind = byte_at(columns.field_kinds, field, "field kind")?;
+        let value = usize_at(columns.field_values, field, "field value")?;
+        let length = usize_at(columns.field_lengths, field, "field length")?;
+        if matches!(kind, COMPONENT_SET | COMPONENT_SEQUENCE) {
+            let count = u64::try_from(length)
+                .map_err(|_| CoreError::capacity("encoded collection length exceeds u64"))?;
+            add_canonical_length(&mut total, 1)?;
+            add_canonical_length(
+                &mut total,
+                u64::try_from(canonical_varint_width(count))
+                    .map_err(|_| CoreError::capacity("encoded canonical length exceeds u64"))?,
+            )?;
+            let item_end = value
+                .checked_add(length)
+                .ok_or_else(|| CoreError::capacity("encoded item range overflow"))?;
+            for item in value..item_end {
+                claim_work(work, 1, max_work)?;
+                let item_kind = byte_at(columns.item_kinds, item, "item kind")?;
+                let item_value = usize_at(columns.item_values, item, "item value")?;
+                let item_length = usize_at(columns.item_lengths, item, "item length")?;
+                let item_size = canonical_leaf_length(
+                    item_kind,
+                    item_value,
+                    item_length,
+                    columns,
+                    canonical_lengths,
+                )?;
+                if kind == COMPONENT_SET {
+                    // Canonical sets frame node bytes directly; sequence items
+                    // retain their component marker before the node frame.
+                    let framed = item_size.checked_sub(1).ok_or_else(|| {
+                        CoreError::internal("canonical set item has no node marker")
+                    })?;
+                    add_canonical_length(&mut total, framed)?;
+                } else {
+                    add_canonical_length(&mut total, item_size)?;
+                }
+            }
+        } else {
+            add_canonical_length(
+                &mut total,
+                canonical_leaf_length(kind, value, length, columns, canonical_lengths)?,
+            )?;
+        }
+    }
+    Ok(total)
+}
+
+fn canonical_leaf_length<B: ByteSource>(
+    kind: u8,
+    value: usize,
+    length: usize,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+) -> CoreResult<u64> {
+    match kind {
+        COMPONENT_NONE => Ok(1),
+        COMPONENT_NODE => {
+            let identifier = u32::try_from(value)
+                .map_err(|_| CoreError::protocol("encoded node ID exceeds u32"))?;
+            let node = node_index(identifier, canonical_lengths.len())?;
+            let nested = canonical_lengths[node];
+            if nested == 0 {
+                return Err(CoreError::internal(
+                    "canonical child length was not computed before its parent",
+                ));
+            }
+            let mut total = 1_u64;
+            add_canonical_length(
+                &mut total,
+                u64::try_from(canonical_varint_width(nested))
+                    .map_err(|_| CoreError::capacity("encoded canonical length exceeds u64"))?,
+            )?;
+            add_canonical_length(&mut total, nested)?;
+            Ok(total)
+        }
+        COMPONENT_TEXT | COMPONENT_BYTES | COMPONENT_ENUM => {
+            let payload = u64::try_from(length)
+                .map_err(|_| CoreError::capacity("encoded scalar length exceeds u64"))?;
+            let mut total = 1_u64;
+            add_canonical_length(
+                &mut total,
+                u64::try_from(canonical_varint_width(payload))
+                    .map_err(|_| CoreError::capacity("encoded canonical length exceeds u64"))?,
+            )?;
+            add_canonical_length(&mut total, payload)?;
+            Ok(total)
+        }
+        COMPONENT_INTEGER => {
+            let width = canonical_integer_varint_width(columns.scalar_bytes, value, length)?;
+            1_u64
+                .checked_add(
+                    u64::try_from(width)
+                        .map_err(|_| CoreError::capacity("encoded integer width exceeds u64"))?,
+                )
+                .ok_or_else(|| CoreError::capacity("encoded canonical length exceeds u64"))
+        }
+        COMPONENT_SET | COMPONENT_SEQUENCE => Err(CoreError::internal(
+            "nested collection reached canonical leaf sizing",
+        )),
+        _ => Err(CoreError::internal(
+            "invalid component reached canonical leaf sizing",
+        )),
+    }
+}
+
+fn add_canonical_length(total: &mut u64, amount: u64) -> CoreResult<()> {
+    *total = total
+        .checked_add(amount)
+        .ok_or_else(|| CoreError::capacity("encoded canonical model length exceeds u64"))?;
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum ComponentRow {
+    Field(usize),
+    Item(usize),
+}
+
+#[derive(Clone, Copy)]
+struct ScalarRange {
+    start: usize,
+    length: usize,
+}
+
+#[derive(Clone, Copy)]
+enum CanonicalCompareTask {
+    Node {
+        left: usize,
+        right: usize,
+    },
+    Fields {
+        left: usize,
+        right: usize,
+        remaining: usize,
+    },
+    Collection {
+        kind: u8,
+        left: usize,
+        right: usize,
+        remaining: usize,
+    },
+}
+
+fn validate_dense_node_order<B: ByteSource>(
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<()> {
+    for right in 1..canonical_lengths.len() {
+        let left = right - 1;
+        if compare_canonical_nodes(left, right, columns, canonical_lengths, work, max_work)?
+            != Ordering::Less
+        {
+            return Err(CoreError::protocol(
+                "encoded structural node IDs are not canonical and unique",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn compare_canonical_nodes<B: ByteSource>(
+    left: usize,
+    right: usize,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    let mut tasks = Vec::new();
+    push_compare_task(&mut tasks, CanonicalCompareTask::Node { left, right })?;
+    while let Some(task) = tasks.pop() {
+        claim_work(work, 1, max_work)?;
+        match task {
+            CanonicalCompareTask::Node { left, right } => {
+                if left == right {
+                    continue;
+                }
+                let left_tag = u64::from(u16_at(columns.node_tags, left, "node tag")?);
+                let right_tag = u64::from(u16_at(columns.node_tags, right, "node tag")?);
+                let ordering = compare_u64_varints(left_tag, right_tag);
+                if ordering != Ordering::Equal {
+                    return Ok(ordering);
+                }
+                let left_start = usize_at(columns.node_field_offsets, left, "node field offset")?;
+                let left_end = usize_at(columns.node_field_offsets, left + 1, "node field offset")?;
+                let right_start = usize_at(columns.node_field_offsets, right, "node field offset")?;
+                let right_end =
+                    usize_at(columns.node_field_offsets, right + 1, "node field offset")?;
+                let remaining = left_end - left_start;
+                if right_end - right_start != remaining {
+                    return Err(CoreError::internal(
+                        "equal constructor tags have different validated arities",
+                    ));
+                }
+                push_compare_task(
+                    &mut tasks,
+                    CanonicalCompareTask::Fields {
+                        left: left_start,
+                        right: right_start,
+                        remaining,
+                    },
+                )?;
+            }
+            CanonicalCompareTask::Fields {
+                left,
+                right,
+                remaining,
+            } => {
+                if remaining == 0 {
+                    continue;
+                }
+                push_compare_task(
+                    &mut tasks,
+                    CanonicalCompareTask::Fields {
+                        left: left
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded field index overflow"))?,
+                        right: right
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded field index overflow"))?,
+                        remaining: remaining - 1,
+                    },
+                )?;
+                if let Some(ordering) = schedule_component_comparison(
+                    ComponentRow::Field(left),
+                    ComponentRow::Field(right),
+                    columns,
+                    canonical_lengths,
+                    &mut tasks,
+                    work,
+                    max_work,
+                )? {
+                    return Ok(ordering);
+                }
+            }
+            CanonicalCompareTask::Collection {
+                kind,
+                left,
+                right,
+                remaining,
+            } => {
+                if remaining == 0 {
+                    continue;
+                }
+                push_compare_task(
+                    &mut tasks,
+                    CanonicalCompareTask::Collection {
+                        kind,
+                        left: left
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded item index overflow"))?,
+                        right: right
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded item index overflow"))?,
+                        remaining: remaining - 1,
+                    },
+                )?;
+                if kind == COMPONENT_SET {
+                    let left_node = node_index(
+                        node_id_at(columns.item_values, left, "set item node ID")?,
+                        canonical_lengths.len(),
+                    )?;
+                    let right_node = node_index(
+                        node_id_at(columns.item_values, right, "set item node ID")?,
+                        canonical_lengths.len(),
+                    )?;
+                    let ordering = compare_u64_varints(
+                        canonical_lengths[left_node],
+                        canonical_lengths[right_node],
+                    );
+                    if ordering != Ordering::Equal {
+                        return Ok(ordering);
+                    }
+                    push_compare_task(
+                        &mut tasks,
+                        CanonicalCompareTask::Node {
+                            left: left_node,
+                            right: right_node,
+                        },
+                    )?;
+                } else if let Some(ordering) = schedule_component_comparison(
+                    ComponentRow::Item(left),
+                    ComponentRow::Item(right),
+                    columns,
+                    canonical_lengths,
+                    &mut tasks,
+                    work,
+                    max_work,
+                )? {
+                    return Ok(ordering);
+                }
+            }
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
+fn schedule_component_comparison<B: ByteSource>(
+    left: ComponentRow,
+    right: ComponentRow,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    tasks: &mut Vec<CanonicalCompareTask>,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Option<Ordering>> {
+    let (left_kind, left_value, left_length) = component_parts(left, columns)?;
+    let (right_kind, right_value, right_length) = component_parts(right, columns)?;
+    let ordering = left_kind.cmp(&right_kind);
+    if ordering != Ordering::Equal {
+        return Ok(Some(ordering));
+    }
+    match left_kind {
+        COMPONENT_NONE => Ok(None),
+        COMPONENT_NODE => {
+            let left_node = node_index(
+                u32::try_from(left_value)
+                    .map_err(|_| CoreError::protocol("encoded node ID exceeds u32"))?,
+                canonical_lengths.len(),
+            )?;
+            let right_node = node_index(
+                u32::try_from(right_value)
+                    .map_err(|_| CoreError::protocol("encoded node ID exceeds u32"))?,
+                canonical_lengths.len(),
+            )?;
+            let ordering =
+                compare_u64_varints(canonical_lengths[left_node], canonical_lengths[right_node]);
+            if ordering != Ordering::Equal {
+                return Ok(Some(ordering));
+            }
+            push_compare_task(
+                tasks,
+                CanonicalCompareTask::Node {
+                    left: left_node,
+                    right: right_node,
+                },
+            )?;
+            Ok(None)
+        }
+        COMPONENT_TEXT | COMPONENT_BYTES | COMPONENT_ENUM => {
+            let left_size = u64::try_from(left_length)
+                .map_err(|_| CoreError::capacity("encoded scalar length exceeds u64"))?;
+            let right_size = u64::try_from(right_length)
+                .map_err(|_| CoreError::capacity("encoded scalar length exceeds u64"))?;
+            let ordering = compare_u64_varints(left_size, right_size);
+            if ordering != Ordering::Equal {
+                return Ok(Some(ordering));
+            }
+            let ordering = compare_scalar_ranges(
+                columns.scalar_bytes,
+                left_value,
+                right_value,
+                left_length,
+                work,
+                max_work,
+            )?;
+            Ok((ordering != Ordering::Equal).then_some(ordering))
+        }
+        COMPONENT_INTEGER => {
+            let ordering = compare_integer_components(
+                columns.scalar_bytes,
+                ScalarRange {
+                    start: left_value,
+                    length: left_length,
+                },
+                ScalarRange {
+                    start: right_value,
+                    length: right_length,
+                },
+                work,
+                max_work,
+            )?;
+            Ok((ordering != Ordering::Equal).then_some(ordering))
+        }
+        COMPONENT_SET | COMPONENT_SEQUENCE => {
+            let left_size = u64::try_from(left_length)
+                .map_err(|_| CoreError::capacity("encoded collection length exceeds u64"))?;
+            let right_size = u64::try_from(right_length)
+                .map_err(|_| CoreError::capacity("encoded collection length exceeds u64"))?;
+            let ordering = compare_u64_varints(left_size, right_size);
+            if ordering != Ordering::Equal {
+                return Ok(Some(ordering));
+            }
+            push_compare_task(
+                tasks,
+                CanonicalCompareTask::Collection {
+                    kind: left_kind,
+                    left: left_value,
+                    right: right_value,
+                    remaining: left_length,
+                },
+            )?;
+            Ok(None)
+        }
+        _ => Err(CoreError::internal(
+            "invalid component reached canonical comparison",
+        )),
+    }
+}
+
+fn component_parts<B: ByteSource>(
+    row: ComponentRow,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<(u8, usize, usize)> {
+    match row {
+        ComponentRow::Field(index) => Ok((
+            byte_at(columns.field_kinds, index, "field kind")?,
+            usize_at(columns.field_values, index, "field value")?,
+            usize_at(columns.field_lengths, index, "field length")?,
+        )),
+        ComponentRow::Item(index) => Ok((
+            byte_at(columns.item_kinds, index, "item kind")?,
+            usize_at(columns.item_values, index, "item value")?,
+            usize_at(columns.item_lengths, index, "item length")?,
+        )),
+    }
+}
+
+fn compare_scalar_ranges<B: ByteSource>(
+    scalars: B,
+    left: usize,
+    right: usize,
+    length: usize,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    if left == right {
+        return Ok(Ordering::Equal);
+    }
+    claim_work(
+        work,
+        u64::try_from(length)
+            .map_err(|_| CoreError::capacity("encoded scalar comparison exceeds u64"))?,
+        max_work,
+    )?;
+    for offset in 0..length {
+        let left_byte = byte_at(
+            scalars,
+            left.checked_add(offset)
+                .ok_or_else(|| CoreError::capacity("encoded scalar offset overflow"))?,
+            "canonical scalar",
+        )?;
+        let right_byte = byte_at(
+            scalars,
+            right
+                .checked_add(offset)
+                .ok_or_else(|| CoreError::capacity("encoded scalar offset overflow"))?,
+            "canonical scalar",
+        )?;
+        let ordering = left_byte.cmp(&right_byte);
+        if ordering != Ordering::Equal {
+            return Ok(ordering);
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
+fn compare_integer_components<B: ByteSource>(
+    scalars: B,
+    left: ScalarRange,
+    right: ScalarRange,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    let left_width = canonical_integer_varint_width(scalars, left.start, left.length)?;
+    let right_width = canonical_integer_varint_width(scalars, right.start, right.length)?;
+    let compared = left_width.max(right_width);
+    claim_work(
+        work,
+        u64::try_from(compared)
+            .map_err(|_| CoreError::capacity("encoded integer comparison exceeds u64"))?,
+        max_work,
+    )?;
+    for index in 0..compared {
+        let left_byte = (index < left_width)
+            .then(|| integer_varint_byte(scalars, left.start, left.length, index, left_width));
+        let right_byte = (index < right_width)
+            .then(|| integer_varint_byte(scalars, right.start, right.length, index, right_width));
+        let ordering = match (left_byte, right_byte) {
+            (Some(left_byte), Some(right_byte)) => left_byte?.cmp(&right_byte?),
+            (Some(_), None) => Ordering::Greater,
+            (None, Some(_)) => Ordering::Less,
+            (None, None) => Ordering::Equal,
+        };
+        if ordering != Ordering::Equal {
+            return Ok(ordering);
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
+fn canonical_integer_varint_width<B: ByteSource>(
+    scalars: B,
+    start: usize,
+    length: usize,
+) -> CoreResult<usize> {
+    let last = length
+        .checked_sub(1)
+        .ok_or_else(|| CoreError::internal("validated integer has an empty payload"))?;
+    let high = byte_at(
+        scalars,
+        start
+            .checked_add(last)
+            .ok_or_else(|| CoreError::capacity("encoded integer offset overflow"))?,
+        "integer scalar",
+    )?;
+    let lower_bits = last
+        .checked_mul(8)
+        .ok_or_else(|| CoreError::capacity("encoded integer bit length overflow"))?;
+    let high_bits = usize::try_from(u8::BITS - high.leading_zeros())
+        .map_err(|_| CoreError::capacity("encoded integer bit length exceeds usize"))?;
+    let bit_length = lower_bits
+        .checked_add(high_bits)
+        .ok_or_else(|| CoreError::capacity("encoded integer bit length overflow"))?;
+    Ok(bit_length.div_ceil(7).max(1))
+}
+
+fn integer_varint_byte<B: ByteSource>(
+    scalars: B,
+    start: usize,
+    payload_length: usize,
+    index: usize,
+    encoded_width: usize,
+) -> CoreResult<u8> {
+    let bit_offset = index
+        .checked_mul(7)
+        .ok_or_else(|| CoreError::capacity("encoded integer bit offset overflow"))?;
+    let source_index = bit_offset / 8;
+    let shift = u32::try_from(bit_offset % 8)
+        .map_err(|_| CoreError::capacity("encoded integer bit shift exceeds u32"))?;
+    let absolute = start
+        .checked_add(source_index)
+        .ok_or_else(|| CoreError::capacity("encoded integer offset overflow"))?;
+    let mut window = u16::from(byte_at(scalars, absolute, "integer scalar")?) >> shift;
+    if shift != 0 && source_index + 1 < payload_length {
+        window |= u16::from(byte_at(scalars, absolute + 1, "integer scalar")?) << (8 - shift);
+    }
+    let mut output = u8::try_from(window & 0x7f)
+        .map_err(|_| CoreError::internal("integer varint chunk exceeds u8"))?;
+    if index + 1 < encoded_width {
+        output |= 0x80;
+    }
+    Ok(output)
+}
+
+fn compare_u64_varints(left: u64, right: u64) -> Ordering {
+    let left_width = canonical_varint_width(left);
+    let right_width = canonical_varint_width(right);
+    for index in 0..left_width.max(right_width) {
+        let left_byte = (index < left_width).then(|| u64_varint_byte(left, index, left_width));
+        let right_byte = (index < right_width).then(|| u64_varint_byte(right, index, right_width));
+        let ordering = left_byte.cmp(&right_byte);
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    Ordering::Equal
+}
+
+fn canonical_varint_width(value: u64) -> usize {
+    let bits = (u64::BITS - value.leading_zeros()) as usize;
+    bits.div_ceil(7).max(1)
+}
+
+fn u64_varint_byte(value: u64, index: usize, width: usize) -> u8 {
+    debug_assert!(index < width && width <= 10);
+    let shift = (index * 7) as u32;
+    let mut output = ((value >> shift) & 0x7f) as u8;
+    if index + 1 < width {
+        output |= 0x80;
+    }
+    output
+}
+
+fn push_compare_task(
+    tasks: &mut Vec<CanonicalCompareTask>,
+    task: CanonicalCompareTask,
+) -> CoreResult<()> {
+    tasks
+        .try_reserve(1)
+        .map_err(|_| CoreError::capacity("encoded canonical comparison stack allocation failed"))?;
+    tasks.push(task);
     Ok(())
 }
 
@@ -1090,6 +1723,18 @@ fn claim_work(work: &mut u64, amount: u64, maximum: u64) -> CoreResult<()> {
     Ok(())
 }
 
+fn claim_leaf_scan_work(kind: u8, length: usize, work: &mut u64, maximum: u64) -> CoreResult<()> {
+    if matches!(kind, COMPONENT_TEXT | COMPONENT_ENUM) {
+        claim_work(
+            work,
+            u64::try_from(length)
+                .map_err(|_| CoreError::capacity("encoded scalar scan exceeds u64"))?,
+            maximum,
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1290,24 +1935,119 @@ mod tests {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
             root_ids: le32(&[5]),
-            node_tags: le16(&[1, 2, 1, 2, 62]),
-            node_field_offsets: le64(&[0, 1, 3, 4, 6, 8]),
+            node_tags: le16(&[1, 1, 2, 2, 62]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 8]),
             field_kinds: vec![
+                COMPONENT_TEXT,
                 COMPONENT_TEXT,
                 COMPONENT_ENUM,
                 COMPONENT_NODE,
-                COMPONENT_TEXT,
                 COMPONENT_ENUM,
                 COMPONENT_NODE,
                 COMPONENT_SET,
                 COMPONENT_SET,
             ],
-            field_values: le64(&[0, 5, 1, 10, 15, 3, 0, 2]),
-            field_lengths: le64(&[5, 5, 0, 5, 5, 0, 2, 0]),
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 0, 2]),
+            field_lengths: le64(&[5, 5, 5, 0, 5, 0, 2, 0]),
             item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
-            item_values: le64(&[2, 4]),
+            item_values: le64(&[3, 4]),
             item_lengths: le64(&[0, 0]),
-            scalar_bytes: b"urn:Aclassurn:Bclass".to_vec(),
+            scalar_bytes: b"urn:Aurn:Bclassclass".to_vec(),
+        }
+    }
+
+    fn two_declarations() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
+            root_ids: le32(&[5, 6]),
+            node_tags: le16(&[1, 1, 2, 2, 60, 60]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 8, 10]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 3, 0, 4, 0]),
+            field_lengths: le64(&[5, 5, 5, 0, 5, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:Aurn:Bclassclass".to_vec(),
+        }
+    }
+
+    fn equivalent_class_pair() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
+            root_ids: le32(&[7, 8]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 2, 62, 62]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 9, 11, 13]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 15, 1, 20, 2, 25, 3, 0, 2, 2, 4]),
+            field_lengths: le64(&[5, 5, 5, 5, 0, 5, 0, 5, 0, 2, 0, 2, 0]),
+            item_kinds: vec![
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+            ],
+            item_values: le64(&[4, 5, 4, 6]),
+            item_lengths: le64(&[0, 0, 0, 0]),
+            scalar_bytes: b"urn:Aurn:Burn:Cclassclassclass".to_vec(),
+        }
+    }
+
+    fn cardinality_pair() -> OwnedColumns {
+        let mut scalar_bytes = b"urn:Curn:pclassobject_property".to_vec();
+        scalar_bytes.extend([0x00, 0x01, 0xff]);
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[7]),
+            node_tags: le16(&[1, 1, 2, 2, 38, 38, 62]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 9, 12, 14]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_INTEGER,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_INTEGER,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 15, 2, 30, 4, 3, 32, 4, 3, 0, 2]),
+            field_lengths: le64(&[5, 5, 5, 0, 15, 0, 2, 0, 0, 1, 0, 0, 2, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[5, 6]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes,
         }
     }
 
@@ -1401,11 +2141,11 @@ mod tests {
         validate_columns(equivalent_classes().borrowed(), EncodedLimits::default()).unwrap();
 
         let mut malformed = equivalent_classes();
-        malformed.node_field_offsets = le64(&[1, 1, 3, 4, 6, 8]);
+        malformed.node_field_offsets = le64(&[1, 1, 2, 4, 6, 8]);
         assert_protocol_contains(&malformed, "offsets must start at zero");
 
         let mut malformed = equivalent_classes();
-        malformed.node_field_offsets = le64(&[0, 1, 3, 4, 6, 9]);
+        malformed.node_field_offsets = le64(&[0, 1, 2, 4, 6, 9]);
         assert_protocol_contains(&malformed, "offsets are not contiguous and bounded");
 
         let mut malformed = equivalent_classes();
@@ -1415,15 +2155,15 @@ mod tests {
         assert_protocol_contains(&malformed, "offsets do not cover every field");
 
         let mut malformed = equivalent_classes();
-        malformed.field_values = le64(&[0, 5, 1, 10, 15, 3, 1, 2]);
+        malformed.field_values = le64(&[0, 5, 10, 1, 15, 2, 1, 2]);
         assert_protocol_contains(&malformed, "exactly cover item rows");
 
         let mut malformed = equivalent_classes();
-        malformed.field_values = le64(&[0, 5, 1, 10, 15, 3, 0, 1]);
+        malformed.field_values = le64(&[0, 5, 10, 1, 15, 2, 0, 1]);
         assert_protocol_contains(&malformed, "exactly cover item rows");
 
         let mut malformed = equivalent_classes();
-        malformed.field_lengths = le64(&[5, 5, 0, 5, 5, 0, 3, 0]);
+        malformed.field_lengths = le64(&[5, 5, 5, 0, 5, 0, 3, 0]);
         assert_protocol_contains(&malformed, "collection field exceeds item rows");
 
         let mut malformed = equivalent_classes();
@@ -1433,15 +2173,15 @@ mod tests {
         assert_protocol_contains(&malformed, "item rows are not exactly covered");
 
         let mut malformed = equivalent_classes();
-        malformed.field_values = le64(&[1, 5, 1, 10, 15, 3, 0, 2]);
+        malformed.field_values = le64(&[1, 5, 10, 1, 15, 2, 0, 2]);
         assert_protocol_contains(&malformed, "exactly cover the scalar arena");
 
         let mut malformed = equivalent_classes();
-        malformed.field_values = le64(&[0, 5, 1, 9, 15, 3, 0, 2]);
+        malformed.field_values = le64(&[0, 4, 10, 1, 15, 2, 0, 2]);
         assert_protocol_contains(&malformed, "exactly cover the scalar arena");
 
         let mut malformed = equivalent_classes();
-        malformed.field_lengths = le64(&[21, 5, 0, 5, 5, 0, 2, 0]);
+        malformed.field_lengths = le64(&[21, 5, 5, 0, 5, 0, 2, 0]);
         assert_protocol_contains(&malformed, "scalar component is out of bounds");
 
         let mut malformed = equivalent_classes();
@@ -1472,15 +2212,15 @@ mod tests {
         assert_protocol_contains(&malformed, "one-based and nonzero");
 
         let mut malformed = equivalent_classes();
-        malformed.item_values = le64(&[2, 6]);
+        malformed.item_values = le64(&[3, 6]);
         assert_protocol_contains(&malformed, "node ID is out of range");
 
         let mut malformed = equivalent_classes();
-        malformed.item_values = le64(&[4, 2]);
+        malformed.item_values = le64(&[4, 3]);
         assert_protocol_contains(&malformed, "not strictly ascending and unique");
 
         let mut malformed = equivalent_classes();
-        malformed.item_values = le64(&[2, 2]);
+        malformed.item_values = le64(&[3, 3]);
         assert_protocol_contains(&malformed, "not strictly ascending and unique");
 
         let mut ordered_sequence = property_chain();
@@ -1529,6 +2269,149 @@ mod tests {
         malformed.root_kinds = vec![ROOT_AXIOM, ROOT_AXIOM];
         malformed.root_ids = le32(&[5, 5]);
         assert_protocol_contains(&malformed, "strictly ordered and unique");
+    }
+
+    #[test]
+    fn dense_node_and_root_order_follow_canonical_model_v1_bytes() {
+        validate_columns(equivalent_classes().borrowed(), EncodedLimits::default()).unwrap();
+        validate_columns(two_declarations().borrowed(), EncodedLimits::default()).unwrap();
+        validate_columns(equivalent_class_pair().borrowed(), EncodedLimits::default()).unwrap();
+        validate_columns(cardinality_pair().borrowed(), EncodedLimits::default()).unwrap();
+
+        let mut malformed = equivalent_classes();
+        malformed.scalar_bytes = b"urn:Burn:Aclassclass".to_vec();
+        assert_protocol_contains(&malformed, "node IDs are not canonical and unique");
+
+        let mut malformed = equivalent_classes();
+        malformed.scalar_bytes = b"urn:Aurn:Aclassclass".to_vec();
+        assert_protocol_contains(&malformed, "node IDs are not canonical and unique");
+
+        let mut malformed = equivalent_classes();
+        malformed.field_values = le64(&[0, 5, 10, 2, 15, 1, 0, 2]);
+        assert_protocol_contains(&malformed, "node IDs are not canonical and unique");
+
+        let mut malformed = equivalent_class_pair();
+        malformed.item_values = le64(&[4, 6, 4, 5]);
+        assert_protocol_contains(&malformed, "node IDs are not canonical and unique");
+
+        let mut framed = equivalent_classes();
+        framed.field_values = le64(&[0, 3, 7, 1, 12, 2, 0, 2]);
+        framed.field_lengths = le64(&[3, 4, 5, 0, 5, 0, 2, 0]);
+        framed.scalar_bytes = b"z:aaa:bclassclass".to_vec();
+        validate_columns(framed.borrowed(), EncodedLimits::default()).unwrap();
+
+        let mut malformed = equivalent_classes();
+        malformed.field_values = le64(&[0, 4, 7, 1, 12, 2, 0, 2]);
+        malformed.field_lengths = le64(&[4, 3, 5, 0, 5, 0, 2, 0]);
+        malformed.scalar_bytes = b"aa:bz:aclassclass".to_vec();
+        assert_protocol_contains(&malformed, "node IDs are not canonical and unique");
+
+        let mut malformed = cardinality_pair();
+        malformed.scalar_bytes.truncate(30);
+        malformed.scalar_bytes.extend([0xff, 0x00, 0x01]);
+        malformed.field_values = le64(&[0, 5, 10, 1, 15, 2, 30, 4, 3, 31, 4, 3, 0, 2]);
+        malformed.field_lengths = le64(&[5, 5, 5, 0, 15, 0, 1, 0, 0, 2, 0, 0, 2, 0]);
+        assert_protocol_contains(&malformed, "node IDs are not canonical and unique");
+
+        let mut malformed = two_declarations();
+        malformed.root_ids = le32(&[6, 5]);
+        assert_protocol_contains(&malformed, "roots are not strictly ordered and unique");
+
+        let owned = equivalent_classes();
+        let columns = owned.borrowed();
+        let mut work = 0;
+        let lengths = validate_graph_and_lengths(&columns, 1, 5, &mut work, u64::MAX).unwrap();
+        let mut comparison_work = 0;
+        assert!(matches!(
+            compare_canonical_nodes(
+                0,
+                1,
+                &columns,
+                &lengths,
+                &mut comparison_work,
+                1,
+            ),
+            Err(CoreError::Capacity(message)) if message.contains("work limit")
+        ));
+    }
+
+    #[test]
+    fn canonical_scalar_and_graph_integrity_fail_before_ordering() {
+        fn oracle_varint(mut value: u64) -> Vec<u8> {
+            let mut output = Vec::new();
+            loop {
+                let chunk = (value & 0x7f) as u8;
+                value >>= 7;
+                output.push(chunk | if value == 0 { 0 } else { 0x80 });
+                if value == 0 {
+                    return output;
+                }
+            }
+        }
+
+        let varint_values = [
+            0,
+            1,
+            0x7f,
+            0x80,
+            0xff,
+            0x100,
+            0x3fff,
+            0x4000,
+            u32::MAX.into(),
+            u64::MAX,
+        ];
+        for left in varint_values {
+            for right in varint_values {
+                assert_eq!(
+                    compare_u64_varints(left, right),
+                    oracle_varint(left).cmp(&oracle_varint(right))
+                );
+            }
+        }
+
+        for (payload, expected) in [
+            (&[0x00][..], &[0x00][..]),
+            (&[0x7f][..], &[0x7f][..]),
+            (&[0x80][..], &[0x80, 0x01][..]),
+            (&[0xff][..], &[0xff, 0x01][..]),
+            (&[0x00, 0x01][..], &[0x80, 0x02][..]),
+            (&[0x00, 0x40][..], &[0x80, 0x80, 0x01][..]),
+        ] {
+            let width = canonical_integer_varint_width(payload, 0, payload.len()).unwrap();
+            let actual = (0..width)
+                .map(|index| integer_varint_byte(payload, 0, payload.len(), index, width).unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
+
+        let mut cursor = 0;
+        validate_leaf_component(COMPONENT_ENUM, 0, 5, 0, b"class".as_slice(), &mut cursor).unwrap();
+
+        let mut cursor = 0;
+        assert!(matches!(
+            validate_leaf_component(COMPONENT_ENUM, 0, 1, 0, &[0x80][..], &mut cursor),
+            Err(CoreError::Protocol(message)) if message.contains("nonempty ASCII")
+        ));
+
+        let mut malformed = cardinality_pair();
+        malformed.scalar_bytes[31] = 0;
+        assert_protocol_contains(&malformed, "integer component is not minimal");
+
+        let mut malformed = cardinality_pair();
+        malformed.field_lengths = le64(&[5, 5, 5, 0, 15, 0, 0, 0, 0, 1, 0, 0, 2, 0]);
+        assert_protocol_contains(&malformed, "integer component is not minimal");
+
+        assert_protocol_contains(&data_range_cycle(), "structural graph is cyclic");
+
+        let mut malformed = declaration();
+        malformed.node_tags = le16(&[1, 2, 60, 1]);
+        malformed.node_field_offsets = le64(&[0, 1, 3, 5, 6]);
+        malformed.field_kinds.push(COMPONENT_TEXT);
+        malformed.field_values.extend(le64(&[10]));
+        malformed.field_lengths.extend(le64(&[1]));
+        malformed.scalar_bytes.push(b'z');
+        assert_protocol_contains(&malformed, "contains unreachable nodes");
     }
 
     #[test]
