@@ -18,6 +18,7 @@ from pyelk.indexing.encoded import (
     EncodedStructuralHandoff,
 )
 from pyelk.indexing.ir import CompiledOntology
+from pyelk.indexing.metadata import encode_compiler_metadata, metadata_from_compiled
 from pyelk.reasoning.contracts import BackendConfig, QueryKind
 from pyelk.reasoning.wire import (
     encode_raw_query_result,
@@ -29,11 +30,13 @@ from tests.helpers.contracts import TinyCompiledOntologyBuilder
 
 class _NativeSession:
     def __init__(self, compiled: CompiledOntology) -> None:
+        self.compiled = compiled
         self.python = PythonBackendFactory().create_session(
             compiled,
             cast(BackendConfig, ReasonerConfig()),
         )
         self.closed = False
+        self.metadata_calls = 0
 
     def close(self) -> None:
         self.closed = True
@@ -58,6 +61,10 @@ class _NativeSession:
 
     def entails(self, encoded: bytes | None) -> bool:
         return self.python.entails(encoded)
+
+    def compiler_metadata(self) -> bytes:
+        self.metadata_calls += 1
+        return encode_compiler_metadata(metadata_from_compiled(self.compiled))
 
     def diagnostics(self) -> Mapping[str, int | float | str | bool]:
         return {"native": True, "calls": 1}
@@ -128,6 +135,21 @@ def test_rust_adapter_transfers_ir_once_and_decodes_every_result() -> None:
     session.close()
     with pytest.raises(ReasonerClosedError):
         session.is_inconsistent()
+
+
+def test_rust_adapter_decodes_compiler_metadata_lazily_once() -> None:
+    session, _native = _session()
+    native_session = session._native
+    expected = metadata_from_compiled(native_session.compiled)
+
+    assert native_session.metadata_calls == 0
+    assert session.compiler_metadata() == expected
+    assert session.compiler_metadata() is session.compiler_metadata()
+    assert native_session.metadata_calls == 1
+
+    session.close()
+    with pytest.raises(ReasonerClosedError):
+        session.compiler_metadata()
 
 
 def test_rust_adapter_rejects_wrong_payload_and_maps_native_failure() -> None:

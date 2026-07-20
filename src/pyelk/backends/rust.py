@@ -17,6 +17,7 @@ from pyelk.indexing.encoded import (
     negotiate_encoded_structural_view,
 )
 from pyelk.indexing.ir import CompiledOntology
+from pyelk.indexing.metadata import CompilerMetadata, decode_compiler_metadata
 from pyelk.reasoning.contracts import (
     BackendConfig,
     BackendInfo,
@@ -168,7 +169,14 @@ class RustBackendFactory:
 class RustBackendSession:
     """Decode and validate coarse native calls without leaking native values."""
 
-    __slots__ = ("_closed", "_encoded_owner", "_info", "_ingestion_path", "_native")
+    __slots__ = (
+        "_closed",
+        "_compiler_metadata",
+        "_encoded_owner",
+        "_info",
+        "_ingestion_path",
+        "_native",
+    )
 
     def __init__(
         self,
@@ -183,6 +191,7 @@ class RustBackendSession:
     ) -> None:
         self._native: Any = native_session
         self._closed = False
+        self._compiler_metadata: CompilerMetadata | None = None
         if ingestion_path not in {"scalar-wire", "encoded-native"}:
             raise ValueError("invalid Rust ingestion path")
         if (ingestion_path == "encoded-native") != (encoded_owner is not None):
@@ -214,7 +223,15 @@ class RustBackendSession:
         finally:
             self._closed = True
             self._native = None
+            self._compiler_metadata = None
             self._encoded_owner = None
+
+    def compiler_metadata(self) -> CompilerMetadata:
+        """Decode the bounded native facade ledger lazily and at most once."""
+
+        if self._compiler_metadata is None:
+            self._compiler_metadata = decode_compiler_metadata(self._payload("compiler_metadata"))
+        return self._compiler_metadata
 
     def is_inconsistent(self) -> bool:
         value = self._call("is_inconsistent")

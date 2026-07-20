@@ -17,7 +17,9 @@ use pyelk_core::encoded::{
     compile_encoded_overlay_delta_with_policy, compile_encoded_segments_with_policy,
     validate_columns,
 };
-use pyelk_core::wire::{encode_query, encode_realization, encode_taxonomy};
+use pyelk_core::wire::{
+    encode_compiler_metadata, encode_query, encode_realization, encode_taxonomy,
+};
 use pyelk_core::{
     CoreError, CoreResult, DiagnosticValue, IMPLEMENTATION_VERSION, IR_MAJOR, IR_MINOR,
     NativeCoreSession, QueryKind,
@@ -700,6 +702,13 @@ impl NativeSession {
 
 #[pymethods]
 impl NativeSession {
+    fn compiler_metadata(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+        let encoded = self.detached(py, "compiler_metadata", |session| {
+            encode_compiler_metadata(session.ontology())
+        })?;
+        Ok(PyBytes::new(py, &encoded).unbind())
+    }
+
     fn is_inconsistent(&self, py: Python<'_>) -> PyResult<bool> {
         self.detached(py, "is_inconsistent", NativeCoreSession::is_inconsistent)
     }

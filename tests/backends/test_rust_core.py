@@ -351,6 +351,7 @@ def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> No
 
 def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: ModuleType) -> None:
     from pyelk.indexing.compiler import compile_ontology
+    from pyelk.indexing.metadata import encode_compiler_metadata, metadata_from_compiled
     from pyelk.indexing.summary import compiler_digest, compiler_section_counts
 
     snapshot, encoded = _direct_encoded_snapshot(
@@ -391,6 +392,9 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         expected_digest = compiler_digest(compiled).hex()
         assert diagnostics["compiler_digest"] == expected_digest
         assert scalar_diagnostics["compiler_digest"] == expected_digest
+        expected_metadata = encode_compiler_metadata(metadata_from_compiled(compiled))
+        assert direct.compiler_metadata() == expected_metadata
+        assert scalar.compiler_metadata() == expected_metadata
         for name, count in compiler_section_counts(compiled).items():
             key = f"compiler_{name}_count"
             assert diagnostics[key] == count
