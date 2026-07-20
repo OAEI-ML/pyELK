@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from benchmarks import bench_biomedical
+from benchmarks import bench_biomedical, bench_encoded_ingestion
 from tools import benchmark as integrated_benchmark
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -97,6 +97,9 @@ def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None
         "native_python_geometric_mean_speedup = 5.0",
         "native_boundary_fraction_max = 0.05",
         "release_regression_fraction_max = 0.10",
+        "encoded_view_to_result_geometric_mean_speedup = 2.0",
+        "encoded_boundary_fraction_max = 0.05",
+        "encoded_incremental_rss_regression_fraction_max = 0.10",
         'runner = "benchmarks/bench_biomedical.py"',
         "expected_source_semantic_completeness_sha256",
         "expected_target_semantic_completeness_sha256",
@@ -437,3 +440,63 @@ def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
     }
     assert payload["backends"]["rust"]["backend"]["name"] == "rust"
     assert payload["backends"]["rust"]["native_transfer"]["observable"] is False
+
+
+def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
+    candidates = (
+        ROOT / "target" / "release" / "lib_native.dylib",
+        ROOT / "target" / "release" / "lib_native.so",
+        ROOT / "target" / "debug" / "lib_native.dylib",
+        ROOT / "target" / "debug" / "lib_native.so",
+    )
+    native_path = next((path for path in candidates if path.is_file()), None)
+    if native_path is None:
+        pytest.skip("workspace native extension is not built")
+
+    payload = bench_encoded_ingestion.run(
+        class_count=20,
+        repeats=1,
+        warmups=0,
+        warm_queries=2,
+        workers=1,
+        native_path=native_path,
+        experimental_producer=True,
+        enforce=False,
+    )
+
+    assert payload["schema"] == "pyelk.encoded-ingestion-benchmark/1"
+    assert payload["gate_eligible"] is False
+    assert payload["capabilities"]["producer_modes"] == ["experimental-scalar-fallback"]
+    assert set(payload["workloads"]) == {"direct", "overlay", "composite"}
+    for name, row in payload["workloads"].items():
+        assert row["parity"] == {
+            "compiler_digest": True,
+            "compiler_counts": True,
+            "packed_first_result": True,
+        }
+        counters = row["encoded_native"]["counters"]
+        assert counters["serialized_private_ir_bytes"] == 0
+        assert counters["staging_copy_bytes"] == 0
+        assert counters["wire_encoder_calls"] == 0
+        assert counters["wire_decoder_calls"] == 0
+        assert counters["scalar_axiom_materializations"] > 0
+        assert row["encoded_native"]["diagnostics"]["encoded_compiler_gil_released"] is True
+        assert row["encoded_native"]["phases"]["view_to_first_result"]["samples"]
+        if name == "direct":
+            assert counters["base_flattening_bytes"] == 0
+        else:
+            assert counters["base_flattening_bytes"] > 0
+
+
+def test_encoded_ingestion_enforcement_rejects_the_fallback_before_loading_native() -> None:
+    with pytest.raises(ValueError, match="forbids the experimental scalar fallback"):
+        bench_encoded_ingestion.run(
+            class_count=20,
+            repeats=1,
+            warmups=0,
+            warm_queries=1,
+            workers=1,
+            native_path=None,
+            experimental_producer=True,
+            enforce=True,
+        )

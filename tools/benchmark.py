@@ -320,6 +320,24 @@ def _suite(
         if native_path is not None:
             boundary.extend(("--native-path", str(native_path)))
         commands.append(("native-boundary", boundary))
+        encoded_ingestion = _command(
+            "bench_encoded_ingestion.py",
+            "--classes",
+            classes,
+            "--repeats",
+            repeats,
+            "--warmups",
+            warmups,
+            "--workers",
+            str(workers),
+        )
+        if enforce:
+            encoded_ingestion.append("--enforce")
+        else:
+            encoded_ingestion.append("--experimental-producer")
+        if native_path is not None:
+            encoded_ingestion.extend(("--native-path", str(native_path)))
+        commands.append(("encoded-ingestion", encoded_ingestion))
     if biomedical is not None:
         biomedical_command = _command(
             "bench_biomedical.py",
@@ -420,6 +438,15 @@ def run(
             blockers = biomedical_result.get("gate_blockers")
             raise RuntimeError(
                 "biomedical benchmark evidence is not gate-eligible"
+                + (f": {blockers}" if blockers else "")
+            )
+        encoded_result = results.get("encoded-ingestion")
+        if not isinstance(encoded_result, dict):
+            raise RuntimeError("enforcement did not produce an encoded-ingestion result")
+        if encoded_result.get("gate_eligible") is not True:
+            blockers = encoded_result.get("gate_blockers")
+            raise RuntimeError(
+                "encoded-ingestion benchmark evidence is not gate-eligible"
                 + (f": {blockers}" if blockers else "")
             )
     java: dict[str, object] | None = None

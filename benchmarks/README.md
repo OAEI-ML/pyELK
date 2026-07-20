@@ -48,6 +48,16 @@ biomedical metadata above, and caller-approved semantic/completeness digests. It
 otherwise successful run when the biomedical report remains gate-ineligible; an integrated
 report can therefore never claim `enforced: true` while carrying blocked evidence.
 
+Native suites also run `bench_encoded_ingestion.py` from already-resident direct, overlay, and
+composite views. It records raw phase samples and RSS observations for encoded-view acquisition,
+native session creation, first taxonomy, and warm queries alongside the scalar compiler/private-
+wire baseline. Compiler digests, section counts, and packed taxonomy bytes must agree exactly.
+Ordinary development runs use the explicitly labelled scalar fallback producer while the core and
+consumer capabilities remain unpublished; those reports are never gate-eligible. `--enforce`
+forbids that fallback and requires public capability negotiation, zero parser/resolver/wire/
+scalar-materialization/base-flattening deltas, a 2x geometric-mean view-to-result speedup, the 5%
+boundary ceiling, and the 10% time/RSS guardrails from `manifest.toml`.
+
 A pinned Java/ELK timing JSON can be attached with `--java-report`. Generate it on the same
 machine, with the same ontology bytes and operations, after Java warm-up; the integrated
 report records its payload and SHA-256. Java is never discovered or launched by the Python
