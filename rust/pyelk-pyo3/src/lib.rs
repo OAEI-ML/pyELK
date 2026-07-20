@@ -16,7 +16,7 @@ use pyelk_core::encoded::{
     EncodedPostingMode, EncodedUnsupportedPolicy, compile_encoded_hierarchy_selected_with_policy,
     compile_encoded_hierarchy_with_policy, compile_encoded_overlay_delta_selected_with_policy,
     compile_encoded_overlay_delta_with_policy, compile_encoded_segments_with_policy,
-    validate_columns,
+    validate_column_shape,
 };
 use pyelk_core::wire::{
     encode_compiler_metadata, encode_query, encode_realization, encode_taxonomy,
@@ -312,7 +312,7 @@ impl<'py> CompositeResolver<'py> {
             ));
         }
         let bindings = EncodedBufferBindings::from_view(view)?;
-        let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
+        let validated = validate_column_shape(bindings.columns()?, EncodedLimits::default())?;
         let raw_segments = required_attribute(view, "segments")?;
         let segments = raw_segments.cast::<PyTuple>().map_err(|_| {
             CoreError::protocol("encoded structural view segments must be an exact tuple")
@@ -1427,7 +1427,7 @@ fn validate_encoded_input<'py>(
             ));
         }
         let bindings = EncodedBufferBindings::from_view(&current)?;
-        let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
+        let validated = validate_column_shape(bindings.columns()?, EncodedLimits::default())?;
         let raw_segments = required_attribute(&current, "segments")?;
         let segments = raw_segments.cast::<PyTuple>().map_err(|_| {
             CoreError::protocol("encoded structural view segments must be an exact tuple")

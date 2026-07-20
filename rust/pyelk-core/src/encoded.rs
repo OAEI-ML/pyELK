@@ -326,6 +326,16 @@ pub struct ValidatedEncodedColumns {
     pub work: u64,
 }
 
+/// Bounded column counts established from buffer shape before the compiler's full validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EncodedColumnShape {
+    pub root_count: usize,
+    pub node_count: usize,
+    pub field_count: usize,
+    pub item_count: usize,
+    pub scalar_bytes: usize,
+}
+
 /// Rust-owned compiler result plus the exact scalar cache-key observations it consumed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EncodedCompilation {
@@ -539,10 +549,14 @@ pub fn validate_columns<B: ByteSource>(
     validate_columns_with_lengths(columns, limits).map(|(validated, _lengths)| validated)
 }
 
-fn validate_columns_with_lengths<B: ByteSource>(
+/// Validate coarse column widths, paired lengths, and allocation limits without scanning rows.
+///
+/// Native bindings use this before resolving segment metadata. Permanent compilation still calls
+/// [`validate_columns`] (or its internal equivalent) exactly once before consuming any row.
+pub fn validate_column_shape<B: ByteSource>(
     columns: EncodedColumns<B>,
     limits: EncodedLimits,
-) -> CoreResult<(ValidatedEncodedColumns, Vec<u64>)> {
+) -> CoreResult<EncodedColumnShape> {
     let root_count = aligned_count(columns.root_ids, 4, "root_ids")?;
     if columns.root_kinds.len() != root_count {
         return Err(CoreError::protocol(
@@ -585,6 +599,27 @@ fn validate_columns_with_lengths<B: ByteSource>(
         limits.max_scalar_bytes,
         "encoded scalar byte count",
     )?;
+    Ok(EncodedColumnShape {
+        root_count,
+        node_count,
+        field_count,
+        item_count,
+        scalar_bytes: columns.scalar_bytes.len(),
+    })
+}
+
+fn validate_columns_with_lengths<B: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+) -> CoreResult<(ValidatedEncodedColumns, Vec<u64>)> {
+    let shape = validate_column_shape(columns, limits)?;
+    let EncodedColumnShape {
+        root_count,
+        node_count,
+        field_count,
+        item_count,
+        scalar_bytes,
+    } = shape;
 
     let mut work = 0_u64;
     claim_work(&mut work, 1, limits.max_work)?;
@@ -745,7 +780,7 @@ fn validate_columns_with_lengths<B: ByteSource>(
             node_count,
             field_count,
             item_count,
-            scalar_bytes: columns.scalar_bytes.len(),
+            scalar_bytes,
             work,
         },
         canonical_lengths,
@@ -6718,6 +6753,30 @@ mod tests {
         assert_eq!(declaration.node_count, 3);
         assert_eq!(declaration.field_count, 5);
         assert_eq!(declaration.scalar_bytes, 10);
+    }
+
+    #[test]
+    fn coarse_column_shape_avoids_a_duplicate_structural_row_scan() {
+        let columns = declaration();
+        let shape = validate_column_shape(columns.borrowed(), EncodedLimits::default()).unwrap();
+        assert_eq!(shape.root_count, 1);
+        assert_eq!(shape.node_count, 3);
+        assert_eq!(shape.field_count, 5);
+        assert_eq!(shape.item_count, 0);
+        assert_eq!(shape.scalar_bytes, 10);
+
+        let mut malformed = columns;
+        malformed.node_tags = le16(&[1, 2, u16::MAX]);
+        assert!(validate_column_shape(malformed.borrowed(), EncodedLimits::default()).is_ok());
+        assert!(validate_columns(malformed.borrowed(), EncodedLimits::default()).is_err());
+        assert!(
+            compile_encoded_hierarchy_with_policy(
+                malformed.borrowed(),
+                EncodedLimits::default(),
+                EncodedUnsupportedPolicy::Error,
+            )
+            .is_err()
+        );
     }
 
     #[test]
