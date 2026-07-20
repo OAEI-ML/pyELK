@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import importlib
 import os
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from math import isfinite
+from time import perf_counter
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pyelk.backends.python import IMPLEMENTATION_VERSION, PythonBackendFactory
@@ -42,12 +45,25 @@ class EncodedBackendSelection:
 
     session: BackendSession
     metadata: CompilerMetadata
+    encoded_view_publication_seconds: float = 0.0
+    consumer_compile_seconds: float = 0.0
+    compiler_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.session, BackendSession):
             raise TypeError("session must implement BackendSession")
         if not isinstance(self.metadata, CompilerMetadata):
             raise TypeError("metadata must be CompilerMetadata")
+        for name in ("encoded_view_publication_seconds", "consumer_compile_seconds"):
+            value = getattr(self, name)
+            if type(value) is not float or not isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be a finite nonnegative float")
+        if self.compiler_digest is not None and (
+            type(self.compiler_digest) is not str
+            or len(self.compiler_digest) != 64
+            or any(character not in "0123456789abcdef" for character in self.compiler_digest)
+        ):
+            raise ValueError("compiler_digest must be a lowercase 32-byte digest or None")
 
 
 def try_create_encoded_backend_session(
@@ -77,10 +93,13 @@ def try_create_encoded_backend_session(
     if probe.module is None:
         return None
     factory = cast(Any, _rust_factory(probe))
+    publication_started = perf_counter()
     negotiation = factory.negotiate_encoded_input(ontology)
+    publication_seconds = perf_counter() - publication_started
     if negotiation.handoff is None:
         return None
 
+    compile_started = perf_counter()
     session = factory.create_encoded_session(
         negotiation.handoff,
         cast(BackendConfig, config),
@@ -95,7 +114,26 @@ def try_create_encoded_backend_session(
         metadata = metadata_method()
         if not isinstance(metadata, CompilerMetadata):
             raise BackendProtocolError("CompilerMetadata from native session", metadata)
-        return EncodedBackendSelection(session=session, metadata=metadata)
+        diagnostics = session.diagnostics()
+        if not isinstance(diagnostics, Mapping):
+            raise BackendProtocolError("encoded session diagnostics mapping", diagnostics)
+        compiler_digest = diagnostics.get("compiler_digest")
+        if (
+            type(compiler_digest) is not str
+            or len(compiler_digest) != 64
+            or any(character not in "0123456789abcdef" for character in compiler_digest)
+        ):
+            raise BackendProtocolError(
+                "a lowercase 32-byte encoded compiler digest",
+                compiler_digest,
+            )
+        return EncodedBackendSelection(
+            session=session,
+            metadata=metadata,
+            encoded_view_publication_seconds=publication_seconds,
+            consumer_compile_seconds=perf_counter() - compile_started,
+            compiler_digest=compiler_digest,
+        )
     except BaseException:
         with suppress(BaseException):
             session.close()

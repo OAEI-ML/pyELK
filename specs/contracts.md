@@ -163,6 +163,17 @@ All operations after `close()` raise `ReasonerClosedError`. `close()` is idempot
 method mutates the captured core view. Taxonomy/realization stages are cached per
 session. `ontology` is the exact captured core object and remains caller-shareable.
 
+`diagnostics()` is a sorted immutable scalar mapping suitable for bounded Exact/OAEI handoff
+provenance. It always includes `ingestion_path`, the canonical `compiler_digest`,
+`compiler_cache_schema_version`, `ir_schema_version`, `implementation_version`,
+`consumer_compile_seconds`, `materialized_scalar_rows`, and the frozen `encoded_*` ownership,
+copy, and segment ledger. Scalar paths measure the encoded ledger as exact zero/false values;
+encoded-native measures it at the native boundary and reports zero scalar rows. Native sessions
+also include their ABI when available, while encoded-native includes view-publication and native
+phase durations. Known fields are validated at the facade and malformed, non-finite, or
+backend-conflicting values fail closed. No diagnostic contains a path, pointer, object identity,
+or private IR payload.
+
 The equivalence return shapes are deliberately asymmetric. `equivalent_classes`
 returns a tuple that holds at most one node: mutually equivalent named classes
 always collapse into a single taxonomy node, and the tuple form encodes ELK's

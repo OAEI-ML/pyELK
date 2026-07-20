@@ -89,7 +89,9 @@ ontology runs. The standalone biomedical runner offers `--trace-allocations` for
 allocation peaks and marks those wall timings as non-gating. `ru_maxrss` is a process-lifetime
 high-water mark, so its before/after growth is labelled as order-dependent diagnostic evidence,
 not per-phase peak RSS. Public session diagnostics expose the selected ingestion path and encoded
-buffer/copy/segment counters; scalar-wire private-IR byte length remains deliberately private.
+buffer/copy/segment counters; recursive composite staging counts resolved posting bytes and
+64-byte anonymous-scope remap pairs, while scalar-wire private-IR byte length remains deliberately
+private.
 
 `results/` distinguishes smoke evidence from release baselines. Regenerate reports with the
 commands recorded there; do not hand-edit timing values.

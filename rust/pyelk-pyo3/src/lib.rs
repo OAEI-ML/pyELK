@@ -115,6 +115,7 @@ struct EncodedIngestionMetrics {
     segment_count: u64,
     referenced_view_count: u64,
     posting_bytes: u64,
+    staging_copy_bytes: u64,
     validation_seconds: f64,
     compiler_seconds: f64,
     session_build_seconds: f64,
@@ -829,7 +830,7 @@ impl NativeSession {
                 "encoded_indexed_buffer_count",
                 metrics.buffer_count - metrics.detached_buffer_count,
             )?;
-            result.set_item("encoded_staging_copy_bytes", 0)?;
+            result.set_item("encoded_staging_copy_bytes", metrics.staging_copy_bytes)?;
             result.set_item("encoded_private_ir_bytes", 0)?;
             result.set_item("encoded_validation_seconds", metrics.validation_seconds)?;
             result.set_item("encoded_compiler_seconds", metrics.compiler_seconds)?;
@@ -1034,6 +1035,13 @@ fn create_session_from_encoded(
                 input.referenced_view_count,
                 input.composite_posting_bytes,
             )?;
+            let staging_copy_bytes = posting_storage
+                .iter()
+                .chain(&scope_storage)
+                .try_fold(0_usize, |total, bytes| total.checked_add(bytes.len()))
+                .ok_or_else(|| CoreError::capacity("encoded staging copy byte total overflow"))?;
+            metrics.staging_copy_bytes = u64::try_from(staging_copy_bytes)
+                .map_err(|_| CoreError::capacity("encoded staging copy bytes exceed u64"))?;
             let mut detached_columns = Vec::new();
             detached_columns
                 .try_reserve_exact(composite.len())
@@ -1479,6 +1487,7 @@ fn encoded_ingestion_metrics(
         referenced_view_count,
         posting_bytes: u64::try_from(posting_bytes)
             .map_err(|_| CoreError::capacity("encoded posting byte count exceeds u64"))?,
+        staging_copy_bytes: 0,
         validation_seconds: 0.0,
         compiler_seconds: 0.0,
         session_build_seconds: 0.0,

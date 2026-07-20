@@ -8,6 +8,7 @@ import pyowl_core
 import pytest
 
 from pyelk.backends import (
+    EncodedBackendSelection,
     backend_report,
     create_backend_session,
     try_create_encoded_backend_session,
@@ -153,7 +154,10 @@ def test_backend_report_covers_valid_invalid_and_unprobed_states(
 class _MetadataSession(FakeBackendSession):
     def __init__(self, metadata: object) -> None:
         taxonomy = RawTaxonomy(nodes=((EntityId(0),),), direct_edges=(), top=0, bottom=0)
-        super().__init__(class_taxonomy=taxonomy)
+        super().__init__(
+            class_taxonomy=taxonomy,
+            diagnostics={"compiler_digest": "0" * 64},
+        )
         self.metadata = metadata
 
     def compiler_metadata(self) -> object:
@@ -193,6 +197,11 @@ def test_encoded_backend_selection_is_precompile_and_fail_closed(
     assert selected is not None
     assert selected.session is session
     assert selected.metadata == metadata
+    assert type(selected.encoded_view_publication_seconds) is float
+    assert selected.encoded_view_publication_seconds >= 0.0
+    assert type(selected.consumer_compile_seconds) is float
+    assert selected.consumer_compile_seconds >= 0.0
+    assert selected.compiler_digest == "0" * 64
     assert factory.created is True
 
     malformed = _MetadataSession(object())
@@ -202,6 +211,19 @@ def test_encoded_backend_selection_is_precompile_and_fail_closed(
         try_create_encoded_backend_session(view, ReasonerConfig(backend="rust"))
     with pytest.raises(ReasonerClosedError):
         _ = malformed.info
+
+    with pytest.raises(ValueError, match="finite nonnegative"):
+        EncodedBackendSelection(
+            session=session,
+            metadata=metadata,
+            consumer_compile_seconds=float("nan"),
+        )
+    with pytest.raises(ValueError, match="compiler_digest"):
+        EncodedBackendSelection(
+            session=session,
+            metadata=metadata,
+            compiler_digest="not-a-digest",
+        )
 
 
 def test_encoded_backend_capability_absence_does_not_create_session(

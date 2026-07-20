@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from math import isfinite
 from threading import RLock
+from time import perf_counter
 from types import MappingProxyType
 from typing import TypeVar, cast
 
@@ -12,9 +14,11 @@ import pyowl_core as owl
 from pyelk.backends import create_backend_session, try_create_encoded_backend_session
 from pyelk.config import ReasonerConfig
 from pyelk.exceptions import BackendProtocolError, FreshEntityError, ReasonerClosedError
+from pyelk.indexing.codec import SCHEMA_MAJOR
 from pyelk.indexing.compiler import (
+    COMPILER_SCHEMA_VERSION,
+    _compile_ontology_with_materialization_count,
     compile_entailment_query,
-    compile_ontology,
     compile_query_expression,
 )
 from pyelk.indexing.conversion import entity_record
@@ -31,6 +35,7 @@ from pyelk.indexing.metadata import (
     CompilerSymbolTable,
     metadata_from_compiled,
 )
+from pyelk.indexing.summary import compiler_digest
 from pyelk.inputs import InputCapture, capture_input, load_snapshot
 from pyelk.reasoning.completeness import issues_for
 from pyelk.reasoning.contracts import (
@@ -52,6 +57,28 @@ from pyelk.result import EntityNode, InstanceTaxonomy, ReasoningResult, Taxonomy
 
 V = TypeVar("V")
 _EMPTY_FEATURE_COUNTS = (0,) * FEATURE_VECTOR_LENGTH
+_INGESTION_PATHS = frozenset({"scalar-python", "scalar-wire", "encoded-native"})
+_ENCODED_COUNTER_DEFAULTS: Mapping[str, int | bool] = MappingProxyType(
+    {
+        "encoded_buffer_bytes": 0,
+        "encoded_buffer_count": 0,
+        "encoded_compiler_gil_released": False,
+        "encoded_detached_buffer_count": 0,
+        "encoded_indexed_buffer_count": 0,
+        "encoded_posting_bytes": 0,
+        "encoded_private_ir_bytes": 0,
+        "encoded_referenced_view_count": 0,
+        "encoded_segment_count": 0,
+        "encoded_staging_copy_bytes": 0,
+        "encoded_zero_copy_buffers": 0,
+    }
+)
+_ENCODED_TIMINGS = (
+    "encoded_validation_seconds",
+    "encoded_compiler_seconds",
+    "encoded_session_build_seconds",
+    "encoded_native_boundary_seconds",
+)
 
 
 class Reasoner:
@@ -61,9 +88,13 @@ class Reasoner:
         "_capture",
         "_class_taxonomy_value",
         "_closed",
+        "_compiler_digest",
         "_config",
+        "_consumer_compile_seconds",
+        "_encoded_view_publication_seconds",
         "_entity_by_record",
         "_lock",
+        "_materialized_scalar_rows",
         "_metadata",
         "_object_taxonomy_value",
         "_policy_features",
@@ -114,9 +145,11 @@ class Reasoner:
         self._policy_features = (
             (PolicyFeature.IGNORED_IMPORT,) if capture.imports.requires_incomplete_imports else ()
         )
+        expected_compiler_digest: str | None
         encoded = try_create_encoded_backend_session(capture.ontology.view, self._config)
         if encoded is None:
-            compiled = compile_ontology(
+            compile_started = perf_counter()
+            compiled, materialized_scalar_rows = _compile_ontology_with_materialization_count(
                 capture.ontology.view,
                 unsupported=self._config.unsupported,
             )
@@ -124,15 +157,35 @@ class Reasoner:
             symbols = CompilerSymbolTable(metadata)
             entity_by_record = self._capture_entities(capture, metadata.entities)
             session = create_backend_session(compiled, self._config)
+            try:
+                info = session.info
+                if not isinstance(info, BackendInfo):
+                    raise BackendProtocolError("BackendInfo from backend session", info)
+                expected_compiler_digest = compiler_digest(compiled).hex()
+            except BaseException:
+                session.close()
+                raise
+            consumer_compile_seconds = perf_counter() - compile_started
+            encoded_view_publication_seconds = None
         else:
             metadata = encoded.metadata
             session = encoded.session
             entity_by_record = {}
+            materialized_scalar_rows = 0
+            consumer_compile_seconds = encoded.consumer_compile_seconds
+            encoded_view_publication_seconds = encoded.encoded_view_publication_seconds
+            expected_compiler_digest = encoded.compiler_digest
+            facade_started = perf_counter()
             try:
                 symbols = CompilerSymbolTable(metadata)
             except BaseException:
                 session.close()
                 raise
+            consumer_compile_seconds += perf_counter() - facade_started
+        self._compiler_digest: str | None = expected_compiler_digest
+        self._consumer_compile_seconds = consumer_compile_seconds
+        self._encoded_view_publication_seconds = encoded_view_publication_seconds
+        self._materialized_scalar_rows = materialized_scalar_rows
         self._metadata: CompilerMetadata | None = metadata
         self._symbols: CompilerSymbolTable | None = symbols
         self._entity_by_record = entity_by_record
@@ -156,6 +209,7 @@ class Reasoner:
             finally:
                 self._closed = True
                 self._session = None
+                self._compiler_digest = None
                 self._metadata = None
                 self._symbols = None
                 self._capture = None
@@ -205,10 +259,11 @@ class Reasoner:
             return self._capture.ontology.view
 
     def diagnostics(self) -> Mapping[str, DiagnosticScalar]:
-        """Return one immutable, validated snapshot of backend/session diagnostics."""
+        """Return immutable, path-safe compiler, ingestion, and session diagnostics."""
 
         with self._lock:
-            raw = self._require_session().diagnostics()
+            session = self._require_session()
+            raw = session.diagnostics()
             if not isinstance(raw, Mapping):
                 raise BackendProtocolError("string-to-scalar backend diagnostics", raw)
             values: dict[str, DiagnosticScalar] = {}
@@ -216,6 +271,115 @@ class Reasoner:
                 if not isinstance(key, str) or not isinstance(value, (bool, int, float, str)):
                     raise BackendProtocolError("string-to-scalar backend diagnostics", raw)
                 values[key] = value
+
+            ingestion_path = values.get("ingestion_path")
+            if ingestion_path not in _INGESTION_PATHS:
+                raise BackendProtocolError("a public ingestion path", ingestion_path)
+            info = session.info
+            if not isinstance(info, BackendInfo):
+                raise BackendProtocolError("BackendInfo from backend session", info)
+            stable: dict[str, int | str] = {
+                "compiler_cache_schema_version": COMPILER_SCHEMA_VERSION,
+                "implementation_version": info.implementation_version,
+                "ir_schema_version": SCHEMA_MAJOR,
+            }
+            for name, expected in stable.items():
+                if name in values:
+                    actual = values[name]
+                    if type(actual) is not type(expected) or actual != expected:
+                        raise BackendProtocolError(f"the selected {name}", actual)
+                values[name] = expected
+
+            digest = values.get("compiler_digest", self._compiler_digest)
+            if digest is None:
+                raise BackendProtocolError("a canonical compiler digest", digest)
+            if self._compiler_digest is not None and digest != self._compiler_digest:
+                raise BackendProtocolError("the scalar compiler digest", digest)
+            if digest is not None:
+                if (
+                    type(digest) is not str
+                    or len(digest) != 64
+                    or any(character not in "0123456789abcdef" for character in digest)
+                ):
+                    raise BackendProtocolError("a lowercase 32-byte compiler digest", digest)
+                values["compiler_digest"] = digest
+
+            native_abi = values.get("native_abi_version")
+            if native_abi is not None and (type(native_abi) is not str or not native_abi):
+                raise BackendProtocolError("a nonempty native ABI version", native_abi)
+
+            if ingestion_path != "encoded-native":
+                for name, expected in _ENCODED_COUNTER_DEFAULTS.items():
+                    if name in values:
+                        actual = values[name]
+                        if type(actual) is not type(expected) or actual != expected:
+                            raise BackendProtocolError(f"exact scalar {name}", actual)
+                    values[name] = expected
+            else:
+                for name in _ENCODED_COUNTER_DEFAULTS:
+                    counter_value = values.get(name)
+                    if name == "encoded_compiler_gil_released":
+                        valid = type(counter_value) is bool
+                    else:
+                        valid = type(counter_value) is int and counter_value >= 0
+                    if not valid:
+                        raise BackendProtocolError(f"a measured nonnegative {name}", counter_value)
+
+            encoded_phase_seconds: dict[str, float] = {}
+            for name in _ENCODED_TIMINGS:
+                if name not in values:
+                    if ingestion_path == "encoded-native":
+                        raise BackendProtocolError(f"a measured {name}", None)
+                    continue
+                timing = values[name]
+                if ingestion_path != "encoded-native":
+                    raise BackendProtocolError(f"no scalar {name}", timing)
+                if type(timing) is not float or not isfinite(timing) or timing < 0.0:
+                    raise BackendProtocolError(f"a finite nonnegative {name}", timing)
+                encoded_phase_seconds[name] = timing
+            if ingestion_path == "encoded-native" and encoded_phase_seconds[
+                "encoded_native_boundary_seconds"
+            ] < sum(encoded_phase_seconds[name] for name in _ENCODED_TIMINGS[:-1]):
+                raise BackendProtocolError(
+                    "an encoded native boundary covering every measured phase",
+                    encoded_phase_seconds["encoded_native_boundary_seconds"],
+                )
+
+            if "consumer_compile_seconds" in values and (
+                type(values["consumer_compile_seconds"]) is not type(self._consumer_compile_seconds)
+                or values["consumer_compile_seconds"] != self._consumer_compile_seconds
+            ):
+                raise BackendProtocolError(
+                    "the measured consumer compile duration",
+                    values["consumer_compile_seconds"],
+                )
+            values["consumer_compile_seconds"] = self._consumer_compile_seconds
+            if self._encoded_view_publication_seconds is not None:
+                if ingestion_path != "encoded-native":
+                    raise BackendProtocolError(
+                        "encoded-view publication only on encoded-native ingestion",
+                        ingestion_path,
+                    )
+                if "encoded_view_publication_seconds" in values and (
+                    type(values["encoded_view_publication_seconds"])
+                    is not type(self._encoded_view_publication_seconds)
+                    or values["encoded_view_publication_seconds"]
+                    != self._encoded_view_publication_seconds
+                ):
+                    raise BackendProtocolError(
+                        "the measured encoded-view publication duration",
+                        values["encoded_view_publication_seconds"],
+                    )
+                values["encoded_view_publication_seconds"] = self._encoded_view_publication_seconds
+            if "materialized_scalar_rows" in values and (
+                type(values["materialized_scalar_rows"]) is not type(self._materialized_scalar_rows)
+                or values["materialized_scalar_rows"] != self._materialized_scalar_rows
+            ):
+                raise BackendProtocolError(
+                    "the measured scalar materialization row count",
+                    values["materialized_scalar_rows"],
+                )
+            values["materialized_scalar_rows"] = self._materialized_scalar_rows
             return MappingProxyType(dict(sorted(values.items())))
 
     def is_consistent(self) -> ReasoningResult[bool]:

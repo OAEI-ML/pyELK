@@ -111,6 +111,7 @@ class RustBackendFactory:
             raise InternalReasonerError("create_session", "rust", str(error)) from error
         return RustBackendSession(
             native_session,
+            abi=self._abi,
             implementation_version=self._implementation_version,
             ir_major=self._ir_major,
             ir_minor=self._ir_minor,
@@ -177,6 +178,7 @@ class RustBackendFactory:
             ) from error
         return RustBackendSession(
             native_session,
+            abi=self._abi,
             implementation_version=self._implementation_version,
             ir_major=self._ir_major,
             ir_minor=self._ir_minor,
@@ -190,6 +192,7 @@ class RustBackendSession:
     """Decode and validate coarse native calls without leaking native values."""
 
     __slots__ = (
+        "_abi",
         "_closed",
         "_compiler_metadata",
         "_encoded_owner",
@@ -202,6 +205,7 @@ class RustBackendSession:
         self,
         native_session: object,
         *,
+        abi: str | None,
         implementation_version: str,
         ir_major: int,
         ir_minor: int,
@@ -210,6 +214,7 @@ class RustBackendSession:
         encoded_owner: EncodedStructuralHandoff | None = None,
     ) -> None:
         self._native: Any = native_session
+        self._abi = abi
         self._closed = False
         self._compiler_metadata: CompilerMetadata | None = None
         if ingestion_path not in {"scalar-wire", "encoded-native"}:
@@ -299,6 +304,8 @@ class RustBackendSession:
                 raise BackendProtocolError("string-to-scalar native diagnostics", value)
             result[key] = item
         result["ingestion_path"] = self._ingestion_path
+        if self._abi is not None:
+            result["native_abi_version"] = self._abi
         return MappingProxyType(dict(sorted(result.items())))
 
     def _payload(self, stage: str, *args: object) -> bytes:

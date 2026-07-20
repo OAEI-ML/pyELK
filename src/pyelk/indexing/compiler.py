@@ -93,14 +93,32 @@ def compile_ontology(
 ) -> CompiledOntology:
     """Compile one compatible core view into deterministic backend-neutral IR."""
 
+    compiled, _materialized_scalar_rows = _compile_ontology_with_materialization_count(
+        ontology,
+        unsupported=unsupported,
+        max_nodes_per_axiom=max_nodes_per_axiom,
+    )
+    return compiled
+
+
+def _compile_ontology_with_materialization_count(
+    ontology: owl.OntologyView,
+    *,
+    unsupported: Literal["ignore", "error"] = "ignore",
+    max_nodes_per_axiom: int = DEFAULT_MAX_NODES_PER_AXIOM,
+) -> tuple[CompiledOntology, int]:
+    """Compile a scalar view and count every public row yielded to the consumer."""
+
     _validate_unsupported(unsupported)
     _validate_node_limit(max_nodes_per_axiom)
     captured = capture_compatible_view(ontology)
     view = captured.view
     builder = OntologyBuilder()
     annotated_logical_keys: set[bytes] = set()
+    materialized_scalar_rows = 0
 
     for axiom in view.iter_axioms(scope=owl.AxiomScope.CLOSURE):
+        materialized_scalar_rows += 1
         if isinstance(axiom, owl.ANNOTATION_AXIOM_TYPES):
             continue
         if _duplicate_annotated_axiom(view, axiom, annotated_logical_keys):
@@ -121,6 +139,7 @@ def compile_ontology(
             transaction.commit_into(builder)
 
     for extension in view.iter_extensions(scope=owl.AxiomScope.CLOSURE):
+        materialized_scalar_rows += 1
         if isinstance(extension, SWRLRule):
             builder.add_feature(FEATURE_INDEX["SWRL_RULE"])
             if unsupported == "error":
@@ -131,7 +150,7 @@ def compile_ontology(
         unsupported=unsupported,
         compatibility_spelling_digest=builder.compatibility_digest(),
     )
-    return builder.freeze(fingerprint)
+    return builder.freeze(fingerprint), materialized_scalar_rows
 
 
 def compile_query_expression(

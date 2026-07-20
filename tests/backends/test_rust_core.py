@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import weakref
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import MappingProxyType, ModuleType, SimpleNamespace
@@ -56,6 +56,21 @@ _ENCODED_BUFFER_NAMES = (
     "item_values",
     "item_lengths",
     "scalar_bytes",
+)
+_SCALAR_ENCODED_COUNTERS: Mapping[str, int | bool] = MappingProxyType(
+    {
+        "encoded_buffer_bytes": 0,
+        "encoded_buffer_count": 0,
+        "encoded_compiler_gil_released": False,
+        "encoded_detached_buffer_count": 0,
+        "encoded_indexed_buffer_count": 0,
+        "encoded_posting_bytes": 0,
+        "encoded_private_ir_bytes": 0,
+        "encoded_referenced_view_count": 0,
+        "encoded_segment_count": 0,
+        "encoded_staging_copy_bytes": 0,
+        "encoded_zero_copy_buffers": 0,
+    }
 )
 
 
@@ -160,10 +175,7 @@ def _shared_bytes_exporter_encoded(
         ranges[name] = (cursor, end)
         cursor = end
     buffers = MappingProxyType(
-        {
-            name: memoryview(owner)[slice(*ranges[name])]
-            for name in _ENCODED_BUFFER_NAMES
-        }
+        {name: memoryview(owner)[slice(*ranges[name])] for name in _ENCODED_BUFFER_NAMES}
     )
     return _encoded_wrapper(
         encoded,
@@ -468,6 +480,43 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         scalar.close()
 
 
+def test_public_scalar_handoff_diagnostics_are_backend_independent(
+    native_module: ModuleType,
+) -> None:
+    assert native_module.encoded_view_schemas() == {}
+    snapshot, _encoded = _direct_encoded_snapshot(
+        b"""Ontology(<urn:public-diagnostics>
+        Declaration(Class(<urn:public-diagnostics:A>))
+        Declaration(Class(<urn:public-diagnostics:B>))
+        SubClassOf(<urn:public-diagnostics:A> <urn:public-diagnostics:B>)
+        )"""
+    )
+    python, rust = _reasoners(snapshot)
+    try:
+        python_diagnostics = python.diagnostics()
+        rust_diagnostics = rust.diagnostics()
+        assert python_diagnostics["ingestion_path"] == "scalar-python"
+        assert rust_diagnostics["ingestion_path"] == "scalar-wire"
+        assert rust_diagnostics["native_abi_version"] == "abi3-py310"
+        assert {
+            python_diagnostics["compiler_digest"],
+            rust_diagnostics["compiler_digest"],
+        } == {python_diagnostics["compiler_digest"]}
+        assert python_diagnostics["compiler_cache_schema_version"] == 1
+        assert rust_diagnostics["compiler_cache_schema_version"] == 1
+        assert python_diagnostics["ir_schema_version"] == 1
+        assert rust_diagnostics["ir_schema_version"] == 1
+        assert python_diagnostics["materialized_scalar_rows"] == 3
+        assert rust_diagnostics["materialized_scalar_rows"] == 3
+        for diagnostics in (python_diagnostics, rust_diagnostics):
+            assert diagnostics["consumer_compile_seconds"] >= 0.0
+            for name, expected in _SCALAR_ENCODED_COUNTERS.items():
+                assert diagnostics[name] == expected
+    finally:
+        python.close()
+        rust.close()
+
+
 def test_hidden_packed_bytes_exporter_detaches_only_in_frozen_column_order(
     native_module: ModuleType,
 ) -> None:
@@ -564,7 +613,7 @@ def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("public encoded path reached scalar compilation")
 
-    monkeypatch.setattr("pyelk.api.compile_ontology", forbidden)
+    monkeypatch.setattr("pyelk.api._compile_ontology_with_materialization_count", forbidden)
     monkeypatch.setattr("pyelk.api.create_backend_session", forbidden)
     actual: Reasoner | None = None
     try:
@@ -572,6 +621,14 @@ def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
         assert actual.backend.name == "rust"
         assert actual._session is not None
         assert actual._session.diagnostics()["ingestion_path"] == "encoded-native"
+        diagnostics = actual.diagnostics()
+        assert diagnostics["ingestion_path"] == "encoded-native"
+        assert diagnostics["compiler_cache_schema_version"] == 1
+        assert diagnostics["ir_schema_version"] == 1
+        assert diagnostics["compiler_digest"] == expected.diagnostics()["compiler_digest"]
+        assert diagnostics["encoded_view_publication_seconds"] == 0.0
+        assert diagnostics["consumer_compile_seconds"] >= 0.0
+        assert diagnostics["materialized_scalar_rows"] == 0
         assert actual.is_consistent() == expected.is_consistent()
         assert actual.classify() == expected.classify()
         assert actual.classify_object_properties() == expected.classify_object_properties()
@@ -946,7 +1003,7 @@ def test_hidden_composite_selection_and_bridge_compile_source_locally(
         ) + sum(value.nbytes for value in encoded_right.buffers.values()) + sum(
             value.nbytes for value in encoded_bridge.buffers.values()
         )
-        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_staging_copy_bytes"] == 4
         assert diagnostics["encoded_private_ir_bytes"] == 0
         assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
         assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
@@ -1049,6 +1106,7 @@ def test_hidden_composite_scope_maps_preserve_anonymous_member_identity(
         assert diagnostics["encoded_referenced_view_count"] == 2
         assert diagnostics["encoded_buffer_count"] == 22
         assert diagnostics["encoded_zero_copy_buffers"] == 22
+        assert diagnostics["encoded_staging_copy_bytes"] == 128
         assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
         assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
     finally:
@@ -1150,6 +1208,7 @@ def test_hidden_nested_composite_scope_maps_compose_through_segmented_sources(
         assert diagnostics["encoded_buffer_count"] == 44
         assert diagnostics["encoded_zero_copy_buffers"] == 44
         assert diagnostics["encoded_posting_bytes"] == 0
+        assert diagnostics["encoded_staging_copy_bytes"] == 192
         assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
         assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
     finally:

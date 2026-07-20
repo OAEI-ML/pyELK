@@ -141,6 +141,7 @@ def test_rust_adapter_transfers_ir_once_and_decodes_every_result() -> None:
         "calls": 1,
         "ingestion_path": "scalar-wire",
         "native": True,
+        "native_abi_version": "abi3-py310",
     }
     session.close()
     session.close()

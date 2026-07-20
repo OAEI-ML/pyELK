@@ -219,9 +219,14 @@ if report.selected == "python" and report.rust.reason:
 
 `reasoner.backend` reports the immutable choice, effective worker count, native availability,
 and fallback reason for a live session. `reasoner.diagnostics()` returns an immutable scalar
-mapping; its `ingestion_path` is `scalar-python`, `scalar-wire`, or `encoded-native`, and native
-encoded sessions include measured buffer/copy/segment counters plus validation, compilation,
-session-build, and total native-boundary durations.
+mapping. Every session reports its canonical `compiler_digest`, compiler-cache and private-IR
+schema versions, implementation version, total consumer compile time, scalar-row materialization
+count, and an exact encoded buffer/copy/segment ledger. `ingestion_path` is `scalar-python`,
+`scalar-wire`, or `encoded-native`; scalar sessions report contractual zero/false encoded
+counters. Encoded sessions additionally report view-publication time, native validation,
+compilation, session-build, and total native-boundary durations. Recursive composite sessions
+count each temporary resolved posting byte and anonymous-scope mapping pair in
+`encoded_staging_copy_bytes`; they never label those bounded metadata copies as zero-copy.
 `pyelk.core.require_core_compatibility()` performs the full pyowl-core package/API/model/wire/
 adapter guard explicitly.
 

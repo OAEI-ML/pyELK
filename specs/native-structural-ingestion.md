@@ -103,7 +103,12 @@ tested so no dangling view or buffer remains.
 
 If the native compiler copies a column, the copy is measured and justified. The normal direct or
 mmap-backed path has zero ontology-sized staging copy and no private-IR byte serialization. Rust
-allocations are checked against configured limits before count-derived growth.
+allocations are checked against configured limits before count-derived growth. Recursive
+composite resolution may re-encode its bounded selected-root postings (four bytes per resolved
+root ID) and anonymous-scope remaps (64 bytes per source/target digest pair) for the detached Rust
+compiler call; `encoded_staging_copy_bytes` reports those exact temporary byte lengths. Column
+buffers remain borrowed and base views are never flattened, so these metadata copies do not count
+as copied structural columns or serialized private IR.
 
 ## 6. Performance evidence
 
