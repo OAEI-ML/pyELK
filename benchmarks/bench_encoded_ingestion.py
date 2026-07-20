@@ -337,6 +337,20 @@ def _total_sample(
     )
 
 
+def _duration_sample(seconds: float, name: str) -> PhaseSample:
+    if not math.isfinite(seconds) or seconds < 0:
+        raise AssertionError(f"native {name} duration is not finite and nonnegative")
+    return PhaseSample(
+        wall_seconds=seconds,
+        current_rss_before_bytes=None,
+        current_rss_after_bytes=None,
+        current_rss_growth_bytes=None,
+        process_peak_rss_before_bytes=None,
+        process_peak_rss_after_bytes=None,
+        process_peak_rss_high_water_growth_bytes=None,
+    )
+
+
 def _scalar_sample(
     native: ModuleType, view: owl.OntologyView, workers: int, warm_queries: int
 ) -> _SampleResult:
@@ -418,6 +432,14 @@ def _encoded_sample(
         total_phase = _total_sample(started, current_before, peak_before)
         diagnostics = _diagnostics(session)
         _last, warm_phase = _observe(lambda: _warm_result(session, payload, warm_queries))
+        validation_seconds = float(diagnostics["encoded_validation_seconds"])
+        compiler_seconds = float(diagnostics["encoded_compiler_seconds"])
+        session_build_seconds = float(diagnostics["encoded_session_build_seconds"])
+        native_boundary_seconds = float(diagnostics["encoded_native_boundary_seconds"])
+        ffi_overhead_seconds = max(0.0, session_phase.wall_seconds - native_boundary_seconds)
+        boundary_and_validation_seconds = (
+            acquisition_phase.wall_seconds + validation_seconds + ffi_overhead_seconds
+        )
         root_kinds = encoded.buffers["root_kinds"]
         scalar_roots = sum(int(value == _ROOT_AXIOM) for value in root_kinds)
         scalar_materializations = scalar_roots if producer.startswith("experimental") else 0
@@ -447,6 +469,14 @@ def _encoded_sample(
         phases = {
             "view_acquisition_and_validation": acquisition_phase,
             "session_create": session_phase,
+            "native_validation": _duration_sample(validation_seconds, "validation"),
+            "native_compiler": _duration_sample(compiler_seconds, "compiler"),
+            "native_session_build": _duration_sample(session_build_seconds, "session build"),
+            "native_boundary": _duration_sample(native_boundary_seconds, "boundary"),
+            "boundary_and_validation": _duration_sample(
+                boundary_and_validation_seconds,
+                "boundary and validation",
+            ),
             "first_result": first_phase,
             "warm_queries": warm_phase,
             "view_to_first_result": total_phase,
@@ -624,9 +654,9 @@ def run(
 
         scalar_total = _median(scalar_samples, "view_to_first_result")
         encoded_total = _median(encoded_samples, "view_to_first_result")
-        acquisition = _median(encoded_samples, "view_acquisition_and_validation")
+        boundary_and_validation = _median(encoded_samples, "boundary_and_validation")
         speedup = scalar_total / encoded_total
-        boundary_fraction = acquisition / encoded_total
+        boundary_fraction = boundary_and_validation / encoded_total
         speedups.append(speedup)
         boundary_fractions.append(boundary_fraction)
         scalar_rss = _rss_growth(scalar_samples)
@@ -646,7 +676,7 @@ def run(
             "encoded_native": _report_samples(encoded_samples),
             "ratios": {
                 "view_to_first_result_speedup": speedup,
-                "encoded_acquisition_fraction": boundary_fraction,
+                "encoded_boundary_and_validation_fraction": boundary_fraction,
                 "incremental_current_rss_ratio": rss_ratio,
             },
         }
@@ -655,7 +685,7 @@ def run(
         if encoded_total > scalar_total * 1.10:
             blockers.append(f"{name}: encoded path is more than 10% slower")
         if boundary_fraction >= 0.05:
-            blockers.append(f"{name}: encoded acquisition fraction is not below 5%")
+            blockers.append(f"{name}: encoded boundary plus validation is not below 5%")
         if rss_ratio is None:
             blockers.append(f"{name}: comparable current-RSS growth is unavailable")
         elif rss_ratio > 1.10:
@@ -686,7 +716,7 @@ def run(
         raise AssertionError("encoded-ingestion release gate failed: " + "; ".join(blockers))
 
     return {
-        "schema": "pyelk.encoded-ingestion-benchmark/1",
+        "schema": "pyelk.encoded-ingestion-benchmark/2",
         "environment": {
             "platform": platform.platform(),
             "python": platform.python_version(),
@@ -709,7 +739,7 @@ def run(
             "thresholds": {
                 "geometric_mean_speedup_min": 2.0,
                 "per_workload_regression_max": 0.10,
-                "encoded_acquisition_fraction_max": 0.05,
+                "encoded_boundary_and_validation_fraction_max": 0.05,
                 "incremental_rss_regression_max": 0.10,
             },
         },
@@ -729,7 +759,7 @@ def run(
         "workloads": reports,
         "aggregate": {
             "geometric_mean_view_to_first_result_speedup": geometric_speedup,
-            "maximum_encoded_acquisition_fraction": max(boundary_fractions),
+            "maximum_encoded_boundary_and_validation_fraction": max(boundary_fractions),
         },
         "gate_eligible": gate_eligible,
         "gate_blockers": blockers,

@@ -392,6 +392,16 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         assert diagnostics["encoded_indexed_buffer_count"] == 0
         assert diagnostics["encoded_staging_copy_bytes"] == 0
         assert diagnostics["encoded_private_ir_bytes"] == 0
+        timed_phases = (
+            "encoded_validation_seconds",
+            "encoded_compiler_seconds",
+            "encoded_session_build_seconds",
+        )
+        assert all(isinstance(diagnostics[name], float) for name in timed_phases)
+        assert all(diagnostics[name] >= 0.0 for name in timed_phases)
+        assert diagnostics["encoded_native_boundary_seconds"] >= sum(
+            diagnostics[name] for name in timed_phases
+        )
         expected_digest = compiler_digest(compiled).hex()
         assert diagnostics["compiler_digest"] == expected_digest
         assert scalar_diagnostics["compiler_digest"] == expected_digest

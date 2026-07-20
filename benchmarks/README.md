@@ -52,6 +52,9 @@ Native suites also run `bench_encoded_ingestion.py` from already-resident direct
 composite views. It records raw phase samples and RSS observations for encoded-view acquisition,
 native session creation, first taxonomy, and warm queries alongside the scalar compiler/private-
 wire baseline. Compiler digests, section counts, and packed taxonomy bytes must agree exactly.
+Native diagnostics split structural validation, compilation, session construction, and their
+combined boundary duration. The 5% gate includes encoded-view acquisition, native validation,
+and measured FFI overhead rather than treating validation as compiler work.
 The generated structural workload uses many bounded eight-class hierarchy components, keeping
 ontology size large while preventing identical quadratic transitive closure from swamping the
 ingestion-path comparison; realistic reasoning pressure remains covered by the biomedical suite.

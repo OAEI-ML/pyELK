@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
@@ -113,6 +114,10 @@ struct EncodedIngestionMetrics {
     segment_count: u64,
     referenced_view_count: u64,
     posting_bytes: u64,
+    validation_seconds: f64,
+    compiler_seconds: f64,
+    session_build_seconds: f64,
+    native_boundary_seconds: f64,
 }
 
 struct EncodedPostingBinding<'py> {
@@ -821,6 +826,16 @@ impl NativeSession {
             )?;
             result.set_item("encoded_staging_copy_bytes", 0)?;
             result.set_item("encoded_private_ir_bytes", 0)?;
+            result.set_item("encoded_validation_seconds", metrics.validation_seconds)?;
+            result.set_item("encoded_compiler_seconds", metrics.compiler_seconds)?;
+            result.set_item(
+                "encoded_session_build_seconds",
+                metrics.session_build_seconds,
+            )?;
+            result.set_item(
+                "encoded_native_boundary_seconds",
+                metrics.native_boundary_seconds,
+            )?;
         }
         Ok(result.unbind())
     }
@@ -919,10 +934,14 @@ fn create_session_from_encoded(
         "error" => EncodedUnsupportedPolicy::Error,
         _ => unreachable!("unsupported policy was validated above"),
     };
+    let boundary_started = Instant::now();
     let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let validation_started = Instant::now();
         let input = validate_encoded_input(encoded_view)?;
         let detached_simple = input.detached_simple()?;
-        let (mut compilation, metrics) = if let Some(detached) = detached_simple {
+        let validation_seconds = validation_started.elapsed().as_secs_f64();
+        let compiler_started = Instant::now();
+        let (mut compilation, mut metrics) = if let Some(detached) = detached_simple {
             let metric_columns = [
                 Some(input.bindings.columns()?),
                 input
@@ -1139,9 +1158,14 @@ fn create_session_from_encoded(
             input.source_parts.model_schema,
             &compatibility_spelling,
         )?;
+        metrics.validation_seconds = validation_seconds;
+        metrics.compiler_seconds = compiler_started.elapsed().as_secs_f64();
         let ontology = compilation.ontology;
+        let session_started = Instant::now();
         let session =
             py.detach(move || NativeCoreSession::from_ontology(ontology, worker_count))?;
+        metrics.session_build_seconds = session_started.elapsed().as_secs_f64();
+        metrics.native_boundary_seconds = boundary_started.elapsed().as_secs_f64();
         Ok((session, metrics))
     }));
     let (session, metrics) = match outcome {
@@ -1360,6 +1384,10 @@ fn encoded_ingestion_metrics(
         referenced_view_count,
         posting_bytes: u64::try_from(posting_bytes)
             .map_err(|_| CoreError::capacity("encoded posting byte count exceeds u64"))?,
+        validation_seconds: 0.0,
+        compiler_seconds: 0.0,
+        session_build_seconds: 0.0,
+        native_boundary_seconds: 0.0,
     })
 }
 

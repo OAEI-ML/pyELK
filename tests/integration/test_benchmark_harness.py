@@ -469,7 +469,7 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
         enforce=False,
     )
 
-    assert payload["schema"] == "pyelk.encoded-ingestion-benchmark/1"
+    assert payload["schema"] == "pyelk.encoded-ingestion-benchmark/2"
     assert payload["fixture"]["hierarchy_component_classes"] == 8
     assert payload["gate_eligible"] is False
     assert payload["capabilities"]["producer_modes"] == ["experimental-scalar-fallback"]
@@ -487,6 +487,8 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
         assert counters["wire_decoder_calls"] == 0
         assert counters["scalar_axiom_materializations"] > 0
         assert row["encoded_native"]["diagnostics"]["encoded_compiler_gil_released"] is True
+        assert row["encoded_native"]["phases"]["native_validation"]["samples"]
+        assert row["encoded_native"]["phases"]["boundary_and_validation"]["samples"]
         assert row["encoded_native"]["phases"]["view_to_first_result"]["samples"]
         if name == "direct":
             assert counters["base_flattening_bytes"] == 0
