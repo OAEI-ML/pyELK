@@ -2403,9 +2403,6 @@ impl NamedHierarchyBuilder {
         };
         let bottom = self.add_named_occurrence(&bottom, false, true)?;
         self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
-        if let [_, second] = members.as_slice() {
-            increment_occurrence(&mut self.expression_occurrences[*second], false)?;
-        }
         for (first_position, first) in members.iter().copied().enumerate() {
             for second in members.iter().copied().skip(first_position + 1) {
                 let intersection = self.intern_expression(
@@ -2906,10 +2903,21 @@ fn compile_disjoint_named_classes<B: ByteSource>(
     members
         .try_reserve_exact(identifiers.len())
         .map_err(|_| CoreError::capacity("encoded disjoint-class allocation failed"))?;
-    for identifier in identifiers {
+    for identifier in &identifiers {
         members.push(decode_class_expression(
-            identifier, true, false, columns, builder,
+            *identifier,
+            true,
+            false,
+            columns,
+            builder,
         )?);
+    }
+    // ELK's binary disjoint loop visits the right operand once as a pair member and once
+    // again as the second outer-loop member. Replay the complete conversion so nested
+    // occurrence and feature ledgers remain byte-for-byte identical to the scalar path.
+    if let [_, second] = members.as_slice() {
+        let replayed = decode_class_expression(identifiers[1], true, false, columns, builder)?;
+        debug_assert_eq!(*second, replayed);
     }
     Ok(builder.add_disjoint_expressions(members, Some(FEATURE_DISJOINT_CLASSES))?)
 }
@@ -2934,6 +2942,12 @@ fn compile_named_disjoint_union<B: ByteSource>(
             columns,
             builder,
         )?);
+    }
+    // Preserve the scalar converter's complete second visit for binary disjointness.
+    if let [_, second] = disjoint_members.as_slice() {
+        let replayed =
+            decode_class_expression(member_identifiers[1], true, false, columns, builder)?;
+        debug_assert_eq!(*second, replayed);
     }
     builder.add_disjoint_expressions(disjoint_members, None)?;
 
@@ -3119,9 +3133,15 @@ fn compile_different_named_individuals<B: ByteSource>(
     members
         .try_reserve_exact(identifiers.len())
         .map_err(|_| CoreError::capacity("encoded different-individual allocation failed"))?;
-    for identifier in identifiers {
-        let individual = decode_individual_for_axiom(identifier, columns)?;
+    for identifier in &identifiers {
+        let individual = decode_individual_for_axiom(*identifier, columns)?;
         members.push(builder.add_named_occurrence(&individual, true, false)?);
+    }
+    // Preserve the scalar converter's complete second visit for binary disjointness.
+    if let [_, second] = members.as_slice() {
+        let individual = decode_individual_for_axiom(identifiers[1], columns)?;
+        let replayed = builder.add_named_occurrence(&individual, true, false)?;
+        debug_assert_eq!(*second, replayed);
     }
     Ok(builder.add_disjoint_expressions(members, Some(FEATURE_DIFFERENT_INDIVIDUALS))?)
 }

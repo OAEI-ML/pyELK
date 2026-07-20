@@ -406,6 +406,10 @@ impl NativeCoreSession {
             "compiler_digest".to_owned(),
             DiagnosticValue::Text(hex_digest(&self.compiler_digest)),
         );
+        diagnostics.insert(
+            "compiler_source_fingerprint".to_owned(),
+            DiagnosticValue::Text(hex_digest(&self.ontology.source_fingerprint)),
+        );
         for (name, count) in &self.compiler_counts {
             diagnostics.insert(
                 format!("compiler_{name}_count"),

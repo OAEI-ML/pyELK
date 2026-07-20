@@ -35,6 +35,10 @@ from tests.unit.indexing.test_feature_corpus import (
     _ontology_feature_view,
 )
 
+_FROZEN_ENCODED_ONTOLOGIES = tuple(
+    sorted(_UPSTREAM.rglob("*.owl"), key=lambda path: path.relative_to(_UPSTREAM).as_posix())
+)
+
 
 def _native_library() -> Path:
     root = Path(__file__).parents[2]
@@ -1289,8 +1293,23 @@ def test_hidden_encoded_feature_corpus_matches_scalar_compiler(
     direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
     scalar = native_module.create_session(compiled.encode(), 1)
     try:
-        assert direct.diagnostics()["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
         assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+        direct_diagnostics = direct.diagnostics()
+        scalar_diagnostics = scalar.diagnostics()
+        assert {
+            key: value
+            for key, value in direct_diagnostics.items()
+            if key.startswith("compiler_") and key.endswith("_count")
+        } == {
+            key: value
+            for key, value in scalar_diagnostics.items()
+            if key.startswith("compiler_") and key.endswith("_count")
+        }
+        assert (
+            direct_diagnostics["compiler_source_fingerprint"]
+            == scalar_diagnostics["compiler_source_fingerprint"]
+        )
+        assert direct_diagnostics["compiler_digest"] == scalar_diagnostics["compiler_digest"]
     finally:
         direct.close()
         scalar.close()
@@ -1312,6 +1331,47 @@ def test_hidden_encoded_feature_corpus_matches_scalar_compiler(
         finally:
             strict_direct.close()
             strict_scalar.close()
+
+
+@pytest.mark.parametrize(
+    "ontology_path",
+    _FROZEN_ENCODED_ONTOLOGIES,
+    ids=lambda path: path.relative_to(_UPSTREAM).as_posix(),
+)
+def test_hidden_encoded_frozen_elk_corpus_matches_scalar_compiler(
+    native_module: ModuleType,
+    ontology_path: Path,
+) -> None:
+    from pyowl_core.backends import native_views
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    snapshot = _snapshot(ontology_path)
+    encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+    compiled = compile_ontology(snapshot, unsupported="ignore")
+    direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    try:
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+        direct_diagnostics = direct.diagnostics()
+        scalar_diagnostics = scalar.diagnostics()
+        assert {
+            key: value
+            for key, value in direct_diagnostics.items()
+            if key.startswith("compiler_") and key.endswith("_count")
+        } == {
+            key: value
+            for key, value in scalar_diagnostics.items()
+            if key.startswith("compiler_") and key.endswith("_count")
+        }
+        assert (
+            direct_diagnostics["compiler_source_fingerprint"]
+            == scalar_diagnostics["compiler_source_fingerprint"]
+        )
+        assert direct_diagnostics["compiler_digest"] == scalar_diagnostics["compiler_digest"]
+    finally:
+        direct.close()
+        scalar.close()
 
 
 def test_hidden_direct_encoded_general_class_axioms_match_scalar(
@@ -1352,6 +1412,7 @@ def test_hidden_direct_encoded_general_class_axioms_match_scalar(
     )
     try:
         assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+        assert direct.diagnostics()["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
     finally:
         direct.close()
         scalar.close()
