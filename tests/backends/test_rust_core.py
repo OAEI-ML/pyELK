@@ -30,6 +30,10 @@ from tests.integration.test_pure_reasoner import (
     _query_snapshot,
     _snapshot,
 )
+from tests.unit.indexing.test_feature_corpus import (
+    _ONTOLOGY_FIXTURES,
+    _ontology_feature_view,
+)
 
 
 def _native_library() -> Path:
@@ -1264,6 +1268,50 @@ def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleT
 
     with pytest.raises(ValueError, match=r"unsupported ELK feature"):
         native_module.create_session_from_encoded(encoded, 1, "error")
+
+
+@pytest.mark.parametrize(
+    "feature_name",
+    tuple(path.stem for path in sorted(_ONTOLOGY_FIXTURES.glob("*.ofn"))),
+)
+def test_hidden_encoded_feature_corpus_matches_scalar_compiler(
+    native_module: ModuleType,
+    feature_name: str,
+) -> None:
+    from pyowl_core.backends import native_views
+
+    from pyelk.exceptions import UnsupportedFeatureError
+    from pyelk.indexing.compiler import compile_ontology
+
+    view = _ontology_feature_view(feature_name)
+    encoded = native_views.produce_encoded_structural_view_v1(view)
+    compiled = compile_ontology(view, unsupported="ignore")
+    direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
+    scalar = native_module.create_session(compiled.encode(), 1)
+    try:
+        assert direct.diagnostics()["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        direct.close()
+        scalar.close()
+
+    try:
+        strict_compiled = compile_ontology(view, unsupported="error")
+    except UnsupportedFeatureError as scalar_error:
+        with pytest.raises(ValueError) as native_error:
+            native_module.create_session_from_encoded(encoded, 1, "error")
+        assert scalar_error.feature in str(native_error.value)
+    else:
+        strict_direct = native_module.create_session_from_encoded(encoded, 1, "error")
+        strict_scalar = native_module.create_session(strict_compiled.encode(), 1)
+        try:
+            assert (
+                strict_direct.diagnostics()["compiler_digest"]
+                == strict_scalar.diagnostics()["compiler_digest"]
+            )
+        finally:
+            strict_direct.close()
+            strict_scalar.close()
 
 
 def test_hidden_direct_encoded_general_class_axioms_match_scalar(

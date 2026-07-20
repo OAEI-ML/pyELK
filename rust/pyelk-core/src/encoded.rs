@@ -3811,9 +3811,9 @@ fn unsupported_axiom_feature(tag: u16) -> Option<(usize, &'static str)> {
         79 => Some((26, "IRREFLEXIVE_OBJECT_PROPERTY")),
         80 => Some((47, "SYMMETRIC_OBJECT_PROPERTY")),
         81 => Some((1, "ASYMMETRIC_OBJECT_PROPERTY")),
-        90 => Some((20, "EQUIVALENT_DATA_PROPERTIES")),
-        91 => Some((17, "DISJOINT_DATA_PROPERTIES")),
-        92 => Some((45, "SUB_DATA_PROPERTY_OF")),
+        90 => Some((45, "SUB_DATA_PROPERTY_OF")),
+        91 => Some((20, "EQUIVALENT_DATA_PROPERTIES")),
+        92 => Some((17, "DISJOINT_DATA_PROPERTIES")),
         93 => Some((10, "DATA_PROPERTY_DOMAIN")),
         94 => Some((11, "DATA_PROPERTY_RANGE")),
         95 => Some((21, "FUNCTIONAL_DATA_PROPERTY")),
@@ -7352,6 +7352,22 @@ mod tests {
             Err(CoreError::InvalidInput(message))
                 if message.contains("FUNCTIONAL_OBJECT_PROPERTY")
         ));
+    }
+
+    #[test]
+    fn data_property_axiom_tags_preserve_the_frozen_feature_order() {
+        assert_eq!(
+            unsupported_axiom_feature(90),
+            Some((45, "SUB_DATA_PROPERTY_OF"))
+        );
+        assert_eq!(
+            unsupported_axiom_feature(91),
+            Some((20, "EQUIVALENT_DATA_PROPERTIES"))
+        );
+        assert_eq!(
+            unsupported_axiom_feature(92),
+            Some((17, "DISJOINT_DATA_PROPERTIES"))
+        );
     }
 
     #[test]
