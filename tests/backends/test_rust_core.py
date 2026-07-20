@@ -151,6 +151,52 @@ def _noop_overlay_encoded(source: Any, encoded_source: Any) -> tuple[Any, Any]:
     )
 
 
+def _excluding_overlay_encoded(
+    source: Any, encoded_source: Any, removed_axiom: Any
+) -> tuple[Any, Any, int]:
+    import pyowl_core as owl
+    from pyowl_core.backends import native_views
+
+    axioms = sorted(source.iter_axioms(), key=lambda axiom: axiom.canonical_bytes())
+    ordinal = axioms.index(removed_axiom) + 1
+    overlay = owl.apply_delta(
+        source,
+        owl.OntologyDelta(remove_axioms=(removed_axiom,)),
+    )
+    _empty_snapshot, empty = _direct_encoded_snapshot(b"Ontology(<urn:encoded-empty>)")
+    root_ids = memoryview(ordinal.to_bytes(4, "little"))
+    segment = native_views.EncodedStructuralSegmentV1(
+        2,
+        encoded_source.owner,
+        encoded_source,
+        2,
+        root_ids,
+        memoryview(b""),
+        None,
+        encoded_source,
+    )
+    segments = (segment,)
+    candidate = SimpleNamespace(
+        schema_name=empty.schema_name,
+        schema_version=empty.schema_version,
+        model_schema=empty.model_schema,
+        owner=overlay,
+        buffers=empty.buffers,
+        descriptor=empty.descriptor,
+        structural_fingerprint=native_views._fingerprint(empty.buffers, segments),
+        segments=segments,
+        scope=empty.scope,
+        document_key=empty.document_key,
+    )
+    encoded = native_views.validate_encoded_structural_view_v1(
+        candidate,
+        expected_owner=overlay,
+        expected_scope=empty.scope,
+        expected_document_key=empty.document_key,
+    )
+    return overlay, encoded, ordinal
+
+
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
     assert native_module.implementation_version() == "0.1.0.dev0"
@@ -248,7 +294,47 @@ def test_hidden_noop_overlay_chain_reuses_direct_source_without_flattening(
         scalar.close()
 
 
-def test_hidden_overlay_slice_rejects_selected_or_local_base_segments(
+def test_hidden_overlay_exclusion_compiles_only_selected_direct_roots(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    snapshot, direct_encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-overlay-exclude#>)
+        Ontology(<urn:encoded-overlay-exclude>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        Declaration(ObjectProperty(:p))
+        SubClassOf(:A :B)
+        FunctionalObjectProperty(:p)
+        )"""
+    )
+    removed = next(
+        axiom
+        for axiom in snapshot.iter_axioms()
+        if type(axiom).__name__ == "FunctionalObjectProperty"
+    )
+    overlay, encoded, _ordinal = _excluding_overlay_encoded(
+        snapshot, direct_encoded, removed
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(overlay, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 2
+        assert diagnostics["encoded_referenced_view_count"] == 1
+        assert diagnostics["encoded_posting_bytes"] == 4
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
+def test_hidden_overlay_slice_rejects_malformed_selected_or_local_base_segments(
     native_module: ModuleType,
 ) -> None:
     from pyowl_core.backends import native_views
@@ -263,11 +349,11 @@ def test_hidden_overlay_slice_rejects_selected_or_local_base_segments(
         owner=base.owner,
         source=base.source,
         posting_mode=2,
-        root_ids=memoryview((1).to_bytes(4, "little")),
+        root_ids=memoryview((999).to_bytes(4, "little")),
         anonymous_scope_map=base.anonymous_scope_map,
         member_token=base.member_token,
     )
-    with pytest.raises(ValueError, match=r"direct or no-op overlay"):
+    with pytest.raises(ValueError, match=r"sorted|unique|range|posting"):
         native_module.create_session_from_encoded(
             _encoded_wrapper(
                 encoded,

@@ -339,6 +339,87 @@ pub enum EncodedUnsupportedPolicy {
     Error,
 }
 
+/// Posting policy for a referenced source's one-based local root IDs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EncodedPostingMode {
+    Include,
+    Exclude,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct EncodedRootSelection<P: ByteSource> {
+    mode: EncodedPostingMode,
+    postings: P,
+    count: usize,
+}
+
+struct EncodedRootCursor<P: ByteSource> {
+    selection: Option<EncodedRootSelection<P>>,
+    cursor: usize,
+}
+
+impl<P: ByteSource> EncodedRootSelection<P> {
+    fn validate(mode: EncodedPostingMode, postings: P, root_count: usize) -> CoreResult<Self> {
+        let count = aligned_count(postings, 4, "encoded segment root postings")?;
+        if count == 0 {
+            return Err(CoreError::protocol(
+                "encoded include/exclude root postings must not be empty",
+            ));
+        }
+        let mut previous = 0_usize;
+        for index in 0..count {
+            let posting = encoded_posting_at(postings, index)?;
+            if posting <= previous || posting > root_count {
+                return Err(CoreError::protocol(
+                    "encoded root postings must be sorted, unique, and in range",
+                ));
+            }
+            previous = posting;
+        }
+        Ok(Self {
+            mode,
+            postings,
+            count,
+        })
+    }
+}
+
+impl<P: ByteSource> EncodedRootCursor<P> {
+    fn new(selection: Option<EncodedRootSelection<P>>) -> Self {
+        Self {
+            selection,
+            cursor: 0,
+        }
+    }
+
+    fn includes(&mut self, root: usize) -> CoreResult<bool> {
+        let Some(selection) = self.selection else {
+            return Ok(true);
+        };
+        let ordinal = root
+            .checked_add(1)
+            .ok_or_else(|| CoreError::capacity("encoded root ordinal overflow"))?;
+        while self.cursor < selection.count {
+            let posting = encoded_posting_at(selection.postings, self.cursor)?;
+            if posting >= ordinal {
+                break;
+            }
+            self.cursor += 1;
+        }
+        let listed = self.cursor < selection.count
+            && encoded_posting_at(selection.postings, self.cursor)? == ordinal;
+        Ok(match selection.mode {
+            EncodedPostingMode::Include => listed,
+            EncodedPostingMode::Exclude => !listed,
+        })
+    }
+}
+
+fn encoded_posting_at<P: ByteSource>(postings: P, index: usize) -> CoreResult<usize> {
+    usize::try_from(u32_at(postings, index, "encoded segment root posting")?)
+        .map_err(|_| CoreError::capacity("encoded root posting exceeds usize"))
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum AxiomCompileError {
     Core(CoreError),
@@ -642,12 +723,38 @@ pub fn compile_encoded_hierarchy_with_policy<B: ByteSource>(
     limits: EncodedLimits,
     unsupported: EncodedUnsupportedPolicy,
 ) -> CoreResult<EncodedCompilation> {
+    compile_encoded_hierarchy_with_selection::<B, B>(columns, limits, unsupported, None)
+}
+
+/// Compile one exact include/exclude selection over the source-local root table.
+pub fn compile_encoded_hierarchy_selected_with_policy<B: ByteSource, P: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+    mode: EncodedPostingMode,
+    postings: P,
+) -> CoreResult<EncodedCompilation> {
+    let root_count = aligned_count(columns.root_ids, 4, "root_ids")?;
+    let selection = EncodedRootSelection::validate(mode, postings, root_count)?;
+    compile_encoded_hierarchy_with_selection(columns, limits, unsupported, Some(selection))
+}
+
+fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+    selection: Option<EncodedRootSelection<P>>,
+) -> CoreResult<EncodedCompilation> {
     let validated = validate_columns(columns, limits)?;
-    let mut annotated_axioms = annotated_axiom_states(&columns, validated.root_count)?;
+    let mut annotated_axioms = annotated_axiom_states(&columns, validated.root_count, selection)?;
     let mut observed_axiom_roots = BTreeSet::new();
     let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
     let mut transaction = NamedHierarchyBuilder::transaction();
+    let mut selected_roots = EncodedRootCursor::new(selection);
     for root in 0..validated.root_count {
+        if !selected_roots.includes(root)? {
+            continue;
+        }
         let kind = byte_at(columns.root_kinds, root, "root kind")?;
         if kind == ROOT_ONTOLOGY_ANNOTATION {
             continue;
@@ -721,13 +828,18 @@ pub fn compile_encoded_hierarchy_with_policy<B: ByteSource>(
     builder.freeze([0; 32])
 }
 
-fn annotated_axiom_states<B: ByteSource>(
+fn annotated_axiom_states<B: ByteSource, P: ByteSource>(
     columns: &EncodedColumns<B>,
     root_count: usize,
+    selection: Option<EncodedRootSelection<P>>,
 ) -> CoreResult<BTreeMap<Vec<u64>, AnnotatedAxiomState>> {
     let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
     let mut states = BTreeMap::new();
+    let mut selected_roots = EncodedRootCursor::new(selection);
     for root in 0..root_count {
+        if !selected_roots.includes(root)? {
+            continue;
+        }
         if byte_at(columns.root_kinds, root, "root kind")? != ROOT_AXIOM {
             continue;
         }
@@ -744,7 +856,11 @@ fn annotated_axiom_states<B: ByteSource>(
     if states.is_empty() {
         return Ok(states);
     }
+    let mut selected_roots = EncodedRootCursor::new(selection);
     for root in 0..root_count {
+        if !selected_roots.includes(root)? {
+            continue;
+        }
         if byte_at(columns.root_kinds, root, "root kind")? != ROOT_AXIOM {
             continue;
         }
@@ -5281,6 +5397,46 @@ mod tests {
             compiled.feature_counts[FEATURE_OBJECT_HAS_VALUE_POSITIVE],
             1
         );
+    }
+
+    #[test]
+    fn root_postings_select_before_compilation_and_validate_exactly() {
+        let columns = two_declarations();
+        let excluded = compile_encoded_hierarchy_selected_with_policy(
+            columns.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+            EncodedPostingMode::Exclude,
+            le32(&[1]).as_slice(),
+        )
+        .unwrap()
+        .ontology;
+        assert!(excluded.entities.iter().any(|entity| entity.iri == "urn:B"));
+        assert!(!excluded.entities.iter().any(|entity| entity.iri == "urn:A"));
+
+        let included = compile_encoded_hierarchy_selected_with_policy(
+            columns.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+            EncodedPostingMode::Include,
+            le32(&[1]).as_slice(),
+        )
+        .unwrap()
+        .ontology;
+        assert!(included.entities.iter().any(|entity| entity.iri == "urn:A"));
+        assert!(!included.entities.iter().any(|entity| entity.iri == "urn:B"));
+
+        for postings in [le32(&[]), le32(&[1, 1]), le32(&[3])] {
+            let error = compile_encoded_hierarchy_selected_with_policy(
+                columns.borrowed(),
+                EncodedLimits::default(),
+                EncodedUnsupportedPolicy::Error,
+                EncodedPostingMode::Exclude,
+                postings.as_slice(),
+            )
+            .unwrap_err();
+            assert!(matches!(error, CoreError::Protocol(_)));
+        }
     }
 
     #[test]

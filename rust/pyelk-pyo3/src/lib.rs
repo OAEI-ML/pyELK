@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use pyelk_core::encoded::{
-    ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedLimits, EncodedUnsupportedPolicy,
+    ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedLimits, EncodedPostingMode,
+    EncodedUnsupportedPolicy, compile_encoded_hierarchy_selected_with_policy,
     compile_encoded_hierarchy_with_policy, validate_columns,
 };
 use pyelk_core::wire::{encode_query, encode_realization, encode_taxonomy};
@@ -92,6 +93,12 @@ struct EncodedIngestionMetrics {
     zero_copy_buffers: u64,
     segment_count: u64,
     referenced_view_count: u64,
+    posting_bytes: u64,
+}
+
+struct EncodedPostingBinding<'py> {
+    mode: EncodedPostingMode,
+    root_ids: EncodedBufferBinding<'py>,
 }
 
 struct ValidatedEncodedInput<'py> {
@@ -99,6 +106,7 @@ struct ValidatedEncodedInput<'py> {
     source_parts: EncodedSourceParts,
     segment_count: u64,
     referenced_view_count: u64,
+    posting: Option<EncodedPostingBinding<'py>>,
 }
 
 struct SessionState {
@@ -268,6 +276,7 @@ impl NativeSession {
                 "encoded_referenced_view_count",
                 metrics.referenced_view_count,
             )?;
+            result.set_item("encoded_posting_bytes", metrics.posting_bytes)?;
             result.set_item(
                 "encoded_indexed_buffer_count",
                 metrics.buffer_count - metrics.zero_copy_buffers,
@@ -321,9 +330,9 @@ fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
 
 /// Coarse encoded-view compiler entry point retained behind absent capability advertising.
 ///
-/// This executable handoff accepts validated direct segments and no-op overlay chains that retain
-/// one referenced source without flattening it.  Selected/delta overlays, composites,
-/// mmap-lifetime, exhaustive-constructor, and performance gates remain release blockers, so
+/// This executable handoff accepts validated direct segments plus all/exclude overlay-base chains
+/// over one direct source without flattening it.  Delta overlays, composites, mmap-lifetime,
+/// exhaustive-constructor, and performance gates remain release blockers, so
 /// `encoded_view_schemas()` intentionally stays empty.
 #[pyfunction]
 fn create_session_from_encoded(
@@ -352,10 +361,28 @@ fn create_session_from_encoded(
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let input = validate_encoded_input(encoded_view)?;
         let columns = input.bindings.columns()?;
-        let metrics =
-            encoded_ingestion_metrics(columns, input.segment_count, input.referenced_view_count)?;
-        let mut compilation =
-            compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?;
+        let posting = input
+            .posting
+            .as_ref()
+            .map(|binding| binding.root_ids.source("segment root_ids"))
+            .transpose()?;
+        let metrics = encoded_ingestion_metrics(
+            columns,
+            input.segment_count,
+            input.referenced_view_count,
+            posting.map_or(0, ByteSource::len),
+        )?;
+        let mut compilation = if let (Some(binding), Some(root_ids)) = (&input.posting, posting) {
+            compile_encoded_hierarchy_selected_with_policy(
+                columns,
+                EncodedLimits::default(),
+                policy,
+                binding.mode,
+                root_ids,
+            )?
+        } else {
+            compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?
+        };
         let compatibility_spelling =
             compatibility_spelling_digest(&compilation.compatibility_observations)?;
         compilation.ontology.source_fingerprint = encoded_source_fingerprint(
@@ -460,6 +487,7 @@ fn encoded_ingestion_metrics(
     columns: EncodedColumns<BorrowedPyBytes<'_, '_>>,
     segment_count: u64,
     referenced_view_count: u64,
+    posting_bytes: usize,
 ) -> CoreResult<EncodedIngestionMetrics> {
     let buffers = [
         columns.root_kinds,
@@ -491,6 +519,8 @@ fn encoded_ingestion_metrics(
         zero_copy_buffers,
         segment_count,
         referenced_view_count,
+        posting_bytes: u64::try_from(posting_bytes)
+            .map_err(|_| CoreError::capacity("encoded posting byte count exceeds u64"))?,
     })
 }
 
@@ -510,6 +540,7 @@ fn validate_encoded_input<'py>(
     let mut seen = BTreeSet::new();
     let mut segment_count = 0_u64;
     let mut referenced_view_count = 0_u64;
+    let mut posting = None;
     loop {
         if !seen.insert(current.as_ptr() as usize) {
             return Err(CoreError::protocol(
@@ -543,7 +574,7 @@ fn validate_encoded_input<'py>(
 
         if segments.len() != 1 {
             return Err(CoreError::invalid(
-                "encoded compiler slice currently accepts direct or no-op overlay segments",
+                "encoded compiler slice currently accepts direct or single-base overlay segments",
             ));
         }
         let segment = segments
@@ -565,15 +596,20 @@ fn validate_encoded_input<'py>(
                     source_parts,
                     segment_count,
                     referenced_view_count,
+                    posting,
                 });
             }
-            (2, 0) => {
-                if validated.root_count != 0 {
-                    return Err(CoreError::protocol(
-                        "no-op overlay segment must not carry local roots",
+            (2, mode @ (0 | 2)) => {
+                if posting.is_some() {
+                    return Err(CoreError::invalid(
+                        "selected overlay sources currently require one direct source",
                     ));
                 }
-                validate_empty_segment_bytes(&segment, "root_ids")?;
+                if validated.root_count != 0 {
+                    return Err(CoreError::protocol(
+                        "single-segment overlay base must not carry local roots",
+                    ));
+                }
                 validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
                 if !required_attribute(&segment, "member_token")?.is_none() {
                     return Err(CoreError::protocol(
@@ -595,11 +631,31 @@ fn validate_encoded_input<'py>(
                 referenced_view_count = referenced_view_count
                     .checked_add(1)
                     .ok_or_else(|| CoreError::capacity("encoded referenced-view count overflow"))?;
+                let root_ids = required_attribute(&segment, "root_ids")?;
+                let root_ids_binding = EncodedBufferBinding::new(root_ids);
+                let root_ids_source = root_ids_binding.source("segment root_ids")?;
+                if mode == 0 {
+                    if !root_ids_source.is_empty() {
+                        return Err(CoreError::protocol(
+                            "ALL overlay base segment must not carry root postings",
+                        ));
+                    }
+                } else {
+                    if root_ids_source.is_empty() {
+                        return Err(CoreError::protocol(
+                            "EXCLUDE overlay base segment requires root postings",
+                        ));
+                    }
+                    posting = Some(EncodedPostingBinding {
+                        mode: EncodedPostingMode::Exclude,
+                        root_ids: root_ids_binding,
+                    });
+                }
                 current = source;
             }
             _ => {
                 return Err(CoreError::invalid(
-                    "encoded compiler slice currently accepts direct or no-op overlay segments",
+                    "encoded compiler slice currently accepts direct or single-base overlay segments",
                 ));
             }
         }
