@@ -533,11 +533,12 @@ pub fn validate_columns<B: ByteSource>(
 /// Compile the first exact, deliberately narrow encoded-ontology slice.
 ///
 /// This stage accepts unannotated declarations of classes, named individuals, and object
-/// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`, and
-/// `SameIndividual` axioms. Ontology annotations and annotation-property declarations have no ELK
-/// effect and are ignored. Every other logical constructor fails closed, irrespective of the
-/// scalar compiler's unsupported policy. Consequently this function is safe to extend and test
-/// while encoded-schema capability advertisement remains disabled.
+/// properties plus unannotated named `SubClassOf`, `EquivalentClasses`, `ClassAssertion`,
+/// `SameIndividual`, `SubObjectPropertyOf`, and `EquivalentObjectProperties` axioms. Ontology
+/// annotations and annotation-property declarations have no ELK effect and are ignored. Every
+/// other logical constructor fails closed, irrespective of the scalar compiler's unsupported
+/// policy. Consequently this function is safe to extend and test while encoded-schema capability
+/// advertisement remains disabled.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -564,6 +565,8 @@ pub fn compile_named_hierarchy<B: ByteSource>(
             60 => compile_declaration(node, &columns, &mut builder)?,
             61 => compile_named_subclass(node, &columns, &mut builder)?,
             62 => compile_named_equivalence(node, &columns, &mut builder)?,
+            70 => compile_named_subproperty(node, &columns, &mut builder)?,
+            71 => compile_equivalent_named_properties(node, &columns, &mut builder)?,
             110 => compile_same_named_individuals(node, &columns, &mut builder)?,
             112 => compile_named_class_assertion(node, &columns, &mut builder)?,
             tag => {
@@ -580,8 +583,11 @@ pub fn compile_named_hierarchy<B: ByteSource>(
 struct NamedHierarchyBuilder {
     entities: BTreeSet<Entity>,
     occurrences: BTreeMap<Entity, Occurrence>,
+    property_occurrences: BTreeMap<Entity, Occurrence>,
+    property_chains: BTreeSet<Vec<Entity>>,
     subclass_axioms: BTreeSet<(Entity, Entity)>,
     equivalent_class_axioms: BTreeSet<(Entity, Entity)>,
+    subproperty_axioms: BTreeSet<(Vec<Entity>, Entity)>,
 }
 
 impl NamedHierarchyBuilder {
@@ -657,6 +663,46 @@ impl NamedHierarchyBuilder {
         Ok(())
     }
 
+    fn add_subproperty(&mut self, chain: Vec<Entity>, super_: Entity) -> CoreResult<()> {
+        for property in &chain {
+            self.entities.insert(property.clone());
+            increment_occurrence(
+                self.property_occurrences
+                    .entry(property.clone())
+                    .or_default(),
+                false,
+            )?;
+        }
+        self.entities.insert(super_.clone());
+        increment_occurrence(
+            self.property_occurrences.entry(super_.clone()).or_default(),
+            true,
+        )?;
+        self.property_chains.insert(chain.clone());
+        self.subproperty_axioms.insert((chain, super_));
+        Ok(())
+    }
+
+    fn add_equivalent_properties(&mut self, members: Vec<Entity>) -> CoreResult<()> {
+        let Some(first) = members.first().cloned() else {
+            return Ok(());
+        };
+        for member in &members {
+            self.entities.insert(member.clone());
+            let occurrence = self.property_occurrences.entry(member.clone()).or_default();
+            increment_occurrence(occurrence, false)?;
+            increment_occurrence(occurrence, true)?;
+            self.property_chains.insert(vec![member.clone()]);
+        }
+        for member in members.into_iter().skip(1) {
+            self.subproperty_axioms
+                .insert((vec![first.clone()], member.clone()));
+            self.subproperty_axioms
+                .insert((vec![member], first.clone()));
+        }
+        Ok(())
+    }
+
     fn freeze(self, source_fingerprint: [u8; 32]) -> CoreResult<Ontology> {
         let entities = self.entities.into_iter().collect::<Vec<_>>();
         if entities.len() >= u32::MAX as usize {
@@ -702,10 +748,10 @@ impl NamedHierarchyBuilder {
             }
         }
 
-        let object_property_ids = entities
+        let object_properties = entities
             .iter()
             .filter(|entity| entity.kind == EntityKind::ObjectProperty)
-            .map(|entity| entity_ids[entity])
+            .cloned()
             .collect::<Vec<_>>();
         let subclass_axioms = self
             .subclass_axioms
@@ -717,20 +763,66 @@ impl NamedHierarchyBuilder {
             .into_iter()
             .map(|(first, second)| Ok((expression_ids[&first], expression_ids[&second])))
             .collect::<CoreResult<Vec<_>>>()?;
+        let mut property_chain_values = self
+            .property_chains
+            .into_iter()
+            .map(|chain| {
+                chain
+                    .into_iter()
+                    .map(|property| Ok(entity_ids[&property]))
+                    .collect::<CoreResult<Vec<_>>>()
+            })
+            .collect::<CoreResult<BTreeSet<_>>>()?;
+        property_chain_values.extend(
+            object_properties
+                .iter()
+                .map(|property| vec![entity_ids[property]]),
+        );
+        let property_chains = property_chain_values.into_iter().collect::<Vec<_>>();
+        let property_chain_ids = property_chains
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, chain)| {
+                u32::try_from(index)
+                    .map(|identifier| (chain, identifier))
+                    .map_err(|_| {
+                        CoreError::capacity("encoded compiler property-chain ID exceeds u32")
+                    })
+            })
+            .collect::<CoreResult<BTreeMap<_, _>>>()?;
+        let subproperty_axioms = self
+            .subproperty_axioms
+            .into_iter()
+            .map(|(chain, super_)| {
+                let chain = chain
+                    .into_iter()
+                    .map(|property| entity_ids[&property])
+                    .collect::<Vec<_>>();
+                Ok((property_chain_ids[&chain], entity_ids[&super_]))
+            })
+            .collect::<CoreResult<BTreeSet<_>>>()?
+            .into_iter()
+            .collect();
 
         Ok(Ontology {
             entities,
             expressions,
             expression_occurrences,
-            property_occurrences: vec![Occurrence::default(); object_property_ids.len()],
-            property_chains: object_property_ids
-                .into_iter()
-                .map(|identifier| vec![identifier])
+            property_occurrences: object_properties
+                .iter()
+                .map(|property| {
+                    self.property_occurrences
+                        .get(property)
+                        .copied()
+                        .unwrap_or_default()
+                })
                 .collect(),
+            property_chains,
             subclass_axioms,
             equivalent_class_axioms,
             disjoint_groups: Vec::new(),
-            subproperty_axioms: Vec::new(),
+            subproperty_axioms,
             property_ranges: Vec::new(),
             feature_counts: vec![0; FEATURE_VECTOR_LENGTH],
             source_fingerprint,
@@ -769,6 +861,30 @@ fn compile_named_equivalence<B: ByteSource>(
         .map(|identifier| decode_named_class(identifier, columns))
         .collect::<CoreResult<Vec<_>>>()?;
     builder.add_equivalent_classes(members)
+}
+
+fn compile_named_subproperty<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 2, columns)?;
+    let chain = decode_named_property_chain(node_field(node, 0, columns)?, columns)?;
+    let super_ = decode_named_object_property(node_field(node, 1, columns)?, columns)?;
+    builder.add_subproperty(chain, super_)
+}
+
+fn compile_equivalent_named_properties<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    require_empty_annotations(node, 1, columns)?;
+    let members = node_collection(node, 0, columns)?
+        .into_iter()
+        .map(|identifier| decode_named_object_property(identifier, columns))
+        .collect::<CoreResult<Vec<_>>>()?;
+    builder.add_equivalent_properties(members)
 }
 
 fn compile_named_class_assertion<B: ByteSource>(
@@ -819,6 +935,45 @@ fn decode_named_individual<B: ByteSource>(
         ));
     }
     Ok(entity)
+}
+
+fn decode_named_object_property<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Entity> {
+    let entity = decode_entity(identifier, columns)?;
+    if entity.kind != EntityKind::ObjectProperty {
+        return Err(CoreError::internal(
+            "validated named object property resolved to the wrong entity kind",
+        ));
+    }
+    Ok(entity)
+}
+
+fn decode_named_property_chain<B: ByteSource>(
+    identifier: u32,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<Vec<Entity>> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    match u16_at(columns.node_tags, node, "sub-property node tag")? {
+        2 => Ok(vec![decode_named_object_property(identifier, columns)?]),
+        11 => {
+            let members = node_collection(node, 0, columns)?;
+            if members.len() < 2 {
+                return Err(CoreError::invalid(
+                    "encoded object property chain must contain at least two members",
+                ));
+            }
+            members
+                .into_iter()
+                .map(|member| decode_named_object_property(member, columns))
+                .collect()
+        }
+        _ => Err(CoreError::invalid(
+            "encoded named-hierarchy compiler does not support inverse object properties",
+        )),
+    }
 }
 
 fn decode_entity<B: ByteSource>(
@@ -2480,6 +2635,57 @@ mod tests {
         }
     }
 
+    fn named_subproperty() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 1, 2, 2, 70]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 9]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 25, 2, 3, 4, 0]),
+            field_lengths: le64(&[5, 5, 15, 0, 15, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:purn:qobject_propertyobject_property".to_vec(),
+        }
+    }
+
+    fn equivalent_named_properties() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[5]),
+            node_tags: le16(&[1, 1, 2, 2, 71]),
+            node_field_offsets: le64(&[0, 1, 2, 4, 6, 8]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 10, 1, 25, 2, 0, 2]),
+            field_lengths: le64(&[5, 5, 15, 0, 15, 0, 2, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[3, 4]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes: b"urn:purn:qobject_propertyobject_property".to_vec(),
+        }
+    }
+
     fn equivalent_class_pair() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM, ROOT_AXIOM],
@@ -3169,6 +3375,62 @@ mod tests {
     }
 
     #[test]
+    fn named_subproperty_compiles_occurrences_chains_and_rule() {
+        let compiled = compile_named_hierarchy(
+            named_subproperty().borrowed(),
+            EncodedLimits::default(),
+            [5; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            compiled.property_occurrences,
+            vec![
+                Occurrence::default(),
+                Occurrence::default(),
+                Occurrence {
+                    negative: 1,
+                    positive: 0,
+                },
+                Occurrence {
+                    negative: 0,
+                    positive: 1,
+                },
+            ]
+        );
+        assert_eq!(
+            compiled.property_chains,
+            vec![vec![2], vec![3], vec![4], vec![5]]
+        );
+        assert_eq!(compiled.subproperty_axioms, vec![(2, 5)]);
+    }
+
+    #[test]
+    fn equivalent_named_properties_compile_dual_bidirectional_rules() {
+        let compiled = compile_named_hierarchy(
+            equivalent_named_properties().borrowed(),
+            EncodedLimits::default(),
+            [6; 32],
+        )
+        .unwrap();
+
+        assert_eq!(
+            &compiled.property_occurrences[2..],
+            &[
+                Occurrence {
+                    negative: 1,
+                    positive: 1,
+                },
+                Occurrence {
+                    negative: 1,
+                    positive: 1,
+                },
+            ]
+        );
+        assert_eq!(compiled.subproperty_axioms, vec![(2, 5), (3, 4)]);
+    }
+
+    #[test]
     fn named_hierarchy_compiler_fails_closed_outside_its_exact_slice() {
         assert!(matches!(
             compile_named_hierarchy(
@@ -3176,7 +3438,7 @@ mod tests {
                 EncodedLimits::default(),
                 [0; 32],
             ),
-            Err(CoreError::InvalidInput(message)) if message.contains("axiom tag 70")
+            Err(CoreError::InvalidInput(message)) if message.contains("at least two")
         ));
 
         let mut malformed = named_subclass();
