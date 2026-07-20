@@ -353,6 +353,7 @@ pub struct EncodedCompilationSegment<B: ByteSource, P: ByteSource> {
     pub columns: EncodedColumns<B>,
     pub posting_mode: Option<EncodedPostingMode>,
     pub postings: P,
+    pub anonymous_scope_map: P,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -371,6 +372,11 @@ struct SelectedRootIter<P: ByteSource> {
     selector: EncodedRootCursor<P>,
     next_root: usize,
     root_count: usize,
+}
+
+enum CompilationRootIter<P: ByteSource> {
+    Ordered(SelectedRootIter<P>),
+    Remapped { roots: Vec<usize>, cursor: usize },
 }
 
 impl<P: ByteSource> EncodedRootSelection<P> {
@@ -448,6 +454,21 @@ impl<P: ByteSource> SelectedRootIter<P> {
             }
         }
         Ok(None)
+    }
+}
+
+impl<P: ByteSource> CompilationRootIter<P> {
+    fn next(&mut self) -> CoreResult<Option<usize>> {
+        match self {
+            Self::Ordered(roots) => roots.next(),
+            Self::Remapped { roots, cursor } => {
+                let root = roots.get(*cursor).copied();
+                *cursor = cursor
+                    .checked_add(usize::from(root.is_some()))
+                    .ok_or_else(|| CoreError::capacity("remapped root cursor overflow"))?;
+                Ok(root)
+            }
+        }
     }
 }
 
@@ -1078,12 +1099,35 @@ pub fn compile_encoded_segments_with_policy<B: ByteSource, P: ByteSource>(
                 "encoded segments exceed the combined validation work limit",
             ));
         }
+        let scope_replacements = build_scope_replacements(
+            segment.anonymous_scope_map,
+            &segment.columns,
+            validated.node_count,
+            &mut work,
+            limits.max_work,
+        )?;
+        let table_index = tables.len();
         tables.push(CompilableSegment {
             columns: segment.columns,
             canonical_lengths,
             node_count: validated.node_count,
+            scope_replacements,
         });
-        root_iters.push(SelectedRootIter::new(selection, validated.root_count));
+        if tables[table_index].scope_replacements.is_empty() {
+            root_iters.push(CompilationRootIter::Ordered(SelectedRootIter::new(
+                selection,
+                validated.root_count,
+            )));
+        } else {
+            root_iters.push(build_remapped_root_iter(
+                table_index,
+                selection,
+                validated.root_count,
+                &tables,
+                &mut work,
+                limits.max_work,
+            )?);
+        }
     }
 
     let mut current_roots = Vec::new();
@@ -1164,6 +1208,7 @@ fn validate_compilation_segment_limits<B: ByteSource, P: ByteSource>(
     let mut fields = 0_usize;
     let mut items = 0_usize;
     let mut scalars = 0_usize;
+    let mut metadata = 0_usize;
     let add = |total: &mut usize, value: usize, name: &str| {
         *total = total
             .checked_add(value)
@@ -1192,6 +1237,12 @@ fn validate_compilation_segment_limits<B: ByteSource, P: ByteSource>(
             segment.columns.scalar_bytes.len(),
             "scalar byte count",
         )?;
+        add(&mut metadata, segment.postings.len(), "posting byte count")?;
+        add(
+            &mut metadata,
+            segment.anonymous_scope_map.len(),
+            "scope-map byte count",
+        )?;
     }
     enforce_count(roots, limits.max_roots, "encoded segment root count")?;
     enforce_count(nodes, limits.max_nodes, "encoded segment node count")?;
@@ -1201,6 +1252,11 @@ fn validate_compilation_segment_limits<B: ByteSource, P: ByteSource>(
         scalars,
         limits.max_scalar_bytes,
         "encoded segment scalar byte count",
+    )?;
+    enforce_count(
+        metadata,
+        limits.max_scalar_bytes,
+        "encoded segment metadata byte count",
     )
 }
 
@@ -1267,11 +1323,13 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
             columns: source_columns,
             canonical_lengths: source_lengths,
             node_count: source_validated.node_count,
+            scope_replacements: Vec::new(),
         },
         CompilableSegment {
             columns: delta_columns,
             canonical_lengths: delta_lengths,
             node_count: delta_validated.node_count,
+            scope_replacements: Vec::new(),
         },
     ];
     let mut source_roots = SelectedRootIter::new(source_selection, source_validated.root_count);
@@ -1432,6 +1490,150 @@ struct CompilableSegment<B: ByteSource> {
     columns: EncodedColumns<B>,
     canonical_lengths: Vec<u64>,
     node_count: usize,
+    scope_replacements: Vec<ScalarScopeReplacement>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ScalarScopeReplacement {
+    start: usize,
+    target: [u8; 32],
+}
+
+#[derive(Clone, Copy)]
+struct ScopeMappedByteSource<'a, B: ByteSource> {
+    source: B,
+    replacements: &'a [ScalarScopeReplacement],
+}
+
+impl<B: ByteSource> ByteSource for ScopeMappedByteSource<'_, B> {
+    fn len(self) -> usize {
+        self.source.len()
+    }
+
+    fn byte(self, index: usize) -> Option<u8> {
+        let insertion = self
+            .replacements
+            .partition_point(|replacement| replacement.start <= index);
+        if insertion != 0 {
+            let replacement = &self.replacements[insertion - 1];
+            let offset = index.checked_sub(replacement.start)?;
+            if let Some(value) = replacement.target.get(offset) {
+                return Some(*value);
+            }
+        }
+        self.source.byte(index)
+    }
+}
+
+impl<B: ByteSource> CompilableSegment<B> {
+    fn mapped_columns(&self) -> EncodedColumns<ScopeMappedByteSource<'_, B>> {
+        let plain = |source| ScopeMappedByteSource {
+            source,
+            replacements: &[],
+        };
+        EncodedColumns {
+            root_kinds: plain(self.columns.root_kinds),
+            root_ids: plain(self.columns.root_ids),
+            node_tags: plain(self.columns.node_tags),
+            node_field_offsets: plain(self.columns.node_field_offsets),
+            field_kinds: plain(self.columns.field_kinds),
+            field_values: plain(self.columns.field_values),
+            field_lengths: plain(self.columns.field_lengths),
+            item_kinds: plain(self.columns.item_kinds),
+            item_values: plain(self.columns.item_values),
+            item_lengths: plain(self.columns.item_lengths),
+            scalar_bytes: ScopeMappedByteSource {
+                source: self.columns.scalar_bytes,
+                replacements: &self.scope_replacements,
+            },
+        }
+    }
+}
+
+fn build_scope_replacements<B: ByteSource, P: ByteSource>(
+    scope_map: P,
+    columns: &EncodedColumns<B>,
+    node_count: usize,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Vec<ScalarScopeReplacement>> {
+    if scope_map.is_empty() {
+        return Ok(Vec::new());
+    }
+    let row_count = aligned_count(scope_map, 64, "anonymous scope map")?;
+    claim_work(
+        work,
+        u64::try_from(scope_map.len())
+            .map_err(|_| CoreError::capacity("anonymous scope-map work overflow"))?,
+        max_work,
+    )?;
+    let mut mappings = Vec::new();
+    mappings
+        .try_reserve_exact(row_count)
+        .map_err(|_| CoreError::capacity("anonymous scope-map allocation failed"))?;
+    let mut previous = None;
+    for row in 0..row_count {
+        let start = row
+            .checked_mul(64)
+            .ok_or_else(|| CoreError::capacity("anonymous scope-map offset overflow"))?;
+        let source = fixed_bytes_32(scope_map, start, "anonymous scope-map source")?;
+        let target = fixed_bytes_32(
+            scope_map,
+            start
+                .checked_add(32)
+                .ok_or_else(|| CoreError::capacity("anonymous scope-map target overflow"))?,
+            "anonymous scope-map target",
+        )?;
+        if previous.is_some_and(|value| value >= source) || source == target {
+            return Err(CoreError::protocol(
+                "anonymous scope-map sources must be sorted, unique, and nonidentity",
+            ));
+        }
+        previous = Some(source);
+        mappings.push((source, target));
+    }
+
+    let mut replacements = Vec::new();
+    for node in 0..node_count {
+        claim_work(work, 1, max_work)?;
+        if u16_at(columns.node_tags, node, "scope-mapped node tag")? != 3 {
+            continue;
+        }
+        let field = usize_at(
+            columns.node_field_offsets,
+            node,
+            "anonymous scope field offset",
+        )?;
+        let (kind, start, length) = component_parts(ComponentRow::Field(field), columns)?;
+        if kind != COMPONENT_BYTES || length != 32 {
+            return Err(CoreError::internal(
+                "validated anonymous scope field changed shape",
+            ));
+        }
+        let source = fixed_bytes_32(columns.scalar_bytes, start, "anonymous scope")?;
+        if let Ok(index) = mappings.binary_search_by_key(&source, |(candidate, _)| *candidate) {
+            replacements.push(ScalarScopeReplacement {
+                start,
+                target: mappings[index].1,
+            });
+        }
+    }
+    replacements.sort_unstable_by_key(|replacement| replacement.start);
+    Ok(replacements)
+}
+
+fn fixed_bytes_32<B: ByteSource>(source: B, start: usize, name: &str) -> CoreResult<[u8; 32]> {
+    let mut value = [0_u8; 32];
+    for (offset, byte) in value.iter_mut().enumerate() {
+        *byte = source
+            .byte(
+                start
+                    .checked_add(offset)
+                    .ok_or_else(|| CoreError::capacity(format!("{name} offset overflow")))?,
+            )
+            .ok_or_else(|| CoreError::protocol(format!("{name} is truncated")))?;
+    }
+    Ok(value)
 }
 
 #[derive(Clone, Copy)]
@@ -1453,13 +1655,11 @@ fn compare_segment_roots<B: ByteSource>(
     let right_table = tables
         .get(right.table)
         .ok_or_else(|| CoreError::internal("right encoded segment table is out of bounds"))?;
-    let left_kind = byte_at(
-        left_table.columns.root_kinds,
-        left.root,
-        "left segment root kind",
-    )?;
+    let left_columns = left_table.mapped_columns();
+    let right_columns = right_table.mapped_columns();
+    let left_kind = byte_at(left_columns.root_kinds, left.root, "left segment root kind")?;
     let right_kind = byte_at(
-        right_table.columns.root_kinds,
+        right_columns.root_kinds,
         right.root,
         "right segment root kind",
     )?;
@@ -1469,7 +1669,7 @@ fn compare_segment_roots<B: ByteSource>(
     }
     let left_node = node_index(
         u32_at(
-            left_table.columns.root_ids,
+            left_columns.root_ids,
             left.root,
             "left segment root node ID",
         )?,
@@ -1477,7 +1677,7 @@ fn compare_segment_roots<B: ByteSource>(
     )?;
     let right_node = node_index(
         u32_at(
-            right_table.columns.root_ids,
+            right_columns.root_ids,
             right.root,
             "right segment root node ID",
         )?,
@@ -1486,13 +1686,83 @@ fn compare_segment_roots<B: ByteSource>(
     compare_canonical_nodes_between(
         left_node,
         right_node,
-        &left_table.columns,
-        &right_table.columns,
+        &left_columns,
+        &right_columns,
         &left_table.canonical_lengths,
         &right_table.canonical_lengths,
         work,
         max_work,
     )
+}
+
+fn build_remapped_root_iter<B: ByteSource, P: ByteSource>(
+    table: usize,
+    selection: Option<EncodedRootSelection<P>>,
+    root_count: usize,
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<CompilationRootIter<P>> {
+    let mut selected = SelectedRootIter::new(selection, root_count);
+    let mut roots = Vec::new();
+    while let Some(root) = selected.next()? {
+        roots
+            .try_reserve(1)
+            .map_err(|_| CoreError::capacity("remapped root-order allocation failed"))?;
+        roots.push(root);
+    }
+    let mut comparison_error = None;
+    roots.sort_unstable_by(|left, right| {
+        if comparison_error.is_some() {
+            return Ordering::Equal;
+        }
+        match compare_segment_roots(
+            SegmentRootRef { table, root: *left },
+            SegmentRootRef {
+                table,
+                root: *right,
+            },
+            tables,
+            work,
+            max_work,
+        ) {
+            Ok(ordering) => ordering,
+            Err(error) => {
+                comparison_error = Some(error);
+                Ordering::Equal
+            }
+        }
+    });
+    if let Some(error) = comparison_error {
+        return Err(error);
+    }
+    let mut deduplicated = Vec::new();
+    deduplicated
+        .try_reserve_exact(roots.len())
+        .map_err(|_| CoreError::capacity("remapped root deduplication allocation failed"))?;
+    for root in roots {
+        let duplicate = if let Some(previous) = deduplicated.last().copied() {
+            compare_segment_roots(
+                SegmentRootRef {
+                    table,
+                    root: previous,
+                },
+                SegmentRootRef { table, root },
+                tables,
+                work,
+                max_work,
+            )? == Ordering::Equal
+        } else {
+            false
+        };
+        if !duplicate {
+            deduplicated.push(root);
+        }
+    }
+    Ok(CompilationRootIter::Remapped {
+        roots: deduplicated,
+        cursor: 0,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1508,7 +1778,8 @@ fn compile_segment_root<B: ByteSource>(
     let table = tables
         .get(current.table)
         .ok_or_else(|| CoreError::internal("encoded segment root table is out of bounds"))?;
-    let columns = &table.columns;
+    let mapped_columns = table.mapped_columns();
+    let columns = &mapped_columns;
     let kind = byte_at(columns.root_kinds, current.root, "segment root kind")?;
     let node = node_index(
         u32_at(columns.root_ids, current.root, "segment root node ID")?,
@@ -1524,9 +1795,10 @@ fn compile_segment_root<B: ByteSource>(
             let previous_table = tables.get(previous.table).ok_or_else(|| {
                 CoreError::internal("previous encoded segment root table is out of bounds")
             })?;
+            let previous_columns = previous_table.mapped_columns();
             let left = node_index(
                 u32_at(
-                    previous_table.columns.root_ids,
+                    previous_columns.root_ids,
                     previous.root,
                     "previous segment root node ID",
                 )?,
@@ -1535,7 +1807,7 @@ fn compile_segment_root<B: ByteSource>(
             let ordering = compare_canonical_nodes_between_with_field_limit(
                 left,
                 node,
-                &previous_table.columns,
+                &previous_columns,
                 columns,
                 &previous_table.canonical_lengths,
                 &table.canonical_lengths,
@@ -5738,6 +6010,34 @@ mod tests {
         }
     }
 
+    fn anonymous_class_assertion(scope: [u8; 32]) -> OwnedColumns {
+        let mut scalar_bytes = b"urn:Aclass".to_vec();
+        scalar_bytes.extend_from_slice(&scope);
+        scalar_bytes.push(b'x');
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[4]),
+            node_tags: le16(&[1, 2, 3, 112]),
+            node_field_offsets: le64(&[0, 1, 3, 5, 8]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_BYTES,
+                COMPONENT_BYTES,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 1, 10, 42, 2, 3, 0]),
+            field_lengths: le64(&[5, 5, 0, 32, 1, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes,
+        }
+    }
+
     fn same_named_individuals() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -6801,16 +7101,19 @@ mod tests {
                 columns: first.borrowed(),
                 posting_mode: None,
                 postings: empty_postings,
+                anonymous_scope_map: empty_postings,
             },
             EncodedCompilationSegment {
                 columns: second.borrowed(),
                 posting_mode: None,
                 postings: empty_postings,
+                anonymous_scope_map: empty_postings,
             },
             EncodedCompilationSegment {
                 columns: duplicate.borrowed(),
                 posting_mode: None,
                 postings: empty_postings,
+                anonymous_scope_map: empty_postings,
             },
         ];
         let actual = compile_encoded_segments_with_policy(
@@ -6834,11 +7137,13 @@ mod tests {
                 columns: selected_source.borrowed(),
                 posting_mode: Some(EncodedPostingMode::Include),
                 postings: postings.as_slice(),
+                anonymous_scope_map: empty_postings,
             },
             EncodedCompilationSegment {
                 columns: first.borrowed(),
                 posting_mode: None,
                 postings: empty_postings,
+                anonymous_scope_map: empty_postings,
             },
         ];
         assert_eq!(
@@ -6850,6 +7155,97 @@ mod tests {
             .unwrap(),
             expected
         );
+    }
+
+    #[test]
+    fn segment_scope_maps_transform_anonymous_identity_before_deduplication() {
+        let source_scope = [1_u8; 32];
+        let target_scope = [2_u8; 32];
+        let source = anonymous_class_assertion(source_scope);
+        validate_columns(source.borrowed(), EncodedLimits::default()).unwrap();
+        let empty = &[][..];
+        let duplicate_segments = [
+            EncodedCompilationSegment {
+                columns: source.borrowed(),
+                posting_mode: None,
+                postings: empty,
+                anonymous_scope_map: empty,
+            },
+            EncodedCompilationSegment {
+                columns: source.borrowed(),
+                posting_mode: None,
+                postings: empty,
+                anonymous_scope_map: empty,
+            },
+        ];
+        let duplicate = compile_encoded_segments_with_policy(
+            &duplicate_segments,
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Ignore,
+        )
+        .unwrap();
+        assert_eq!(
+            duplicate.ontology.feature_counts[FEATURE_ANONYMOUS_INDIVIDUAL],
+            1
+        );
+
+        let mut scope_map = source_scope.to_vec();
+        scope_map.extend_from_slice(&target_scope);
+        let distinct_segments = [
+            duplicate_segments[0],
+            EncodedCompilationSegment {
+                columns: source.borrowed(),
+                posting_mode: None,
+                postings: empty,
+                anonymous_scope_map: scope_map.as_slice(),
+            },
+        ];
+        let distinct = compile_encoded_segments_with_policy(
+            &distinct_segments,
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Ignore,
+        )
+        .unwrap();
+        assert_eq!(
+            distinct.ontology.feature_counts[FEATURE_ANONYMOUS_INDIVIDUAL],
+            2
+        );
+
+        let mapped = [EncodedCompilationSegment {
+            columns: source.borrowed(),
+            posting_mode: None,
+            postings: empty,
+            anonymous_scope_map: scope_map.as_slice(),
+        }];
+        let tight_metadata = EncodedLimits {
+            max_scalar_bytes: 63,
+            ..EncodedLimits::default()
+        };
+        assert!(matches!(
+            compile_encoded_segments_with_policy(
+                &mapped,
+                tight_metadata,
+                EncodedUnsupportedPolicy::Ignore,
+            ),
+            Err(CoreError::Capacity(message)) if message.contains("metadata")
+        ));
+
+        let mut identity_map = source_scope.to_vec();
+        identity_map.extend_from_slice(&source_scope);
+        let malformed = [EncodedCompilationSegment {
+            columns: source.borrowed(),
+            posting_mode: None,
+            postings: empty,
+            anonymous_scope_map: identity_map.as_slice(),
+        }];
+        assert!(matches!(
+            compile_encoded_segments_with_policy(
+                &malformed,
+                EncodedLimits::default(),
+                EncodedUnsupportedPolicy::Ignore,
+            ),
+            Err(CoreError::Protocol(message)) if message.contains("scope-map")
+        ));
     }
 
     #[test]

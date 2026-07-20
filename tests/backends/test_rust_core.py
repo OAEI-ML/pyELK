@@ -267,6 +267,7 @@ def _composite_encoded(
     members: tuple[tuple[Any, int, tuple[int, ...], bytes], ...],
     *,
     bridge: Any | None = None,
+    scope_maps: tuple[tuple[tuple[bytes, bytes], ...], ...] | None = None,
 ) -> Any:
     from pyowl_core.backends import native_views
 
@@ -274,6 +275,9 @@ def _composite_encoded(
         _empty_snapshot, local = _direct_encoded_snapshot(b"Ontology(<urn:encoded-empty>)")
     else:
         local = bridge
+    selected_scope_maps = scope_maps or tuple(() for _member in members)
+    if len(selected_scope_maps) != len(members):
+        raise ValueError("scope_maps must align with composite members")
     segments = tuple(
         native_views.EncodedStructuralSegmentV1(
             4,
@@ -281,11 +285,13 @@ def _composite_encoded(
             source,
             posting_mode,
             memoryview(b"".join(root_id.to_bytes(4, "little") for root_id in root_ids)),
-            memoryview(b""),
+            memoryview(b"".join(source + target for source, target in scope_map)),
             member_token,
             source,
         )
-        for source, posting_mode, root_ids, member_token in members
+        for (source, posting_mode, root_ids, member_token), scope_map in zip(
+            members, selected_scope_maps, strict=True
+        )
     )
     if bridge is not None:
         segments += (
@@ -806,6 +812,149 @@ def test_hidden_composite_session_retains_every_member_owner(
     assert left_ref() is None
     assert right_ref() is None
     assert top_ref() is None
+
+
+def test_hidden_composite_scope_maps_preserve_anonymous_member_identity(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    source = b"""Ontology(<urn:encoded-anonymous-composite>
+    ClassAssertion(<urn:encoded-anonymous-composite:A> _:x)
+    )"""
+    left, encoded_left = _direct_encoded_snapshot(source)
+    right, encoded_right = _direct_encoded_snapshot(source)
+    composite = owl.compose_views(left, right)
+    tokens = composite._source_tokens()  # type: ignore[attr-defined]
+    mappings = composite._scope_replacements()  # type: ignore[attr-defined]
+    rows = sorted(
+        zip(tokens, (encoded_left, encoded_right), mappings, strict=True),
+        key=lambda row: row[0],
+    )
+    encoded = _composite_encoded(
+        composite,
+        tuple((source_view, 0, (), token) for token, source_view, _mapping in rows),
+        scope_maps=tuple(tuple(sorted(mapping.items())) for _token, _source_view, mapping in rows),
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "ignore")
+    scalar = native_module.create_session(
+        compile_ontology(composite, unsupported="ignore").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 4
+        assert diagnostics["encoded_referenced_view_count"] == 2
+        assert diagnostics["encoded_buffer_count"] == 22
+        assert diagnostics["encoded_zero_copy_buffers"] == 22
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+    from pyowl_core.backends import native_views
+
+    first, second = encoded.segments
+    source_scope = next(iter(rows[0][2]))
+    hostile = SimpleNamespace(
+        role=first.role,
+        owner=first.owner,
+        source=first.source,
+        posting_mode=first.posting_mode,
+        root_ids=first.root_ids,
+        anonymous_scope_map=memoryview(source_scope + source_scope),
+        member_token=first.member_token,
+    )
+    hostile_segments = (hostile, second)
+    with pytest.raises(ValueError, match=r"scope.map|nonidentity|sorted|unique"):
+        native_module.create_session_from_encoded(
+            _encoded_wrapper(
+                encoded,
+                segments=hostile_segments,
+                structural_fingerprint=native_views._fingerprint(encoded.buffers, hostile_segments),
+            ),
+            1,
+            "ignore",
+        )
+
+
+def test_hidden_nested_composite_scope_maps_compose_through_segmented_sources(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.indexing.compiler import compile_ontology
+
+    anonymous_source = b"""Ontology(<urn:encoded-nested-anonymous>
+    ClassAssertion(<urn:encoded-nested-anonymous:A> _:x)
+    )"""
+    left, encoded_left = _direct_encoded_snapshot(anonymous_source)
+    right, encoded_right = _direct_encoded_snapshot(anonymous_source)
+    bridge_source, encoded_bridge = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-nested-anonymous:Bridge>)))"
+    )
+    inner = owl.compose_views(
+        left,
+        right,
+        delta=owl.OntologyDelta(add_axioms=owl.CanonicalSet(bridge_source.iter_axioms())),
+    )
+    inner_rows = sorted(
+        zip(
+            inner._source_tokens(),  # type: ignore[attr-defined]
+            (encoded_left, encoded_right),
+            inner._scope_replacements(),  # type: ignore[attr-defined]
+            strict=True,
+        ),
+        key=lambda row: row[0],
+    )
+    encoded_inner = _composite_encoded(
+        inner,
+        tuple((source_view, 0, (), token) for token, source_view, _mapping in inner_rows),
+        bridge=encoded_bridge,
+        scope_maps=tuple(
+            tuple(sorted(mapping.items())) for _token, _source_view, mapping in inner_rows
+        ),
+    )
+
+    third, encoded_third = _direct_encoded_snapshot(anonymous_source)
+    outer = owl.compose_views(inner, third)
+    outer_rows = sorted(
+        zip(
+            outer._source_tokens(),  # type: ignore[attr-defined]
+            (encoded_inner, encoded_third),
+            outer._scope_replacements(),  # type: ignore[attr-defined]
+            strict=True,
+        ),
+        key=lambda row: row[0],
+    )
+    encoded_outer = _composite_encoded(
+        outer,
+        tuple((source_view, 0, (), token) for token, source_view, _mapping in outer_rows),
+        scope_maps=tuple(
+            tuple(sorted(mapping.items())) for _token, _source_view, mapping in outer_rows
+        ),
+    )
+
+    native = native_module.create_session_from_encoded(encoded_outer, 1, "ignore")
+    scalar = native_module.create_session(
+        compile_ontology(outer, unsupported="ignore").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 8
+        assert diagnostics["encoded_referenced_view_count"] == 4
+        assert diagnostics["encoded_buffer_count"] == 44
+        assert diagnostics["encoded_zero_copy_buffers"] == 44
+        assert diagnostics["encoded_posting_bytes"] == 0
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
 
 
 def test_hidden_composite_recursively_resolves_segmented_member_sources(

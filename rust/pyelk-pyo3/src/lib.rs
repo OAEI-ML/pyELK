@@ -130,6 +130,7 @@ struct EncodedCompilationTableBinding<'py> {
     bindings: EncodedBufferBindings<'py>,
     view_id: usize,
     selection: EncodedRootPlan,
+    scope_map: BTreeMap<[u8; 32], [u8; 32]>,
 }
 
 #[derive(Clone, Debug)]
@@ -206,6 +207,22 @@ impl EncodedRootPlan {
     }
 }
 
+fn encoded_scope_map(scope_map: &BTreeMap<[u8; 32], [u8; 32]>) -> CoreResult<Vec<u8>> {
+    let capacity = scope_map
+        .len()
+        .checked_mul(64)
+        .ok_or_else(|| CoreError::capacity("encoded scope-map bytes overflow"))?;
+    let mut encoded = Vec::new();
+    encoded
+        .try_reserve_exact(capacity)
+        .map_err(|_| CoreError::capacity("encoded scope-map allocation failed"))?;
+    for (source, target) in scope_map {
+        encoded.extend_from_slice(source);
+        encoded.extend_from_slice(target);
+    }
+    Ok(encoded)
+}
+
 #[derive(Clone)]
 struct ResolvedEncodedView<'py> {
     tables: Vec<EncodedCompilationTableBinding<'py>>,
@@ -278,7 +295,6 @@ impl<'py> CompositeResolver<'py> {
         }
         let bindings = EncodedBufferBindings::from_view(view)?;
         let validated = validate_columns(bindings.columns()?, EncodedLimits::default())?;
-        reject_anonymous_segment_nodes(&bindings, validated.node_count)?;
         let raw_segments = required_attribute(view, "segments")?;
         let segments = raw_segments.cast::<PyTuple>().map_err(|_| {
             CoreError::protocol("encoded structural view segments must be an exact tuple")
@@ -321,6 +337,7 @@ impl<'py> CompositeResolver<'py> {
                         bindings,
                         view_id,
                         selection: EncodedRootPlan::All,
+                        scope_map: BTreeMap::new(),
                     }],
                     local_root_count: validated.root_count,
                 })
@@ -364,7 +381,6 @@ impl<'py> CompositeResolver<'py> {
                 "encoded overlay segment family must contain a base and optional delta",
             ));
         }
-        validate_empty_segment_bytes(base, "anonymous_scope_map")?;
         if !required_attribute(base, "member_token")?.is_none() {
             return Err(CoreError::protocol(
                 "overlay base segment must not carry a member token",
@@ -383,6 +399,9 @@ impl<'py> CompositeResolver<'py> {
             ));
         }
         let mut resolved = self.resolve(&source)?;
+        let scope_map = EncodedBufferBinding::new(required_attribute(base, "anonymous_scope_map")?);
+        let scope_map = read_scope_map(scope_map.source("overlay anonymous_scope_map")?)?;
+        apply_scope_map(&mut resolved.tables, &scope_map);
         let raw_mode = exact_nonnegative_integer(
             &required_attribute(base, "posting_mode")?,
             "encoded overlay posting_mode",
@@ -427,6 +446,7 @@ impl<'py> CompositeResolver<'py> {
                 bindings,
                 view_id,
                 selection: EncodedRootPlan::All,
+                scope_map: BTreeMap::new(),
             });
         }
         enforce_resolved_table_limit(&resolved.tables)?;
@@ -473,7 +493,6 @@ impl<'py> CompositeResolver<'py> {
                     "encoded composite member roles are not contiguous and canonical",
                 ));
             }
-            validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
             let token = exact_member_token(&segment)?;
             if previous_token.is_some_and(|previous| previous >= token) {
                 return Err(CoreError::protocol(
@@ -494,6 +513,10 @@ impl<'py> CompositeResolver<'py> {
                 ));
             }
             let mut resolved = self.resolve(&source)?;
+            let scope_map =
+                EncodedBufferBinding::new(required_attribute(&segment, "anonymous_scope_map")?);
+            let scope_map = read_scope_map(scope_map.source("composite anonymous_scope_map")?)?;
+            apply_scope_map(&mut resolved.tables, &scope_map);
             let raw_mode = exact_nonnegative_integer(
                 &required_attribute(&segment, "posting_mode")?,
                 "encoded composite member posting_mode",
@@ -537,6 +560,7 @@ impl<'py> CompositeResolver<'py> {
                 bindings,
                 view_id,
                 selection: EncodedRootPlan::All,
+                scope_map: BTreeMap::new(),
             });
         } else if local_root_count != 0 {
             return Err(CoreError::protocol(
@@ -844,8 +868,8 @@ fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
 /// Coarse encoded-view compiler entry point retained behind absent capability advertising.
 ///
 /// This executable handoff accepts validated direct, recursively segmented overlay, and
-/// named-only composite sources without flattening them. Anonymous scope remapping,
-/// mmap-lifetime, exhaustive-constructor, and performance gates remain release blockers, so
+/// composite sources, including anonymous-scope remapping, without flattening them.
+/// Mmap-lifetime, exhaustive-constructor, and performance gates remain release blockers, so
 /// `encoded_view_schemas()` intentionally stays empty.
 #[pyfunction]
 fn create_session_from_encoded(
@@ -881,6 +905,13 @@ fn create_session_from_encoded(
             for table in composite {
                 posting_storage.push(table.selection.posting_bytes()?);
             }
+            let mut scope_storage = Vec::new();
+            scope_storage
+                .try_reserve_exact(composite.len())
+                .map_err(|_| CoreError::capacity("encoded scope storage allocation failed"))?;
+            for table in composite {
+                scope_storage.push(encoded_scope_map(&table.scope_map)?);
+            }
             let mut tables = Vec::new();
             tables
                 .try_reserve_exact(composite.len())
@@ -890,7 +921,9 @@ fn create_session_from_encoded(
                 .try_reserve_exact(composite.len())
                 .map_err(|_| CoreError::capacity("encoded composite metric allocation failed"))?;
             let mut metric_views = BTreeSet::new();
-            for (table, postings) in composite.iter().zip(&posting_storage) {
+            for ((table, postings), scope_map) in
+                composite.iter().zip(&posting_storage).zip(&scope_storage)
+            {
                 let columns = table.bindings.columns()?;
                 if metric_views.insert(table.view_id) {
                     metric_columns.push(columns);
@@ -902,6 +935,7 @@ fn create_session_from_encoded(
                     columns,
                     posting_mode: table.selection.mode(),
                     postings: postings.as_slice(),
+                    anonymous_scope_map: scope_map.as_slice(),
                 });
             }
             let metrics = encoded_ingestion_metrics(
@@ -1259,7 +1293,15 @@ fn validate_encoded_input<'py>(
                         "single-segment overlay base must not carry local roots",
                     ));
                 }
-                validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
+                let scope_map =
+                    EncodedBufferBinding::new(required_attribute(&segment, "anonymous_scope_map")?);
+                if !scope_map.source("overlay anonymous_scope_map")?.is_empty() {
+                    return validate_recursive_encoded_input(
+                        encoded_view,
+                        source_parts,
+                        model_schema,
+                    );
+                }
                 if !required_attribute(&segment, "member_token")?.is_none() {
                     return Err(CoreError::protocol(
                         "overlay base segment must not carry a member token",
@@ -1383,7 +1425,9 @@ fn validate_composite_input<'py>(
                 "encoded composite member roles are not contiguous and canonical",
             ));
         }
-        validate_empty_segment_bytes(&segment, "anonymous_scope_map")?;
+        let scope_map =
+            EncodedBufferBinding::new(required_attribute(&segment, "anonymous_scope_map")?);
+        let scope_map = read_scope_map(scope_map.source("composite anonymous_scope_map")?)?;
         let member_token = exact_member_token(&segment)?;
         if previous_token.is_some_and(|previous| previous >= member_token) {
             return Err(CoreError::protocol(
@@ -1405,6 +1449,7 @@ fn validate_composite_input<'py>(
             ));
         }
         let mut resolved = resolver.resolve(&source)?;
+        apply_scope_map(&mut resolved.tables, &scope_map);
 
         let raw_mode = exact_nonnegative_integer(
             &required_attribute(&segment, "posting_mode")?,
@@ -1453,6 +1498,7 @@ fn validate_composite_input<'py>(
             bindings: top_bindings.clone(),
             view_id: encoded_view.as_ptr() as usize,
             selection: EncodedRootPlan::All,
+            scope_map: BTreeMap::new(),
         });
     } else if local_root_count != 0 {
         return Err(CoreError::protocol(
@@ -1484,28 +1530,79 @@ fn validate_composite_input<'py>(
     })
 }
 
-fn reject_anonymous_segment_nodes(
-    bindings: &EncodedBufferBindings<'_>,
-    node_count: usize,
-) -> CoreResult<()> {
-    let tags = bindings.node_tags.source("composite member node_tags")?;
-    for node in 0..node_count {
-        let offset = node
-            .checked_mul(2)
-            .ok_or_else(|| CoreError::capacity("encoded composite node-tag offset overflow"))?;
-        let low = tags
-            .byte(offset)
-            .ok_or_else(|| CoreError::protocol("encoded composite node tag is inaccessible"))?;
-        let high = tags
-            .byte(offset + 1)
-            .ok_or_else(|| CoreError::protocol("encoded composite node tag is truncated"))?;
-        if u16::from_le_bytes([low, high]) == 3 {
-            return Err(CoreError::invalid(
-                "encoded composite slice does not yet accept anonymous member nodes",
+fn read_scope_map(scope_map: BorrowedPyBytes<'_, '_>) -> CoreResult<BTreeMap<[u8; 32], [u8; 32]>> {
+    if scope_map.len() % 64 != 0 {
+        return Err(CoreError::protocol(
+            "encoded anonymous scope map must contain exact 64-byte rows",
+        ));
+    }
+    let mut mappings = BTreeMap::new();
+    let mut previous = None;
+    for row in 0..scope_map.len() / 64 {
+        let start = row
+            .checked_mul(64)
+            .ok_or_else(|| CoreError::capacity("encoded scope-map offset overflow"))?;
+        let source = borrowed_fixed_bytes_32(scope_map, start, "scope-map source")?;
+        let target = borrowed_fixed_bytes_32(
+            scope_map,
+            start
+                .checked_add(32)
+                .ok_or_else(|| CoreError::capacity("encoded scope-map target overflow"))?,
+            "scope-map target",
+        )?;
+        if previous.is_some_and(|value| value >= source) || source == target {
+            return Err(CoreError::protocol(
+                "encoded scope-map sources must be sorted, unique, and nonidentity",
             ));
         }
+        previous = Some(source);
+        mappings.insert(source, target);
     }
-    Ok(())
+    Ok(mappings)
+}
+
+fn borrowed_fixed_bytes_32(
+    source: BorrowedPyBytes<'_, '_>,
+    start: usize,
+    name: &str,
+) -> CoreResult<[u8; 32]> {
+    let mut value = [0_u8; 32];
+    for (offset, byte) in value.iter_mut().enumerate() {
+        *byte = source
+            .byte(
+                start
+                    .checked_add(offset)
+                    .ok_or_else(|| CoreError::capacity(format!("encoded {name} overflow")))?,
+            )
+            .ok_or_else(|| CoreError::protocol(format!("encoded {name} is truncated")))?;
+    }
+    Ok(value)
+}
+
+fn apply_scope_map(
+    tables: &mut [EncodedCompilationTableBinding<'_>],
+    incoming: &BTreeMap<[u8; 32], [u8; 32]>,
+) {
+    if incoming.is_empty() {
+        return;
+    }
+    for table in tables {
+        let keys = table
+            .scope_map
+            .keys()
+            .chain(incoming.keys())
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let mut composed = BTreeMap::new();
+        for source in keys {
+            let intermediate = table.scope_map.get(&source).copied().unwrap_or(source);
+            let target = incoming.get(&intermediate).copied().unwrap_or(intermediate);
+            if source != target {
+                composed.insert(source, target);
+            }
+        }
+        table.scope_map = composed;
+    }
 }
 
 fn read_root_postings(
