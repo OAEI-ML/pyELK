@@ -26,6 +26,189 @@ const COMPONENT_ENUM: u8 = 5;
 const COMPONENT_SET: u8 = 6;
 const COMPONENT_SEQUENCE: u8 = 7;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EntityKindRole {
+    Class,
+    Datatype,
+    ObjectProperty,
+    DataProperty,
+    AnnotationProperty,
+    NamedIndividual,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NodeRole {
+    Iri,
+    Entity,
+    Class,
+    Datatype,
+    ObjectProperty,
+    DataProperty,
+    AnnotationProperty,
+    Literal,
+    Annotation,
+    ObjectPropertyExpression,
+    SubObjectPropertyExpression,
+    FacetRestriction,
+    DataRange,
+    ClassExpression,
+    Individual,
+    AnnotationValue,
+    AnnotationSubject,
+    IndividualArgument,
+    DataArgument,
+    Atom,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FieldRole {
+    Scalar(u8),
+    EntityKind,
+    OptionalText,
+    Node(NodeRole),
+    Set(NodeRole),
+    Sequence(NodeRole),
+}
+
+const TEXT: FieldRole = FieldRole::Scalar(COMPONENT_TEXT);
+const BYTES: FieldRole = FieldRole::Scalar(COMPONENT_BYTES);
+const INTEGER: FieldRole = FieldRole::Scalar(COMPONENT_INTEGER);
+const ENTITY_KIND: FieldRole = FieldRole::EntityKind;
+const OPTIONAL_TEXT: FieldRole = FieldRole::OptionalText;
+
+const N_IRI: FieldRole = FieldRole::Node(NodeRole::Iri);
+const N_ENTITY: FieldRole = FieldRole::Node(NodeRole::Entity);
+const N_CLASS: FieldRole = FieldRole::Node(NodeRole::Class);
+const N_DATATYPE: FieldRole = FieldRole::Node(NodeRole::Datatype);
+const N_OBJECT_PROPERTY: FieldRole = FieldRole::Node(NodeRole::ObjectProperty);
+const N_DATA_PROPERTY: FieldRole = FieldRole::Node(NodeRole::DataProperty);
+const N_ANNOTATION_PROPERTY: FieldRole = FieldRole::Node(NodeRole::AnnotationProperty);
+const N_LITERAL: FieldRole = FieldRole::Node(NodeRole::Literal);
+const N_OBJECT_PROPERTY_EXPRESSION: FieldRole = FieldRole::Node(NodeRole::ObjectPropertyExpression);
+const N_SUB_OBJECT_PROPERTY_EXPRESSION: FieldRole =
+    FieldRole::Node(NodeRole::SubObjectPropertyExpression);
+const N_DATA_RANGE: FieldRole = FieldRole::Node(NodeRole::DataRange);
+const N_CLASS_EXPRESSION: FieldRole = FieldRole::Node(NodeRole::ClassExpression);
+const N_INDIVIDUAL: FieldRole = FieldRole::Node(NodeRole::Individual);
+const N_ANNOTATION_VALUE: FieldRole = FieldRole::Node(NodeRole::AnnotationValue);
+const N_ANNOTATION_SUBJECT: FieldRole = FieldRole::Node(NodeRole::AnnotationSubject);
+const N_INDIVIDUAL_ARGUMENT: FieldRole = FieldRole::Node(NodeRole::IndividualArgument);
+const N_DATA_ARGUMENT: FieldRole = FieldRole::Node(NodeRole::DataArgument);
+
+const SET_ANNOTATION: FieldRole = FieldRole::Set(NodeRole::Annotation);
+const SET_DATA_RANGE: FieldRole = FieldRole::Set(NodeRole::DataRange);
+const SET_LITERAL: FieldRole = FieldRole::Set(NodeRole::Literal);
+const SET_FACET_RESTRICTION: FieldRole = FieldRole::Set(NodeRole::FacetRestriction);
+const SET_CLASS_EXPRESSION: FieldRole = FieldRole::Set(NodeRole::ClassExpression);
+const SET_INDIVIDUAL: FieldRole = FieldRole::Set(NodeRole::Individual);
+const SET_OBJECT_PROPERTY_EXPRESSION: FieldRole =
+    FieldRole::Set(NodeRole::ObjectPropertyExpression);
+const SET_DATA_PROPERTY: FieldRole = FieldRole::Set(NodeRole::DataProperty);
+const SET_ATOM: FieldRole = FieldRole::Set(NodeRole::Atom);
+
+const SEQUENCE_OBJECT_PROPERTY_EXPRESSION: FieldRole =
+    FieldRole::Sequence(NodeRole::ObjectPropertyExpression);
+const SEQUENCE_DATA_PROPERTY: FieldRole = FieldRole::Sequence(NodeRole::DataProperty);
+const SEQUENCE_DATA_ARGUMENT: FieldRole = FieldRole::Sequence(NodeRole::DataArgument);
+
+macro_rules! constructor_role_ledger {
+    ($( $tag:literal => [$($role:expr),* $(,)?]),+ $(,)?) => {
+        fn constructor_roles(tag: u16) -> Option<&'static [FieldRole]> {
+            match tag {
+                $($tag => Some(&[$($role),*]),)+
+                _ => None,
+            }
+        }
+
+        #[cfg(test)]
+        const CONSTRUCTOR_ROLE_LEDGER: &[(u16, &[FieldRole])] = &[
+            $(($tag, &[$($role),*]),)+
+        ];
+    };
+}
+
+// Generated from pyowl-core model schema 1 constructor annotations and the
+// frozen structural-columns descriptor. One row is retained for every tag so
+// an arity-preserving kind or node-category substitution cannot cross the ABI.
+constructor_role_ledger! {
+    1 => [TEXT],
+    2 => [ENTITY_KIND, N_IRI],
+    3 => [BYTES, BYTES],
+    4 => [TEXT, N_DATATYPE, OPTIONAL_TEXT],
+    5 => [N_ANNOTATION_PROPERTY, N_ANNOTATION_VALUE, SET_ANNOTATION],
+    10 => [N_OBJECT_PROPERTY],
+    11 => [SEQUENCE_OBJECT_PROPERTY_EXPRESSION],
+    20 => [N_IRI, N_LITERAL],
+    21 => [SET_DATA_RANGE],
+    22 => [SET_DATA_RANGE],
+    23 => [N_DATA_RANGE],
+    24 => [SET_LITERAL],
+    25 => [N_DATATYPE, SET_FACET_RESTRICTION],
+    30 => [SET_CLASS_EXPRESSION],
+    31 => [SET_CLASS_EXPRESSION],
+    32 => [N_CLASS_EXPRESSION],
+    33 => [SET_INDIVIDUAL],
+    34 => [N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION],
+    35 => [N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION],
+    36 => [N_OBJECT_PROPERTY_EXPRESSION, N_INDIVIDUAL],
+    37 => [N_OBJECT_PROPERTY_EXPRESSION],
+    38 => [INTEGER, N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION],
+    39 => [INTEGER, N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION],
+    40 => [INTEGER, N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION],
+    41 => [SEQUENCE_DATA_PROPERTY, N_DATA_RANGE],
+    42 => [SEQUENCE_DATA_PROPERTY, N_DATA_RANGE],
+    43 => [N_DATA_PROPERTY, N_LITERAL],
+    44 => [INTEGER, N_DATA_PROPERTY, N_DATA_RANGE],
+    45 => [INTEGER, N_DATA_PROPERTY, N_DATA_RANGE],
+    46 => [INTEGER, N_DATA_PROPERTY, N_DATA_RANGE],
+    60 => [N_ENTITY, SET_ANNOTATION],
+    61 => [N_CLASS_EXPRESSION, N_CLASS_EXPRESSION, SET_ANNOTATION],
+    62 => [SET_CLASS_EXPRESSION, SET_ANNOTATION],
+    63 => [SET_CLASS_EXPRESSION, SET_ANNOTATION],
+    64 => [N_CLASS, SET_CLASS_EXPRESSION, SET_ANNOTATION],
+    70 => [N_SUB_OBJECT_PROPERTY_EXPRESSION, N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    71 => [SET_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    72 => [SET_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    73 => [N_OBJECT_PROPERTY_EXPRESSION, N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    74 => [N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION, SET_ANNOTATION],
+    75 => [N_OBJECT_PROPERTY_EXPRESSION, N_CLASS_EXPRESSION, SET_ANNOTATION],
+    76 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    77 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    78 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    79 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    80 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    81 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    82 => [N_OBJECT_PROPERTY_EXPRESSION, SET_ANNOTATION],
+    90 => [N_DATA_PROPERTY, N_DATA_PROPERTY, SET_ANNOTATION],
+    91 => [SET_DATA_PROPERTY, SET_ANNOTATION],
+    92 => [SET_DATA_PROPERTY, SET_ANNOTATION],
+    93 => [N_DATA_PROPERTY, N_CLASS_EXPRESSION, SET_ANNOTATION],
+    94 => [N_DATA_PROPERTY, N_DATA_RANGE, SET_ANNOTATION],
+    95 => [N_DATA_PROPERTY, SET_ANNOTATION],
+    100 => [N_DATATYPE, N_DATA_RANGE, SET_ANNOTATION],
+    101 => [N_CLASS_EXPRESSION, SET_OBJECT_PROPERTY_EXPRESSION, SET_DATA_PROPERTY, SET_ANNOTATION],
+    110 => [SET_INDIVIDUAL, SET_ANNOTATION],
+    111 => [SET_INDIVIDUAL, SET_ANNOTATION],
+    112 => [N_CLASS_EXPRESSION, N_INDIVIDUAL, SET_ANNOTATION],
+    113 => [N_OBJECT_PROPERTY_EXPRESSION, N_INDIVIDUAL, N_INDIVIDUAL, SET_ANNOTATION],
+    114 => [N_OBJECT_PROPERTY_EXPRESSION, N_INDIVIDUAL, N_INDIVIDUAL, SET_ANNOTATION],
+    115 => [N_DATA_PROPERTY, N_INDIVIDUAL, N_LITERAL, SET_ANNOTATION],
+    116 => [N_DATA_PROPERTY, N_INDIVIDUAL, N_LITERAL, SET_ANNOTATION],
+    120 => [N_ANNOTATION_PROPERTY, N_ANNOTATION_SUBJECT, N_ANNOTATION_VALUE, SET_ANNOTATION],
+    121 => [N_ANNOTATION_PROPERTY, N_ANNOTATION_PROPERTY, SET_ANNOTATION],
+    122 => [N_ANNOTATION_PROPERTY, N_IRI, SET_ANNOTATION],
+    123 => [N_ANNOTATION_PROPERTY, N_IRI, SET_ANNOTATION],
+    140 => [N_IRI],
+    141 => [N_CLASS_EXPRESSION, N_INDIVIDUAL_ARGUMENT],
+    142 => [N_DATA_RANGE, N_DATA_ARGUMENT],
+    143 => [N_OBJECT_PROPERTY_EXPRESSION, N_INDIVIDUAL_ARGUMENT, N_INDIVIDUAL_ARGUMENT],
+    144 => [N_DATA_PROPERTY, N_INDIVIDUAL_ARGUMENT, N_DATA_ARGUMENT],
+    145 => [N_IRI, SEQUENCE_DATA_ARGUMENT],
+    146 => [N_INDIVIDUAL_ARGUMENT, N_INDIVIDUAL_ARGUMENT],
+    147 => [N_INDIVIDUAL_ARGUMENT, N_INDIVIDUAL_ARGUMENT],
+    148 => [SET_ATOM, SET_ATOM, SET_ANNOTATION],
+}
+
 /// Minimal immutable byte-source contract used by both Rust slices and PyO3
 /// read-only buffer cells. Implementations must return one stable byte for the
 /// duration of a validation call.
@@ -194,9 +377,9 @@ pub fn validate_columns<B: ByteSource>(
             ));
         }
         let tag = u16_at(columns.node_tags, node, "node tag")?;
-        let arity = constructor_arity(tag)
+        let roles = constructor_roles(tag)
             .ok_or_else(|| CoreError::protocol(format!("unsupported encoded node tag {tag}")))?;
-        if end - start != arity {
+        if end - start != roles.len() {
             return Err(CoreError::protocol(format!(
                 "encoded node tag {tag} has the wrong field arity"
             )));
@@ -211,13 +394,29 @@ pub fn validate_columns<B: ByteSource>(
 
     let mut item_cursor = 0_usize;
     let mut scalar_cursor = 0_usize;
-    for field in 0..field_count {
-        claim_work(&mut work, 1, limits.max_work)?;
-        let kind = byte_at(columns.field_kinds, field, "field kind")?;
-        let value = usize_at(columns.field_values, field, "field value")?;
-        let length = usize_at(columns.field_lengths, field, "field length")?;
-        match kind {
-            COMPONENT_SET | COMPONENT_SEQUENCE => {
+    for node in 0..node_count {
+        let tag = u16_at(columns.node_tags, node, "node tag")?;
+        let roles = constructor_roles(tag)
+            .ok_or_else(|| CoreError::protocol(format!("unsupported encoded node tag {tag}")))?;
+        let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
+        for (position, role) in roles.iter().copied().enumerate() {
+            claim_work(&mut work, 1, limits.max_work)?;
+            let field = start
+                .checked_add(position)
+                .ok_or_else(|| CoreError::capacity("encoded field index overflow"))?;
+            let location = FieldLocation { tag, position };
+            let kind = byte_at(columns.field_kinds, field, "field kind")?;
+            let value = usize_at(columns.field_values, field, "field value")?;
+            let length = usize_at(columns.field_lengths, field, "field length")?;
+            let collection = match role {
+                FieldRole::Set(item_role) => Some((COMPONENT_SET, item_role)),
+                FieldRole::Sequence(item_role) => Some((COMPONENT_SEQUENCE, item_role)),
+                _ => None,
+            };
+            if let Some((expected_kind, item_role)) = collection {
+                if kind != expected_kind {
+                    return Err(field_role_error(location));
+                }
                 if value != item_cursor {
                     return Err(CoreError::protocol(
                         "encoded collection fields do not exactly cover item rows",
@@ -233,25 +432,33 @@ pub fn validate_columns<B: ByteSource>(
                 }
                 for item in value..end {
                     claim_work(&mut work, 1, limits.max_work)?;
+                    let item_kind = byte_at(columns.item_kinds, item, "item kind")?;
+                    let item_value = usize_at(columns.item_values, item, "item value")?;
+                    let item_length = usize_at(columns.item_lengths, item, "item length")?;
+                    validate_collection_item_role(
+                        location, item_role, item_kind, item_value, &columns, node_count,
+                    )?;
                     validate_leaf_component(
-                        byte_at(columns.item_kinds, item, "item kind")?,
-                        usize_at(columns.item_values, item, "item value")?,
-                        usize_at(columns.item_lengths, item, "item length")?,
+                        item_kind,
+                        item_value,
+                        item_length,
                         node_count,
                         columns.scalar_bytes,
                         &mut scalar_cursor,
                     )?;
                 }
                 item_cursor = end;
+            } else {
+                validate_field_role(location, role, kind, value, length, &columns, node_count)?;
+                validate_leaf_component(
+                    kind,
+                    value,
+                    length,
+                    node_count,
+                    columns.scalar_bytes,
+                    &mut scalar_cursor,
+                )?;
             }
-            _ => validate_leaf_component(
-                kind,
-                value,
-                length,
-                node_count,
-                columns.scalar_bytes,
-                &mut scalar_cursor,
-            )?,
         }
     }
     if item_cursor != item_count {
@@ -377,6 +584,222 @@ fn validate_reachability<B: ByteSource>(
         ));
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct FieldLocation {
+    tag: u16,
+    position: usize,
+}
+
+fn validate_field_role<B: ByteSource>(
+    location: FieldLocation,
+    role: FieldRole,
+    kind: u8,
+    value: usize,
+    length: usize,
+    columns: &EncodedColumns<B>,
+    node_count: usize,
+) -> CoreResult<()> {
+    match role {
+        FieldRole::Scalar(expected) if kind == expected => Ok(()),
+        FieldRole::EntityKind if kind == COMPONENT_ENUM => {
+            entity_kind_scalar(columns.scalar_bytes, value, length).map(drop)
+        }
+        FieldRole::OptionalText if matches!(kind, COMPONENT_NONE | COMPONENT_TEXT) => Ok(()),
+        FieldRole::Node(expected) if kind == COMPONENT_NODE => {
+            if node_role_accepts(expected, value, columns, node_count)? {
+                Ok(())
+            } else {
+                Err(field_role_error(location))
+            }
+        }
+        FieldRole::Set(_) | FieldRole::Sequence(_) => Err(CoreError::internal(
+            "collection role reached scalar field validation",
+        )),
+        _ => Err(field_role_error(location)),
+    }
+}
+
+fn validate_collection_item_role<B: ByteSource>(
+    location: FieldLocation,
+    role: NodeRole,
+    kind: u8,
+    value: usize,
+    columns: &EncodedColumns<B>,
+    node_count: usize,
+) -> CoreResult<()> {
+    if kind == COMPONENT_NODE && node_role_accepts(role, value, columns, node_count)? {
+        Ok(())
+    } else {
+        let FieldLocation { tag, position } = location;
+        Err(CoreError::protocol(format!(
+            "encoded node tag {tag} field {position} collection item has the wrong schema role"
+        )))
+    }
+}
+
+fn node_role_accepts<B: ByteSource>(
+    role: NodeRole,
+    identifier: usize,
+    columns: &EncodedColumns<B>,
+    node_count: usize,
+) -> CoreResult<bool> {
+    let identifier = u32::try_from(identifier)
+        .map_err(|_| CoreError::protocol("encoded node ID exceeds u32"))?;
+    let node = node_index(identifier, node_count)?;
+    let tag = u16_at(columns.node_tags, node, "referenced node tag")?;
+    match role {
+        NodeRole::Iri => Ok(tag == 1),
+        NodeRole::Entity => entity_role_accepts(tag, node, None, columns),
+        NodeRole::Class => entity_role_accepts(tag, node, Some(EntityKindRole::Class), columns),
+        NodeRole::Datatype => {
+            entity_role_accepts(tag, node, Some(EntityKindRole::Datatype), columns)
+        }
+        NodeRole::ObjectProperty => {
+            entity_role_accepts(tag, node, Some(EntityKindRole::ObjectProperty), columns)
+        }
+        NodeRole::DataProperty => {
+            entity_role_accepts(tag, node, Some(EntityKindRole::DataProperty), columns)
+        }
+        NodeRole::AnnotationProperty => {
+            entity_role_accepts(tag, node, Some(EntityKindRole::AnnotationProperty), columns)
+        }
+        NodeRole::Literal => Ok(tag == 4),
+        NodeRole::Annotation => Ok(tag == 5),
+        NodeRole::ObjectPropertyExpression => {
+            if tag == 10 {
+                Ok(true)
+            } else {
+                entity_role_accepts(tag, node, Some(EntityKindRole::ObjectProperty), columns)
+            }
+        }
+        NodeRole::SubObjectPropertyExpression => {
+            if matches!(tag, 10 | 11) {
+                Ok(true)
+            } else {
+                entity_role_accepts(tag, node, Some(EntityKindRole::ObjectProperty), columns)
+            }
+        }
+        NodeRole::FacetRestriction => Ok(tag == 20),
+        NodeRole::DataRange => {
+            if matches!(tag, 21..=25) {
+                Ok(true)
+            } else {
+                entity_role_accepts(tag, node, Some(EntityKindRole::Datatype), columns)
+            }
+        }
+        NodeRole::ClassExpression => {
+            if matches!(tag, 30..=46) {
+                Ok(true)
+            } else {
+                entity_role_accepts(tag, node, Some(EntityKindRole::Class), columns)
+            }
+        }
+        NodeRole::Individual => {
+            if tag == 3 {
+                Ok(true)
+            } else {
+                entity_role_accepts(tag, node, Some(EntityKindRole::NamedIndividual), columns)
+            }
+        }
+        NodeRole::AnnotationValue => Ok(matches!(tag, 1 | 3 | 4)),
+        NodeRole::AnnotationSubject => Ok(matches!(tag, 1 | 3)),
+        NodeRole::IndividualArgument => {
+            if matches!(tag, 3 | 140) {
+                Ok(true)
+            } else {
+                entity_role_accepts(tag, node, Some(EntityKindRole::NamedIndividual), columns)
+            }
+        }
+        NodeRole::DataArgument => Ok(matches!(tag, 4 | 140)),
+        NodeRole::Atom => Ok(matches!(tag, 141..=147)),
+    }
+}
+
+fn entity_role_accepts<B: ByteSource>(
+    tag: u16,
+    node: usize,
+    expected: Option<EntityKindRole>,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<bool> {
+    if tag != 2 {
+        return Ok(false);
+    }
+    let actual = entity_kind_at_node(node, columns)?;
+    Ok(expected.is_none_or(|selected| selected == actual))
+}
+
+fn entity_kind_at_node<B: ByteSource>(
+    node: usize,
+    columns: &EncodedColumns<B>,
+) -> CoreResult<EntityKindRole> {
+    let field = usize_at(columns.node_field_offsets, node, "entity field offset")?;
+    if byte_at(columns.field_kinds, field, "entity kind")? != COMPONENT_ENUM {
+        return Err(CoreError::protocol(
+            "encoded entity kind has the wrong schema role",
+        ));
+    }
+    entity_kind_scalar(
+        columns.scalar_bytes,
+        usize_at(columns.field_values, field, "entity kind value")?,
+        usize_at(columns.field_lengths, field, "entity kind length")?,
+    )
+}
+
+fn entity_kind_scalar<B: ByteSource>(
+    scalars: B,
+    start: usize,
+    length: usize,
+) -> CoreResult<EntityKindRole> {
+    const KINDS: &[(EntityKindRole, &[u8])] = &[
+        (EntityKindRole::Class, b"class"),
+        (EntityKindRole::Datatype, b"datatype"),
+        (EntityKindRole::ObjectProperty, b"object_property"),
+        (EntityKindRole::DataProperty, b"data_property"),
+        (EntityKindRole::AnnotationProperty, b"annotation_property"),
+        (EntityKindRole::NamedIndividual, b"named_individual"),
+    ];
+    for (kind, expected) in KINDS {
+        if scalar_equals(scalars, start, length, expected)? {
+            return Ok(*kind);
+        }
+    }
+    Err(CoreError::protocol(
+        "encoded entity kind is not a model-schema-1 value",
+    ))
+}
+
+fn scalar_equals<B: ByteSource>(
+    scalars: B,
+    start: usize,
+    length: usize,
+    expected: &[u8],
+) -> CoreResult<bool> {
+    let end = start
+        .checked_add(length)
+        .ok_or_else(|| CoreError::capacity("encoded scalar range overflow"))?;
+    if end > scalars.len() {
+        return Err(CoreError::protocol(
+            "encoded scalar component is out of bounds",
+        ));
+    }
+    if length != expected.len() {
+        return Ok(false);
+    }
+    for (offset, byte) in expected.iter().copied().enumerate() {
+        if byte_at(scalars, start + offset, "entity kind scalar")? != byte {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn field_role_error(location: FieldLocation) -> CoreError {
+    let FieldLocation { tag, position } = location;
+    CoreError::protocol(format!(
+        "encoded node tag {tag} field {position} has the wrong schema role"
+    ))
 }
 
 fn validate_leaf_component<B: ByteSource>(
@@ -555,44 +978,6 @@ fn root_accepts(kind: u8, tag: u16) -> bool {
         ),
         ROOT_EXTENSION => tag == 148,
         _ => false,
-    }
-}
-
-fn constructor_arity(tag: u16) -> Option<usize> {
-    match tag {
-        1 | 10 | 11 | 21..=24 | 30..=33 | 37 | 140 => Some(1),
-        2
-        | 3
-        | 20
-        | 25
-        | 34..=36
-        | 41..=43
-        | 60
-        | 62..=63
-        | 71..=72
-        | 76..=82
-        | 91..=92
-        | 95
-        | 110..=111
-        | 141..=142
-        | 146..=147 => Some(2),
-        4
-        | 5
-        | 38..=40
-        | 44..=46
-        | 61
-        | 64
-        | 70
-        | 73..=75
-        | 90
-        | 93..=94
-        | 100
-        | 112
-        | 121..=123
-        | 143..=145
-        | 148 => Some(3),
-        101 | 113..=116 | 120 => Some(4),
-        _ => None,
     }
 }
 
@@ -819,6 +1204,158 @@ mod tests {
         }
     }
 
+    fn annotation() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_ONTOLOGY_ANNOTATION],
+            root_ids: le32(&[3]),
+            node_tags: le16(&[1, 2, 5]),
+            node_field_offsets: le64(&[0, 1, 3, 6]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 1, 2, 1, 0]),
+            field_lengths: le64(&[5, 19, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:aannotation_property".to_vec(),
+        }
+    }
+
+    fn property_chain() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[4]),
+            node_tags: le16(&[1, 2, 11, 70]),
+            node_field_offsets: le64(&[0, 1, 3, 4, 7]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SEQUENCE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 1, 0, 3, 2, 1]),
+            field_lengths: le64(&[5, 15, 0, 1, 0, 0, 0]),
+            item_kinds: vec![COMPONENT_NODE],
+            item_values: le64(&[2]),
+            item_lengths: le64(&[0]),
+            scalar_bytes: b"urn:pobject_property".to_vec(),
+        }
+    }
+
+    fn data_range_cycle() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[4]),
+            node_tags: le16(&[1, 2, 23, 94]),
+            node_field_offsets: le64(&[0, 1, 3, 4, 7]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 5, 1, 3, 2, 3, 0]),
+            field_lengths: le64(&[5, 13, 0, 0, 0, 0, 0]),
+            item_kinds: Vec::new(),
+            item_values: Vec::new(),
+            item_lengths: Vec::new(),
+            scalar_bytes: b"urn:pdata_property".to_vec(),
+        }
+    }
+
+    fn assert_role_error(columns: &OwnedColumns) {
+        assert!(matches!(
+            validate_columns(columns.borrowed(), EncodedLimits::default()),
+            Err(CoreError::Protocol(message)) if message.contains("schema role")
+        ));
+    }
+
+    #[test]
+    fn constructor_role_ledger_covers_every_frozen_model_tag() {
+        const TAGS: [u16; 76] = [
+            1, 2, 3, 4, 5, 10, 11, 20, 21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+            40, 41, 42, 43, 44, 45, 46, 60, 61, 62, 63, 64, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+            80, 81, 82, 90, 91, 92, 93, 94, 95, 100, 101, 110, 111, 112, 113, 114, 115, 116, 120,
+            121, 122, 123, 140, 141, 142, 143, 144, 145, 146, 147, 148,
+        ];
+        assert_eq!(
+            CONSTRUCTOR_ROLE_LEDGER
+                .iter()
+                .map(|(tag, _roles)| *tag)
+                .collect::<Vec<_>>(),
+            TAGS
+        );
+        assert_eq!(
+            CONSTRUCTOR_ROLE_LEDGER
+                .iter()
+                .map(|(_tag, roles)| roles.len())
+                .sum::<usize>(),
+            176
+        );
+        for (tag, roles) in CONSTRUCTOR_ROLE_LEDGER {
+            assert_eq!(constructor_roles(*tag), Some(*roles));
+        }
+        assert!(constructor_roles(0).is_none());
+        assert!(constructor_roles(149).is_none());
+    }
+
+    #[test]
+    fn arity_preserving_scalar_node_and_collection_role_confusions_fail_closed() {
+        let mut malformed = declaration();
+        malformed.field_kinds[0] = COMPONENT_BYTES;
+        assert_role_error(&malformed);
+
+        let mut malformed = declaration();
+        malformed.field_kinds[1] = COMPONENT_TEXT;
+        assert_role_error(&malformed);
+
+        let mut malformed = declaration();
+        malformed.field_kinds[4] = COMPONENT_SEQUENCE;
+        assert_role_error(&malformed);
+
+        let mut malformed = annotation();
+        malformed.field_values = le64(&[0, 5, 1, 1, 2, 0]);
+        assert_role_error(&malformed);
+
+        let mut malformed = annotation();
+        malformed.field_values = le64(&[0, 5, 1, 2, 1, 0]);
+        malformed.field_lengths = le64(&[5, 19, 0, 0, 0, 1]);
+        malformed.item_kinds = vec![COMPONENT_NODE];
+        malformed.item_values = le64(&[1]);
+        malformed.item_lengths = le64(&[0]);
+        assert_role_error(&malformed);
+
+        let mut malformed = property_chain();
+        malformed.field_kinds[3] = COMPONENT_SET;
+        assert_role_error(&malformed);
+
+        let mut malformed = property_chain();
+        malformed.item_values = le64(&[1]);
+        assert_role_error(&malformed);
+    }
+
+    #[test]
+    fn entity_kind_scalar_is_bound_to_the_model_schema() {
+        let mut malformed = declaration();
+        malformed.scalar_bytes[5..10].copy_from_slice(b"other");
+        assert!(matches!(
+            validate_columns(malformed.borrowed(), EncodedLimits::default()),
+            Err(CoreError::Protocol(message)) if message.contains("model-schema-1")
+        ));
+    }
+
     #[test]
     fn empty_and_declaration_columns_validate_without_a_graph_copy() {
         let empty = validate_columns(empty().borrowed(), EncodedLimits::default()).unwrap();
@@ -892,10 +1429,8 @@ mod tests {
         malformed.field_values = le64(&[1, 5, 1, 2, 0]);
         assert!(validate_columns(malformed.borrowed(), EncodedLimits::default()).is_err());
 
-        let mut malformed = declaration();
-        malformed.field_values = le64(&[0, 5, 2, 2, 0]);
         assert!(matches!(
-            validate_columns(malformed.borrowed(), EncodedLimits::default()),
+            validate_columns(data_range_cycle().borrowed(), EncodedLimits::default()),
             Err(CoreError::Protocol(message)) if message.contains("cyclic")
         ));
 
