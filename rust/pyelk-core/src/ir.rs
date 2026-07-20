@@ -241,6 +241,136 @@ impl Ontology {
                 CoreError::internal(format!("missing {tag:?} expression for entity {entity}"))
             })
     }
+
+    /// Canonical compiler-output digest shared by scalar and encoded ingestion paths.
+    pub fn compiler_digest(&self) -> CoreResult<[u8; 32]> {
+        let mut digest = Blake2b256::new();
+        digest.update(b"pyelk:compiled-ontology-digest:v1\0");
+
+        compiler_section(&mut digest, "entities", self.entities.len())?;
+        for entity in &self.entities {
+            digest.update([entity.kind as u8]);
+            compiler_frame(&mut digest, entity.iri.as_bytes())?;
+        }
+
+        compiler_section(&mut digest, "expressions", self.expressions.len())?;
+        for expression in &self.expressions {
+            digest.update([expression.tag as u8]);
+            compiler_frame(&mut digest, &expression.payload)?;
+            compiler_length(&mut digest, expression.arguments.len())?;
+            for argument in &expression.arguments {
+                digest.update(argument.to_le_bytes());
+            }
+        }
+
+        compiler_section(
+            &mut digest,
+            "expression_occurrences",
+            self.expression_occurrences.len(),
+        )?;
+        for occurrence in &self.expression_occurrences {
+            digest.update(occurrence.negative.to_le_bytes());
+            digest.update(occurrence.positive.to_le_bytes());
+        }
+
+        compiler_section(
+            &mut digest,
+            "property_occurrences",
+            self.property_occurrences.len(),
+        )?;
+        for occurrence in &self.property_occurrences {
+            digest.update(occurrence.negative.to_le_bytes());
+            digest.update(occurrence.positive.to_le_bytes());
+        }
+
+        compiler_u32_rows(&mut digest, "property_chains", &self.property_chains)?;
+        compiler_pairs(&mut digest, "subclass_axioms", &self.subclass_axioms)?;
+        compiler_pairs(
+            &mut digest,
+            "equivalent_class_axioms",
+            &self.equivalent_class_axioms,
+        )?;
+        compiler_u32_rows(&mut digest, "disjoint_groups", &self.disjoint_groups)?;
+        compiler_pairs(&mut digest, "subproperty_axioms", &self.subproperty_axioms)?;
+        compiler_pairs(&mut digest, "property_ranges", &self.property_ranges)?;
+
+        compiler_section(&mut digest, "feature_counts", self.feature_counts.len())?;
+        for count in &self.feature_counts {
+            digest.update(count.to_le_bytes());
+        }
+
+        compiler_section(&mut digest, "source_fingerprint", 1)?;
+        compiler_frame(&mut digest, &self.source_fingerprint)?;
+        Ok(digest.finalize().into())
+    }
+
+    /// Exact row counts covered by [`Self::compiler_digest`].
+    pub fn compiler_section_counts(&self) -> CoreResult<BTreeMap<&'static str, u64>> {
+        [
+            ("entities", self.entities.len()),
+            ("expressions", self.expressions.len()),
+            ("expression_occurrences", self.expression_occurrences.len()),
+            ("property_occurrences", self.property_occurrences.len()),
+            ("property_chains", self.property_chains.len()),
+            ("subclass_axioms", self.subclass_axioms.len()),
+            (
+                "equivalent_class_axioms",
+                self.equivalent_class_axioms.len(),
+            ),
+            ("disjoint_groups", self.disjoint_groups.len()),
+            ("subproperty_axioms", self.subproperty_axioms.len()),
+            ("property_ranges", self.property_ranges.len()),
+            ("feature_counts", self.feature_counts.len()),
+            ("source_fingerprint", 1),
+        ]
+        .into_iter()
+        .map(|(name, count)| {
+            u64::try_from(count)
+                .map(|count| (name, count))
+                .map_err(|_| CoreError::capacity("compiler section count exceeds u64"))
+        })
+        .collect()
+    }
+}
+
+fn compiler_length(digest: &mut Blake2b256, length: usize) -> CoreResult<()> {
+    digest.update(
+        u64::try_from(length)
+            .map_err(|_| CoreError::capacity("compiler digest length exceeds u64"))?
+            .to_le_bytes(),
+    );
+    Ok(())
+}
+
+fn compiler_frame(digest: &mut Blake2b256, value: &[u8]) -> CoreResult<()> {
+    compiler_length(digest, value.len())?;
+    digest.update(value);
+    Ok(())
+}
+
+fn compiler_section(digest: &mut Blake2b256, name: &str, count: usize) -> CoreResult<()> {
+    compiler_frame(digest, name.as_bytes())?;
+    compiler_length(digest, count)
+}
+
+fn compiler_u32_rows(digest: &mut Blake2b256, name: &str, rows: &[Vec<u32>]) -> CoreResult<()> {
+    compiler_section(digest, name, rows.len())?;
+    for row in rows {
+        compiler_length(digest, row.len())?;
+        for value in row {
+            digest.update(value.to_le_bytes());
+        }
+    }
+    Ok(())
+}
+
+fn compiler_pairs(digest: &mut Blake2b256, name: &str, rows: &[(u32, u32)]) -> CoreResult<()> {
+    compiler_section(digest, name, rows.len())?;
+    for (first, second) in rows {
+        digest.update(first.to_le_bytes());
+        digest.update(second.to_le_bytes());
+    }
+    Ok(())
 }
 
 /// Shape tag of a self-contained query mini-IR.

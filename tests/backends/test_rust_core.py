@@ -211,6 +211,7 @@ def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> No
 
 def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: ModuleType) -> None:
     from pyelk.indexing.compiler import compile_ontology
+    from pyelk.indexing.summary import compiler_digest, compiler_section_counts
 
     snapshot, encoded = _direct_encoded_snapshot(
         b"""Prefix(:=<urn:encoded#>) Ontology(<urn:encoded>
@@ -233,13 +234,12 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         ObjectPropertyRange(:p :C)
         )"""
     )
+    compiled = compile_ontology(snapshot, unsupported="error")
     direct = native_module.create_session_from_encoded(encoded, 1, "error")
-    scalar = native_module.create_session(
-        compile_ontology(snapshot, unsupported="error").encode(),
-        1,
-    )
+    scalar = native_module.create_session(compiled.encode(), 1)
     try:
         diagnostics = direct.diagnostics()
+        scalar_diagnostics = scalar.diagnostics()
         assert diagnostics["encoded_buffer_count"] == 11
         assert diagnostics["encoded_buffer_bytes"] == sum(
             value.nbytes for value in encoded.buffers.values()
@@ -248,6 +248,13 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         assert diagnostics["encoded_indexed_buffer_count"] == 0
         assert diagnostics["encoded_staging_copy_bytes"] == 0
         assert diagnostics["encoded_private_ir_bytes"] == 0
+        expected_digest = compiler_digest(compiled).hex()
+        assert diagnostics["compiler_digest"] == expected_digest
+        assert scalar_diagnostics["compiler_digest"] == expected_digest
+        for name, count in compiler_section_counts(compiled).items():
+            key = f"compiler_{name}_count"
+            assert diagnostics[key] == count
+            assert scalar_diagnostics[key] == count
         for operation in (
             "is_inconsistent",
             "class_taxonomy",

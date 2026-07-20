@@ -29,6 +29,8 @@ pub enum DiagnosticValue {
 pub struct NativeCoreSession {
     ontology: Arc<Ontology>,
     properties: Arc<PropertyClosure>,
+    compiler_digest: [u8; 32],
+    compiler_counts: BTreeMap<&'static str, u64>,
     effective_workers: usize,
     pool: Option<ThreadPool>,
     contexts: BTreeMap<u32, ContextSnapshot>,
@@ -55,6 +57,8 @@ impl NativeCoreSession {
     /// to that compiler before publication; the scalar-wire constructor above retains the
     /// defensive IR decoder for compatibility.
     pub fn from_ontology(ontology: Ontology, workers: usize) -> CoreResult<Self> {
+        let compiler_digest = ontology.compiler_digest()?;
+        let compiler_counts = ontology.compiler_section_counts()?;
         let ontology = Arc::new(ontology);
         let properties = Arc::new(PropertyClosure::build(&ontology)?);
         let effective_workers = if workers == 0 {
@@ -81,6 +85,8 @@ impl NativeCoreSession {
         Ok(Self {
             ontology,
             properties,
+            compiler_digest,
+            compiler_counts,
             effective_workers,
             pool,
             contexts: BTreeMap::new(),
@@ -337,7 +343,7 @@ impl NativeCoreSession {
         } else {
             "properties"
         };
-        BTreeMap::from([
+        let mut diagnostics = BTreeMap::from([
             (
                 "cached_class_queries".to_owned(),
                 DiagnosticValue::Integer(self.query_evaluations.len() as u64),
@@ -395,7 +401,18 @@ impl NativeCoreSession {
                 DiagnosticValue::Integer(self.counters.rule_dispatches),
             ),
             ("stage".to_owned(), DiagnosticValue::Text(stage.to_owned())),
-        ])
+        ]);
+        diagnostics.insert(
+            "compiler_digest".to_owned(),
+            DiagnosticValue::Text(hex_digest(&self.compiler_digest)),
+        );
+        for (name, count) in &self.compiler_counts {
+            diagnostics.insert(
+                format!("compiler_{name}_count"),
+                DiagnosticValue::Integer(*count),
+            );
+        }
+        diagnostics
     }
 
     /// Read-only ontology reference for core differential tests.
@@ -478,6 +495,16 @@ impl NativeCoreSession {
             .product_candidates
             .saturating_add(counters.product_candidates);
     }
+}
+
+fn hex_digest(value: &[u8; 32]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(64);
+    for byte in value {
+        output.push(char::from(HEX[usize::from(byte >> 4)]));
+        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    output
 }
 
 fn context_record_count(context: &ContextSnapshot) -> usize {
