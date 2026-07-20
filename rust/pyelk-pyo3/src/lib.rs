@@ -5,6 +5,7 @@
 use std::any::Any;
 use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::process;
 use std::sync::{Arc, Mutex};
 
 use blake2::digest::consts::U32;
@@ -120,14 +121,27 @@ struct SessionState {
 #[pyclass(module = "pyelk._native")]
 struct NativeSession {
     inner: Arc<Mutex<SessionState>>,
+    creator_pid: u32,
 }
 
 impl NativeSession {
+    fn ensure_creator_process(&self) -> PyResult<()> {
+        let current = process::id();
+        if current != self.creator_pid {
+            return Err(PyRuntimeError::new_err(format!(
+                "native session was created in process {} and cannot be used after fork in process {current}",
+                self.creator_pid
+            )));
+        }
+        Ok(())
+    }
+
     fn detached<T, F>(&self, py: Python<'_>, stage: &'static str, operation: F) -> PyResult<T>
     where
         T: Send + 'static,
         F: FnOnce(&mut NativeCoreSession) -> CoreResult<T> + Send + 'static,
     {
+        self.ensure_creator_process()?;
         let inner = Arc::clone(&self.inner);
         let outcome = py.detach(move || {
             let mut state = inner
@@ -288,6 +302,7 @@ impl NativeSession {
     }
 
     fn close(&self) -> PyResult<()> {
+        self.ensure_creator_process()?;
         let mut state = self
             .inner
             .lock()
@@ -295,6 +310,28 @@ impl NativeSession {
         state.session = None;
         state.encoded_owner = None;
         Ok(())
+    }
+}
+
+impl Drop for NativeSession {
+    fn drop(&mut self) {
+        if process::id() == self.creator_pid {
+            return;
+        }
+        // Rayon workers and inherited Python owners belong to the parent process.  Dropping either
+        // after fork can join vanished threads or touch parent-interpreter state, so abandon the
+        // inherited allocation in the child.  The operating system reclaims it when that child
+        // exits; all child-side methods reject before locking this state.
+        let inherited = std::mem::replace(
+            &mut self.inner,
+            Arc::new(Mutex::new(SessionState {
+                session: None,
+                encoded_owner: None,
+                encoded_metrics: None,
+                failed: true,
+            })),
+        );
+        std::mem::forget(inherited);
     }
 }
 
@@ -414,6 +451,7 @@ fn create_session_from_encoded(
             encoded_metrics: Some(metrics),
             failed: false,
         })),
+        creator_pid: process::id(),
     })
 }
 
@@ -1211,6 +1249,7 @@ fn create_session(
             encoded_metrics: None,
             failed: false,
         })),
+        creator_pid: process::id(),
     })
 }
 

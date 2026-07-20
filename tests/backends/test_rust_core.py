@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import gc
 import importlib.util
+import os
 import shutil
 import sys
 import weakref
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -564,6 +566,60 @@ def test_hidden_encoded_session_retains_owner_until_close(native_module: ModuleT
     session.close()
     gc.collect()
     assert encoded_ref() is None
+
+
+def test_hidden_encoded_session_serializes_concurrent_native_calls(
+    native_module: ModuleType,
+) -> None:
+    _snapshot_value, encoded = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-threads#>) Ontology(<urn:encoded-threads>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        )"""
+    )
+    session = native_module.create_session_from_encoded(encoded, 2, "error")
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = tuple(executor.map(lambda _index: session.class_taxonomy(), range(12)))
+        assert len(set(results)) == 1
+    finally:
+        session.close()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_hidden_encoded_session_rejects_use_after_fork_without_locking(
+    native_module: ModuleType,
+) -> None:
+    _snapshot_value, encoded = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-fork:A>)))"
+    )
+    session = native_module.create_session_from_encoded(encoded, 1, "error")
+    read_fd, write_fd = os.pipe()
+    child = os.fork()
+    if child == 0:  # pragma: no cover - assertions run in the parent
+        os.close(read_fd)
+        try:
+            session.is_inconsistent()
+        except BaseException as error:
+            outcome = f"{type(error).__name__}:{error}".encode()
+        else:
+            outcome = b"NO_ERROR"
+        os.write(write_fd, outcome)
+        os.close(write_fd)
+        os._exit(0)
+
+    os.close(write_fd)
+    try:
+        outcome = os.read(read_fd, 4_096)
+        _pid, status = os.waitpid(child, 0)
+        assert os.waitstatus_to_exitcode(status) == 0
+        assert b"RuntimeError" in outcome
+        assert b"after fork" in outcome
+        assert isinstance(session.is_inconsistent(), bool)
+    finally:
+        os.close(read_fd)
+        session.close()
 
 
 def test_native_session_close_is_idempotent_and_terminal(native_module: ModuleType) -> None:
