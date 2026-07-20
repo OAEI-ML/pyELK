@@ -43,10 +43,14 @@ const FEATURE_OBJECT_PROPERTY_RANGE: usize = 41;
 const FEATURE_DIFFERENT_INDIVIDUALS: usize = 15;
 const FEATURE_DISJOINT_CLASSES: usize = 16;
 const FEATURE_DISJOINT_UNION: usize = 19;
+const FEATURE_OBJECT_COMPLEMENT_OF_NEGATIVE: usize = 30;
+const FEATURE_OBJECT_COMPLEMENT_OF_POSITIVE: usize = 31;
 const FEATURE_OBJECT_HAS_SELF_NEGATIVE: usize = 33;
 const FEATURE_OBJECT_HAS_VALUE_POSITIVE: usize = 34;
+const FEATURE_OBJECT_ONE_OF: usize = 38;
 const FEATURE_OBJECT_PROPERTY_ASSERTION: usize = 39;
 const FEATURE_OWL_NOTHING_POSITIVE: usize = 43;
+const FEATURE_OBJECT_UNION_OF_POSITIVE: usize = 42;
 const FEATURE_REFLEXIVE_OBJECT_PROPERTY: usize = 44;
 const FEATURE_TOP_OBJECT_PROPERTY_NEGATIVE: usize = 48;
 
@@ -649,13 +653,31 @@ enum CompilerExpression {
     Intersection(usize, usize),
     Existential(Entity, usize),
     HasSelf(Entity),
+    Complement(usize),
+    Union(Vec<usize>),
 }
 
 #[derive(Clone, Debug)]
-enum SimpleCompilerExpression {
-    Named(Entity),
-    Existential(Entity, Entity),
-    HasSelf(Entity),
+enum ExpressionTask {
+    Visit {
+        identifier: u32,
+        negative: bool,
+        positive: bool,
+    },
+    Finish {
+        operation: ExpressionFinish,
+        child_count: usize,
+        negative: bool,
+        positive: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+enum ExpressionFinish {
+    Intersection,
+    Union,
+    Complement,
+    Existential(Entity),
 }
 
 struct NamedHierarchyBuilder {
@@ -727,60 +749,14 @@ impl NamedHierarchyBuilder {
     }
 
     fn add_subclass(&mut self, sub: Entity, super_: Entity) -> CoreResult<()> {
-        self.add_compiled_subclass(
-            SimpleCompilerExpression::Named(sub),
-            SimpleCompilerExpression::Named(super_),
-        )
-    }
-
-    fn add_compiled_subclass(
-        &mut self,
-        sub: SimpleCompilerExpression,
-        super_: SimpleCompilerExpression,
-    ) -> CoreResult<()> {
-        let sub = self.add_simple_expression(sub, true, false)?;
-        let super_ = self.add_simple_expression(super_, false, true)?;
+        let nothing_positive = super_.kind == EntityKind::Class && super_.iri == OWL_NOTHING_IRI;
+        let sub = self.add_named_occurrence(&sub, true, false)?;
+        let super_ = self.add_named_occurrence(&super_, false, true)?;
+        if nothing_positive {
+            self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+        }
         self.subclass_axioms.insert((sub, super_));
         Ok(())
-    }
-
-    fn add_simple_expression(
-        &mut self,
-        expression: SimpleCompilerExpression,
-        negative: bool,
-        positive: bool,
-    ) -> CoreResult<usize> {
-        match expression {
-            SimpleCompilerExpression::Named(entity) => {
-                let handle = self.add_named_occurrence(&entity, negative, positive)?;
-                if positive && entity.kind == EntityKind::Class && entity.iri == OWL_NOTHING_IRI {
-                    self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
-                }
-                Ok(handle)
-            }
-            SimpleCompilerExpression::Existential(property, filler) => {
-                self.add_property_occurrence(&property, negative, positive)?;
-                let filler_expression = self.add_named_occurrence(&filler, negative, positive)?;
-                if positive && filler.kind == EntityKind::Class && filler.iri == OWL_NOTHING_IRI {
-                    self.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
-                }
-                if positive && filler.kind == EntityKind::NamedIndividual {
-                    self.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
-                }
-                self.intern_expression(
-                    CompilerExpression::Existential(property, filler_expression),
-                    negative,
-                    positive,
-                )
-            }
-            SimpleCompilerExpression::HasSelf(property) => {
-                self.add_property_occurrence(&property, negative, positive)?;
-                if negative {
-                    self.add_feature(FEATURE_OBJECT_HAS_SELF_NEGATIVE, 1)?;
-                }
-                self.intern_expression(CompilerExpression::HasSelf(property), negative, positive)
-            }
-        }
     }
 
     fn intern_expression(
@@ -808,6 +784,23 @@ impl NamedHierarchyBuilder {
                 if *first >= self.expressions.len() || *second >= self.expressions.len() {
                     return Err(CoreError::internal(
                         "encoded intersection references an unknown expression",
+                    ));
+                }
+            }
+            CompilerExpression::Complement(operand) => {
+                if *operand >= self.expressions.len() {
+                    return Err(CoreError::internal(
+                        "encoded complement references an unknown expression",
+                    ));
+                }
+            }
+            CompilerExpression::Union(operands) => {
+                if operands
+                    .iter()
+                    .any(|operand| *operand >= self.expressions.len())
+                {
+                    return Err(CoreError::internal(
+                        "encoded union references an unknown expression",
                     ));
                 }
             }
@@ -1296,6 +1289,8 @@ impl CompilerExpression {
             Self::Named(_) | Self::HasSelf(_) => BTreeSet::new(),
             Self::Existential(_, filler) => BTreeSet::from([*filler]),
             Self::Intersection(first, second) => BTreeSet::from([*first, *second]),
+            Self::Complement(operand) => BTreeSet::from([*operand]),
+            Self::Union(operands) => operands.iter().copied().collect(),
         })
     }
 
@@ -1311,6 +1306,8 @@ impl CompilerExpression {
             Self::Intersection(_, _) => Ok(ExpressionTag::ObjectIntersectionOf),
             Self::Existential(_, _) => Ok(ExpressionTag::ObjectSomeValuesFrom),
             Self::HasSelf(_) => Ok(ExpressionTag::ObjectHasSelf),
+            Self::Complement(_) => Ok(ExpressionTag::ObjectComplementOf),
+            Self::Union(_) => Ok(ExpressionTag::ObjectUnionOf),
         }
     }
 
@@ -1342,6 +1339,11 @@ impl CompilerExpression {
             Self::Intersection(first, second) => {
                 Ok(vec![expression(*first)?, expression(*second)?])
             }
+            Self::Complement(operand) => Ok(vec![expression(*operand)?]),
+            Self::Union(operands) => operands
+                .iter()
+                .map(|operand| expression(*operand))
+                .collect(),
         }
     }
 }
@@ -1361,9 +1363,12 @@ fn compile_named_subclass<B: ByteSource>(
     builder: &mut NamedHierarchyBuilder,
 ) -> CoreResult<()> {
     require_empty_annotations(node, 2, columns)?;
-    let sub = decode_simple_class_expression(node_field(node, 0, columns)?, columns)?;
-    let super_ = decode_simple_class_expression(node_field(node, 1, columns)?, columns)?;
-    builder.add_compiled_subclass(sub, super_)
+    let sub =
+        decode_class_expression(node_field(node, 0, columns)?, true, false, columns, builder)?;
+    let super_ =
+        decode_class_expression(node_field(node, 1, columns)?, false, true, columns, builder)?;
+    builder.subclass_axioms.insert((sub, super_));
+    Ok(())
 }
 
 fn compile_named_equivalence<B: ByteSource>(
@@ -1534,33 +1539,256 @@ fn decode_named_class<B: ByteSource>(
     Ok(entity)
 }
 
-fn decode_simple_class_expression<B: ByteSource>(
+fn decode_class_expression<B: ByteSource>(
     identifier: u32,
+    negative: bool,
+    positive: bool,
     columns: &EncodedColumns<B>,
-) -> CoreResult<SimpleCompilerExpression> {
-    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
-    let node = node_index(identifier, node_count)?;
-    match u16_at(columns.node_tags, node, "class-expression node tag")? {
-        2 => Ok(SimpleCompilerExpression::Named(decode_named_class(
-            identifier, columns,
-        )?)),
-        34 => {
-            let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-            let filler = decode_named_class(node_field(node, 1, columns)?, columns)?;
-            Ok(SimpleCompilerExpression::Existential(property, filler))
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<usize> {
+    let mut tasks = vec![ExpressionTask::Visit {
+        identifier,
+        negative,
+        positive,
+    }];
+    let mut results = Vec::<usize>::new();
+    while let Some(task) = tasks.pop() {
+        match task {
+            ExpressionTask::Finish {
+                operation,
+                child_count,
+                negative,
+                positive,
+            } => {
+                let child_start = results.len().checked_sub(child_count).ok_or_else(|| {
+                    CoreError::internal("encoded expression task lost child results")
+                })?;
+                let children = results.split_off(child_start);
+                results.push(finish_compiler_expression(
+                    operation, children, negative, positive, builder,
+                )?);
+            }
+            ExpressionTask::Visit {
+                identifier,
+                negative,
+                positive,
+            } => {
+                let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+                let node = node_index(identifier, node_count)?;
+                match u16_at(columns.node_tags, node, "class-expression node tag")? {
+                    2 => {
+                        let entity = decode_named_class(identifier, columns)?;
+                        let handle = builder.add_named_occurrence(&entity, negative, positive)?;
+                        if positive && entity.iri == OWL_NOTHING_IRI {
+                            builder.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+                        }
+                        results.push(handle);
+                    }
+                    tag @ (30 | 31) => {
+                        let children = node_collection(node, 0, columns)?;
+                        tasks.push(ExpressionTask::Finish {
+                            operation: if tag == 30 {
+                                ExpressionFinish::Intersection
+                            } else {
+                                ExpressionFinish::Union
+                            },
+                            child_count: children.len(),
+                            negative,
+                            positive,
+                        });
+                        tasks.extend(children.into_iter().rev().map(|identifier| {
+                            ExpressionTask::Visit {
+                                identifier,
+                                negative,
+                                positive,
+                            }
+                        }));
+                    }
+                    32 => {
+                        tasks.push(ExpressionTask::Finish {
+                            operation: ExpressionFinish::Complement,
+                            child_count: 1,
+                            negative,
+                            positive,
+                        });
+                        tasks.push(ExpressionTask::Visit {
+                            identifier: node_field(node, 0, columns)?,
+                            negative: positive,
+                            positive: negative,
+                        });
+                    }
+                    33 => {
+                        let members = node_collection(node, 0, columns)?;
+                        if !members.is_empty() {
+                            builder.add_feature(FEATURE_OBJECT_ONE_OF, 1)?;
+                        }
+                        let mut children = Vec::new();
+                        children.try_reserve_exact(members.len()).map_err(|_| {
+                            CoreError::capacity("encoded one-of expression allocation failed")
+                        })?;
+                        for member in members {
+                            let individual = decode_named_individual(member, columns)?;
+                            children.push(builder.add_named_occurrence(
+                                &individual,
+                                negative,
+                                positive,
+                            )?);
+                        }
+                        results.push(finish_compiler_expression(
+                            ExpressionFinish::Union,
+                            children,
+                            negative,
+                            positive,
+                            builder,
+                        )?);
+                    }
+                    34 => {
+                        let property =
+                            decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+                        builder.add_property_occurrence(&property, negative, positive)?;
+                        tasks.push(ExpressionTask::Finish {
+                            operation: ExpressionFinish::Existential(property),
+                            child_count: 1,
+                            negative,
+                            positive,
+                        });
+                        tasks.push(ExpressionTask::Visit {
+                            identifier: node_field(node, 1, columns)?,
+                            negative,
+                            positive,
+                        });
+                    }
+                    36 => {
+                        let property =
+                            decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+                        builder.add_property_occurrence(&property, negative, positive)?;
+                        let individual =
+                            decode_named_individual(node_field(node, 1, columns)?, columns)?;
+                        let child =
+                            builder.add_named_occurrence(&individual, negative, positive)?;
+                        results.push(finish_compiler_expression(
+                            ExpressionFinish::Existential(property),
+                            vec![child],
+                            negative,
+                            positive,
+                            builder,
+                        )?);
+                    }
+                    37 => {
+                        let property =
+                            decode_named_object_property(node_field(node, 0, columns)?, columns)?;
+                        builder.add_property_occurrence(&property, negative, positive)?;
+                        if negative {
+                            builder.add_feature(FEATURE_OBJECT_HAS_SELF_NEGATIVE, 1)?;
+                        }
+                        results.push(builder.intern_expression(
+                            CompilerExpression::HasSelf(property),
+                            negative,
+                            positive,
+                        )?);
+                    }
+                    tag => {
+                        return Err(CoreError::invalid(format!(
+                            "encoded compiler does not support class-expression tag {tag}"
+                        )));
+                    }
+                }
+            }
         }
-        36 => {
-            let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-            let filler = decode_named_individual(node_field(node, 1, columns)?, columns)?;
-            Ok(SimpleCompilerExpression::Existential(property, filler))
+    }
+    if results.len() != 1 {
+        return Err(CoreError::internal(
+            "encoded expression conversion did not produce exactly one root",
+        ));
+    }
+    results
+        .pop()
+        .ok_or_else(|| CoreError::internal("encoded expression conversion lost its root"))
+}
+
+fn finish_compiler_expression(
+    operation: ExpressionFinish,
+    children: Vec<usize>,
+    negative: bool,
+    positive: bool,
+    builder: &mut NamedHierarchyBuilder,
+) -> CoreResult<usize> {
+    match operation {
+        ExpressionFinish::Intersection => {
+            let mut children = children.into_iter();
+            let Some(mut result) = children.next() else {
+                let thing = Entity {
+                    kind: EntityKind::Class,
+                    iri: OWL_THING_IRI.to_owned(),
+                };
+                return builder.add_named_occurrence(&thing, negative, positive);
+            };
+            for child in children {
+                result = builder.intern_expression(
+                    CompilerExpression::Intersection(result, child),
+                    negative,
+                    positive,
+                )?;
+            }
+            Ok(result)
         }
-        37 => {
-            let property = decode_named_object_property(node_field(node, 0, columns)?, columns)?;
-            Ok(SimpleCompilerExpression::HasSelf(property))
+        ExpressionFinish::Union => match children.as_slice() {
+            [] => {
+                let nothing = Entity {
+                    kind: EntityKind::Class,
+                    iri: OWL_NOTHING_IRI.to_owned(),
+                };
+                let result = builder.add_named_occurrence(&nothing, negative, positive)?;
+                if positive {
+                    builder.add_feature(FEATURE_OWL_NOTHING_POSITIVE, 1)?;
+                }
+                Ok(result)
+            }
+            [single] => Ok(*single),
+            _ => {
+                if positive {
+                    builder.add_feature(FEATURE_OBJECT_UNION_OF_POSITIVE, 1)?;
+                }
+                builder.intern_expression(CompilerExpression::Union(children), negative, positive)
+            }
+        },
+        ExpressionFinish::Complement => {
+            let [operand] = children.as_slice() else {
+                return Err(CoreError::internal(
+                    "encoded complement conversion requires one operand",
+                ));
+            };
+            if negative {
+                builder.add_feature(FEATURE_OBJECT_COMPLEMENT_OF_NEGATIVE, 1)?;
+            }
+            if positive {
+                builder.add_feature(FEATURE_OBJECT_COMPLEMENT_OF_POSITIVE, 1)?;
+            }
+            builder.intern_expression(CompilerExpression::Complement(*operand), negative, positive)
         }
-        tag => Err(CoreError::invalid(format!(
-            "encoded named-hierarchy compiler does not support class-expression tag {tag}"
-        ))),
+        ExpressionFinish::Existential(property) => {
+            let [filler] = children.as_slice() else {
+                return Err(CoreError::internal(
+                    "encoded existential conversion requires one filler",
+                ));
+            };
+            if positive
+                && matches!(
+                    &builder.expressions[*filler],
+                    CompilerExpression::Named(Entity {
+                        kind: EntityKind::NamedIndividual,
+                        ..
+                    })
+                )
+            {
+                builder.add_feature(FEATURE_OBJECT_HAS_VALUE_POSITIVE, 1)?;
+            }
+            builder.intern_expression(
+                CompilerExpression::Existential(property, *filler),
+                negative,
+                positive,
+            )
+        }
     }
 }
 
@@ -3424,6 +3652,65 @@ mod tests {
         }
     }
 
+    fn nested_supported_subclass() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_AXIOM],
+            root_ids: le32(&[20]),
+            node_tags: le16(&[
+                1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 30, 31, 32, 33, 34, 61,
+            ]),
+            node_field_offsets: le64(&[
+                0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 15, 17, 19, 21, 22, 23, 24, 25, 27, 30,
+            ]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[
+                0, 7, 14, 21, 28, 35, 42, 49, 1, 54, 2, 59, 3, 64, 4, 69, 7, 84, 5, 100, 6,
+                0, 3, 11, 5, 12, 18, 15, 16, 7,
+            ]),
+            field_lengths: le64(&[
+                7, 7, 7, 7, 7, 7, 7, 5, 0, 5, 0, 5, 0, 5, 0, 15, 0, 16, 0, 16, 0, 3, 2,
+                0, 2, 0, 0, 0, 0, 0,
+            ]),
+            item_kinds: vec![COMPONENT_NODE; 7],
+            item_values: le64(&[8, 9, 10, 17, 19, 13, 14]),
+            item_lengths: le64(&[0; 7]),
+            scalar_bytes:
+                b"urn:n#Aurn:n#Burn:n#Curn:n#Durn:n#iurn:n#jurn:n#pclassclassclassclassobject_propertynamed_individualnamed_individual"
+                    .to_vec(),
+        }
+    }
+
     fn named_class_assertion() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -4221,6 +4508,72 @@ mod tests {
         assert_eq!(compiled.expression_occurrences[3].positive, 1);
         assert_eq!(compiled.expression_occurrences[4].positive, 1);
         assert_eq!(compiled.property_occurrences[2].positive, 1);
+    }
+
+    #[test]
+    fn nested_supported_expressions_match_scalar_topological_ir() {
+        let owned = nested_supported_subclass();
+        let compiled =
+            compile_named_hierarchy(owned.borrowed(), EncodedLimits::default(), [29; 32]).unwrap();
+
+        assert_eq!(
+            compiled
+                .expressions
+                .iter()
+                .map(|expression| (expression.tag, expression.arguments.as_slice()))
+                .collect::<Vec<_>>(),
+            vec![
+                (ExpressionTag::Class, &[0][..]),
+                (ExpressionTag::Class, &[1][..]),
+                (ExpressionTag::Class, &[2][..]),
+                (ExpressionTag::Class, &[3][..]),
+                (ExpressionTag::Class, &[4][..]),
+                (ExpressionTag::Class, &[5][..]),
+                (ExpressionTag::Individual, &[6][..]),
+                (ExpressionTag::Individual, &[7][..]),
+                (ExpressionTag::ObjectIntersectionOf, &[2, 3][..]),
+                (ExpressionTag::ObjectIntersectionOf, &[8, 4][..]),
+                (ExpressionTag::ObjectComplementOf, &[5][..]),
+                (ExpressionTag::ObjectUnionOf, &[6, 7][..]),
+                (ExpressionTag::ObjectSomeValuesFrom, &[10, 11][..]),
+                (ExpressionTag::ObjectUnionOf, &[10, 12][..]),
+            ]
+        );
+        assert_eq!(
+            compiled
+                .expression_occurrences
+                .iter()
+                .map(|occurrence| (occurrence.negative, occurrence.positive))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, 0),
+                (0, 0),
+                (1, 0),
+                (1, 0),
+                (1, 0),
+                (1, 0),
+                (0, 1),
+                (0, 1),
+                (1, 0),
+                (1, 0),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+            ]
+        );
+        assert_eq!(compiled.subclass_axioms, vec![(9, 13)]);
+        assert_eq!(compiled.property_occurrences[2].positive, 1);
+        assert_eq!(
+            compiled.feature_counts[FEATURE_OBJECT_COMPLEMENT_OF_POSITIVE],
+            1
+        );
+        assert_eq!(compiled.feature_counts[FEATURE_OBJECT_ONE_OF], 1);
+        assert_eq!(compiled.feature_counts[FEATURE_OBJECT_UNION_OF_POSITIVE], 2);
+        assert_eq!(
+            compile_named_hierarchy(owned.indexed(), EncodedLimits::default(), [29; 32]).unwrap(),
+            compiled
+        );
     }
 
     #[test]
