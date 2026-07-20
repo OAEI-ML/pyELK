@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod encoded;
 pub mod error;
 pub mod ir;
 pub mod properties;
