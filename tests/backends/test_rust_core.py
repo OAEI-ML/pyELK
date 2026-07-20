@@ -251,6 +251,8 @@ def test_hidden_noop_overlay_chain_reuses_direct_source_without_flattening(
 def test_hidden_overlay_slice_rejects_selected_or_local_base_segments(
     native_module: ModuleType,
 ) -> None:
+    from pyowl_core.backends import native_views
+
     snapshot, direct_encoded = _direct_encoded_snapshot(
         b"Ontology(Declaration(Class(<urn:encoded-overlay:A>)))"
     )
@@ -267,12 +269,28 @@ def test_hidden_overlay_slice_rejects_selected_or_local_base_segments(
     )
     with pytest.raises(ValueError, match=r"direct or no-op overlay"):
         native_module.create_session_from_encoded(
-            _encoded_wrapper(encoded, segments=(selected,)), 1, "error"
+            _encoded_wrapper(
+                encoded,
+                segments=(selected,),
+                structural_fingerprint=native_views._fingerprint(
+                    encoded.buffers, (selected,)
+                ),
+            ),
+            1,
+            "error",
         )
 
     with pytest.raises(ValueError, match=r"local roots"):
         native_module.create_session_from_encoded(
-            _encoded_wrapper(encoded, buffers=direct_encoded.buffers), 1, "error"
+            _encoded_wrapper(
+                encoded,
+                buffers=direct_encoded.buffers,
+                structural_fingerprint=native_views._fingerprint(
+                    direct_encoded.buffers, encoded.segments
+                ),
+            ),
+            1,
+            "error",
         )
 
 
@@ -427,13 +445,24 @@ def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
     )
     buffers = dict(encoded.buffers)
     buffers["root_kinds"] = memoryview(bytearray(buffers["root_kinds"]))
+    altered = dict(encoded.buffers)
+    altered_scalar = bytearray(altered["scalar_bytes"])
+    altered_scalar[-1] ^= 1
+    altered["scalar_bytes"] = memoryview(bytes(altered_scalar))
     cases = (
         _encoded_wrapper(encoded, descriptor=encoded.descriptor + b" "),
         _encoded_wrapper(encoded, segments=()),
         _encoded_wrapper(encoded, buffers=buffers),
+        _encoded_wrapper(encoded, buffers=altered),
+        _encoded_wrapper(
+            encoded,
+            structural_fingerprint=SimpleNamespace(
+                algorithm="sha256", schema=1, digest=b"\0" * 32
+            ),
+        ),
     )
     for candidate in cases:
-        with pytest.raises(ValueError, match=r"encoded|descriptor|segment|buffer"):
+        with pytest.raises(ValueError, match=r"encoded|descriptor|segment|buffer|fingerprint"):
             native_module.create_session_from_encoded(candidate, 1, "error")
 
 

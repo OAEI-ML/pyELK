@@ -31,6 +31,19 @@ const ENCODED_SCHEMA_NAME: &str = "pyowl-core/structural-columns";
 const ENCODED_SCHEMA_VERSION: u64 = 1;
 const ENCODED_MODEL_SCHEMA: u64 = 1;
 const ENCODED_BUFFER_COUNT: usize = 11;
+const ENCODED_BUFFER_NAMES: [&str; ENCODED_BUFFER_COUNT] = [
+    "root_kinds",
+    "root_ids",
+    "node_tags",
+    "node_field_offsets",
+    "field_kinds",
+    "field_values",
+    "field_lengths",
+    "item_kinds",
+    "item_values",
+    "item_lengths",
+    "scalar_bytes",
+];
 const COMPILER_SCHEMA_VERSION: u64 = 1;
 const ELK_COMPATIBILITY_ID: &str = "elk-0.6.0:b8ac5ce83db0704a7359d96aa382891e2f547863";
 
@@ -520,6 +533,7 @@ fn validate_encoded_input<'py>(
         let segments = raw_segments.cast::<PyTuple>().map_err(|_| {
             CoreError::protocol("encoded structural view segments must be an exact tuple")
         })?;
+        validate_structural_fingerprint(&current, &bindings, segments)?;
         segment_count =
             segment_count
                 .checked_add(u64::try_from(segments.len()).map_err(|_| {
@@ -590,6 +604,152 @@ fn validate_encoded_input<'py>(
             }
         }
     }
+}
+
+fn validate_structural_fingerprint(
+    encoded_view: &Bound<'_, PyAny>,
+    bindings: &EncodedBufferBindings<'_>,
+    segments: &Bound<'_, PyTuple>,
+) -> CoreResult<()> {
+    let expected = read_fingerprint(encoded_view, "structural_fingerprint")?;
+    if expected.schema != 1 {
+        return Err(CoreError::protocol(
+            "encoded structural fingerprint schema must be one",
+        ));
+    }
+    let descriptor = required_attribute(encoded_view, "descriptor")?;
+    let descriptor = descriptor.cast::<PyBytes>().map_err(|_| {
+        CoreError::protocol("encoded view descriptor must be exact immutable bytes")
+    })?;
+    let columns = bindings.columns()?;
+    let sources = [
+        columns.root_kinds,
+        columns.root_ids,
+        columns.node_tags,
+        columns.node_field_offsets,
+        columns.field_kinds,
+        columns.field_values,
+        columns.field_lengths,
+        columns.item_kinds,
+        columns.item_values,
+        columns.item_lengths,
+        columns.scalar_bytes,
+    ];
+    let mut digest = Sha256::new();
+    digest.update(b"pyowl-core:encoded-structural-view:v1\0");
+    update_varint_frame(&mut digest, descriptor.as_bytes())?;
+    for (name, source) in ENCODED_BUFFER_NAMES.into_iter().zip(sources) {
+        update_varint_frame(&mut digest, name.as_bytes())?;
+        update_source_length(&mut digest, source)?;
+        update_byte_source(&mut digest, source)?;
+    }
+    digest.update(
+        u64::try_from(segments.len())
+            .map_err(|_| CoreError::capacity("encoded segment count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    for index in 0..segments.len() {
+        let segment = segments
+            .get_item(index)
+            .map_err(|_| CoreError::protocol("encoded structural segment is inaccessible"))?;
+        let role = exact_u8_attribute(&segment, "role", "encoded segment role")?;
+        let posting_mode =
+            exact_u8_attribute(&segment, "posting_mode", "encoded segment posting_mode")?;
+        digest.update([role, posting_mode]);
+
+        let source = required_attribute(&segment, "source")?;
+        if source.is_none() {
+            digest.update([0]);
+        } else {
+            let source_fingerprint = read_fingerprint(&source, "structural_fingerprint")?;
+            let source_schema = u32::try_from(source_fingerprint.schema).map_err(|_| {
+                CoreError::protocol("referenced structural fingerprint schema exceeds u32")
+            })?;
+            digest.update([1]);
+            digest.update(source_schema.to_le_bytes());
+            digest.update(source_fingerprint.digest);
+        }
+
+        let member_token = required_attribute(&segment, "member_token")?;
+        if member_token.is_none() {
+            digest.update([0]);
+        } else {
+            let member_token = member_token.cast::<PyBytes>().map_err(|_| {
+                CoreError::protocol("encoded segment member token must be exact immutable bytes")
+            })?;
+            if member_token.as_bytes().len() != 32 {
+                return Err(CoreError::protocol(
+                    "encoded segment member token must contain 32 bytes",
+                ));
+            }
+            digest.update([1]);
+            digest.update(member_token.as_bytes());
+        }
+
+        for name in ["root_ids", "anonymous_scope_map"] {
+            let value = required_attribute(&segment, name)?;
+            let owner = value
+                .getattr("obj")
+                .ok()
+                .and_then(|candidate| candidate.cast_into::<PyBytes>().ok());
+            let source = borrowed_py_bytes(&value, owner.as_ref(), name)?;
+            update_source_length(&mut digest, source)?;
+            update_byte_source(&mut digest, source)?;
+        }
+    }
+    let actual: [u8; 32] = digest.finalize().into();
+    if actual != expected.digest {
+        return Err(CoreError::protocol(
+            "encoded structural fingerprint does not cover its buffers and segments",
+        ));
+    }
+    Ok(())
+}
+
+fn exact_u8_attribute(owner: &Bound<'_, PyAny>, attribute: &str, name: &str) -> CoreResult<u8> {
+    u8::try_from(exact_nonnegative_integer(
+        &required_attribute(owner, attribute)?,
+        name,
+    )?)
+    .map_err(|_| CoreError::protocol(format!("{name} must fit u8")))
+}
+
+fn update_varint_frame(digest: &mut Sha256, value: &[u8]) -> CoreResult<()> {
+    let mut length = u64::try_from(value.len())
+        .map_err(|_| CoreError::capacity("encoded fingerprint frame length exceeds u64"))?;
+    loop {
+        let low = u8::try_from(length & 0x7f)
+            .map_err(|_| CoreError::internal("varint low byte exceeds u8"))?;
+        length >>= 7;
+        digest.update([low | if length == 0 { 0 } else { 0x80 }]);
+        if length == 0 {
+            break;
+        }
+    }
+    digest.update(value);
+    Ok(())
+}
+
+fn update_source_length(digest: &mut Sha256, source: BorrowedPyBytes<'_, '_>) -> CoreResult<()> {
+    digest.update(
+        u64::try_from(source.len())
+            .map_err(|_| CoreError::capacity("encoded fingerprint source length exceeds u64"))?
+            .to_le_bytes(),
+    );
+    Ok(())
+}
+
+fn update_byte_source(digest: &mut Sha256, source: BorrowedPyBytes<'_, '_>) -> CoreResult<()> {
+    if let Some(bytes) = source.bytes {
+        digest.update(bytes);
+        return Ok(());
+    }
+    for index in 0..source.len() {
+        digest.update([source.byte(index).ok_or_else(|| {
+            CoreError::protocol("encoded fingerprint source became inaccessible")
+        })?]);
+    }
+    Ok(())
 }
 
 fn validate_encoded_envelope<'py>(
