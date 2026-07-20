@@ -34,10 +34,7 @@ def test_compiler_summary_covers_every_private_ir_ledger() -> None:
 def test_compiler_digest_changes_with_a_covered_section() -> None:
     baseline = TinyCompiledOntologyBuilder().add_class("urn:summary:A").build()
     changed = (
-        TinyCompiledOntologyBuilder()
-        .add_class("urn:summary:A")
-        .set_feature_count(0, 1)
-        .build()
+        TinyCompiledOntologyBuilder().add_class("urn:summary:A").set_feature_count(0, 1).build()
     )
     assert compiler_section_counts(baseline) == compiler_section_counts(changed)
     assert compiler_digest(baseline) != compiler_digest(changed)

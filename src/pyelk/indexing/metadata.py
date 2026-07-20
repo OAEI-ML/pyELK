@@ -78,9 +78,7 @@ class CompilerMetadata:
             (EntityKind.OBJECT_PROPERTY, OWL_TOP_OBJECT_PROPERTY_IRI),
         }
         actual = {(record.kind, record.iri) for record in self.entities}
-        missing = tuple(
-            sorted((int(kind), iri) for kind, iri in required - actual)
-        )
+        missing = tuple(sorted((int(kind), iri) for kind, iri in required - actual))
         if missing:
             raise ValueError(f"compiler metadata is missing predefined entities: {missing!r}")
         if (
