@@ -359,6 +359,12 @@ struct EncodedRootCursor<P: ByteSource> {
     cursor: usize,
 }
 
+struct SelectedRootIter<P: ByteSource> {
+    selector: EncodedRootCursor<P>,
+    next_root: usize,
+    root_count: usize,
+}
+
 impl<P: ByteSource> EncodedRootSelection<P> {
     fn validate(mode: EncodedPostingMode, postings: P, root_count: usize) -> CoreResult<Self> {
         let count = aligned_count(postings, 4, "encoded segment root postings")?;
@@ -413,6 +419,27 @@ impl<P: ByteSource> EncodedRootCursor<P> {
             EncodedPostingMode::Include => listed,
             EncodedPostingMode::Exclude => !listed,
         })
+    }
+}
+
+impl<P: ByteSource> SelectedRootIter<P> {
+    fn new(selection: Option<EncodedRootSelection<P>>, root_count: usize) -> Self {
+        Self {
+            selector: EncodedRootCursor::new(selection),
+            next_root: 0,
+            root_count,
+        }
+    }
+
+    fn next(&mut self) -> CoreResult<Option<usize>> {
+        while self.next_root < self.root_count {
+            let root = self.next_root;
+            self.next_root += 1;
+            if self.selector.includes(root)? {
+                return Ok(Some(root));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -480,6 +507,13 @@ pub fn validate_columns<B: ByteSource>(
     columns: EncodedColumns<B>,
     limits: EncodedLimits,
 ) -> CoreResult<ValidatedEncodedColumns> {
+    validate_columns_with_lengths(columns, limits).map(|(validated, _lengths)| validated)
+}
+
+fn validate_columns_with_lengths<B: ByteSource>(
+    columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+) -> CoreResult<(ValidatedEncodedColumns, Vec<u64>)> {
     let root_count = aligned_count(columns.root_ids, 4, "root_ids")?;
     if columns.root_kinds.len() != root_count {
         return Err(CoreError::protocol(
@@ -676,14 +710,17 @@ pub fn validate_columns<B: ByteSource>(
         validate_graph_and_lengths(&columns, root_count, node_count, &mut work, limits.max_work)?;
     validate_dense_node_order(&columns, &canonical_lengths, &mut work, limits.max_work)?;
     validate_model_scalar_constraints(&columns, node_count)?;
-    Ok(ValidatedEncodedColumns {
-        root_count,
-        node_count,
-        field_count,
-        item_count,
-        scalar_bytes: columns.scalar_bytes.len(),
-        work,
-    })
+    Ok((
+        ValidatedEncodedColumns {
+            root_count,
+            node_count,
+            field_count,
+            item_count,
+            scalar_bytes: columns.scalar_bytes.len(),
+            work,
+        },
+        canonical_lengths,
+    ))
 }
 
 fn validate_model_scalar_constraints<B: ByteSource>(
@@ -976,6 +1013,385 @@ pub fn compile_encoded_hierarchy_selected_with_policy<B: ByteSource, P: ByteSour
     compile_encoded_hierarchy_with_selection(columns, limits, unsupported, Some(selection))
 }
 
+/// Compile one direct source plus one local overlay-delta table without flattening either table.
+///
+/// Exact duplicate roots and annotation-only logical variants are merged structurally before
+/// compilation, and all aggregate limits are enforced across both borrowed tables.
+pub fn compile_encoded_overlay_delta_with_policy<B: ByteSource>(
+    source_columns: EncodedColumns<B>,
+    delta_columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+) -> CoreResult<EncodedCompilation> {
+    compile_encoded_overlay_delta_with_selection::<B, B>(
+        source_columns,
+        delta_columns,
+        limits,
+        unsupported,
+        None,
+    )
+}
+
+/// Compile an include/exclude source selection plus one local overlay-delta table.
+pub fn compile_encoded_overlay_delta_selected_with_policy<B: ByteSource, P: ByteSource>(
+    source_columns: EncodedColumns<B>,
+    delta_columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+    mode: EncodedPostingMode,
+    postings: P,
+) -> CoreResult<EncodedCompilation> {
+    let source_root_count = aligned_count(source_columns.root_ids, 4, "source root_ids")?;
+    let selection = EncodedRootSelection::validate(mode, postings, source_root_count)?;
+    compile_encoded_overlay_delta_with_selection(
+        source_columns,
+        delta_columns,
+        limits,
+        unsupported,
+        Some(selection),
+    )
+}
+
+fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
+    source_columns: EncodedColumns<B>,
+    delta_columns: EncodedColumns<B>,
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+    source_selection: Option<EncodedRootSelection<P>>,
+) -> CoreResult<EncodedCompilation> {
+    validate_combined_column_limits(&source_columns, &delta_columns, limits)?;
+    let (source_validated, source_lengths) = validate_columns_with_lengths(source_columns, limits)?;
+    let (delta_validated, delta_lengths) = validate_columns_with_lengths(delta_columns, limits)?;
+    let mut work = source_validated
+        .work
+        .checked_add(delta_validated.work)
+        .ok_or_else(|| CoreError::capacity("encoded overlay validation work overflow"))?;
+    if work > limits.max_work {
+        return Err(CoreError::capacity(
+            "encoded overlay validation exceeds the combined work limit",
+        ));
+    }
+    let mut source_roots = SelectedRootIter::new(source_selection, source_validated.root_count);
+    let mut delta_roots = SelectedRootIter::<B>::new(None, delta_validated.root_count);
+    let mut source_root = source_roots.next()?;
+    let mut delta_root = delta_roots.next()?;
+    let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
+    let mut transaction = NamedHierarchyBuilder::transaction();
+    let mut previous_logical_root = None;
+    while source_root.is_some() || delta_root.is_some() {
+        let ordering = match (source_root, delta_root) {
+            (Some(left), Some(right)) => {
+                let left_kind = byte_at(source_columns.root_kinds, left, "source root kind")?;
+                let right_kind = byte_at(delta_columns.root_kinds, right, "delta root kind")?;
+                let kind_order = left_kind.cmp(&right_kind);
+                if kind_order != Ordering::Equal {
+                    kind_order
+                } else {
+                    let left_node = node_index(
+                        u32_at(source_columns.root_ids, left, "source root node ID")?,
+                        source_validated.node_count,
+                    )?;
+                    let right_node = node_index(
+                        u32_at(delta_columns.root_ids, right, "delta root node ID")?,
+                        delta_validated.node_count,
+                    )?;
+                    compare_canonical_nodes_between(
+                        left_node,
+                        right_node,
+                        &source_columns,
+                        &delta_columns,
+                        &source_lengths,
+                        &delta_lengths,
+                        &mut work,
+                        limits.max_work,
+                    )?
+                }
+            }
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => break,
+        };
+        match ordering {
+            Ordering::Less => {
+                compile_overlay_root(
+                    OverlayRootRef::Source(source_root.ok_or_else(|| {
+                        CoreError::internal("source overlay cursor unexpectedly ended")
+                    })?),
+                    &source_columns,
+                    &delta_columns,
+                    &source_lengths,
+                    &delta_lengths,
+                    source_validated.node_count,
+                    delta_validated.node_count,
+                    &mut previous_logical_root,
+                    &mut work,
+                    limits.max_work,
+                    &mut builder,
+                    &mut transaction,
+                )?;
+                source_root = source_roots.next()?;
+            }
+            Ordering::Greater => {
+                compile_overlay_root(
+                    OverlayRootRef::Delta(delta_root.ok_or_else(|| {
+                        CoreError::internal("delta overlay cursor unexpectedly ended")
+                    })?),
+                    &source_columns,
+                    &delta_columns,
+                    &source_lengths,
+                    &delta_lengths,
+                    source_validated.node_count,
+                    delta_validated.node_count,
+                    &mut previous_logical_root,
+                    &mut work,
+                    limits.max_work,
+                    &mut builder,
+                    &mut transaction,
+                )?;
+                delta_root = delta_roots.next()?;
+            }
+            Ordering::Equal => {
+                compile_overlay_root(
+                    OverlayRootRef::Source(source_root.ok_or_else(|| {
+                        CoreError::internal("equal overlay source cursor unexpectedly ended")
+                    })?),
+                    &source_columns,
+                    &delta_columns,
+                    &source_lengths,
+                    &delta_lengths,
+                    source_validated.node_count,
+                    delta_validated.node_count,
+                    &mut previous_logical_root,
+                    &mut work,
+                    limits.max_work,
+                    &mut builder,
+                    &mut transaction,
+                )?;
+                source_root = source_roots.next()?;
+                delta_root = delta_roots.next()?;
+            }
+        }
+    }
+    builder.freeze([0; 32])
+}
+
+fn validate_combined_column_limits<B: ByteSource>(
+    source: &EncodedColumns<B>,
+    delta: &EncodedColumns<B>,
+    limits: EncodedLimits,
+) -> CoreResult<()> {
+    let checked_sum = |left: usize, right: usize, name: &str| {
+        left.checked_add(right)
+            .ok_or_else(|| CoreError::capacity(format!("encoded overlay {name} overflow")))
+    };
+    enforce_count(
+        checked_sum(
+            aligned_count(source.root_ids, 4, "source root_ids")?,
+            aligned_count(delta.root_ids, 4, "delta root_ids")?,
+            "root count",
+        )?,
+        limits.max_roots,
+        "encoded overlay root count",
+    )?;
+    enforce_count(
+        checked_sum(
+            aligned_count(source.node_tags, 2, "source node_tags")?,
+            aligned_count(delta.node_tags, 2, "delta node_tags")?,
+            "node count",
+        )?,
+        limits.max_nodes,
+        "encoded overlay node count",
+    )?;
+    enforce_count(
+        checked_sum(
+            source.field_kinds.len(),
+            delta.field_kinds.len(),
+            "field count",
+        )?,
+        limits.max_fields,
+        "encoded overlay field count",
+    )?;
+    enforce_count(
+        checked_sum(
+            source.item_kinds.len(),
+            delta.item_kinds.len(),
+            "item count",
+        )?,
+        limits.max_items,
+        "encoded overlay item count",
+    )?;
+    enforce_count(
+        checked_sum(
+            source.scalar_bytes.len(),
+            delta.scalar_bytes.len(),
+            "scalar byte count",
+        )?,
+        limits.max_scalar_bytes,
+        "encoded overlay scalar byte count",
+    )
+}
+
+#[derive(Clone, Copy)]
+enum OverlayRootRef {
+    Source(usize),
+    Delta(usize),
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_overlay_root<B: ByteSource>(
+    current: OverlayRootRef,
+    source_columns: &EncodedColumns<B>,
+    delta_columns: &EncodedColumns<B>,
+    source_lengths: &[u64],
+    delta_lengths: &[u64],
+    source_node_count: usize,
+    delta_node_count: usize,
+    previous_logical_root: &mut Option<OverlayRootRef>,
+    work: &mut u64,
+    max_work: u64,
+    builder: &mut NamedHierarchyBuilder,
+    transaction: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    let (columns, node_count, root) = match current {
+        OverlayRootRef::Source(root) => (source_columns, source_node_count, root),
+        OverlayRootRef::Delta(root) => (delta_columns, delta_node_count, root),
+    };
+    let kind = byte_at(columns.root_kinds, root, "overlay root kind")?;
+    let node = node_index(
+        u32_at(columns.root_ids, root, "overlay root node ID")?,
+        node_count,
+    )?;
+    let tag = u16_at(columns.node_tags, node, "overlay root node tag")?;
+    if kind == ROOT_AXIOM && !(120..=123).contains(&tag) {
+        let start = usize_at(columns.node_field_offsets, node, "axiom field offset")?;
+        let field_limit = annotation_field(node, columns)?
+            .checked_sub(start)
+            .ok_or_else(|| CoreError::internal("axiom annotation field precedes its start"))?;
+        if let Some(previous) = *previous_logical_root {
+            let ordering = match (previous, current) {
+                (OverlayRootRef::Source(left), OverlayRootRef::Source(right)) => {
+                    let left = node_index(
+                        u32_at(source_columns.root_ids, left, "source root node ID")?,
+                        source_node_count,
+                    )?;
+                    let right = node_index(
+                        u32_at(source_columns.root_ids, right, "source root node ID")?,
+                        source_node_count,
+                    )?;
+                    compare_canonical_nodes_between_with_field_limit(
+                        left,
+                        right,
+                        source_columns,
+                        source_columns,
+                        source_lengths,
+                        source_lengths,
+                        Some(field_limit),
+                        work,
+                        max_work,
+                    )?
+                }
+                (OverlayRootRef::Source(left), OverlayRootRef::Delta(right)) => {
+                    let left = node_index(
+                        u32_at(source_columns.root_ids, left, "source root node ID")?,
+                        source_node_count,
+                    )?;
+                    let right = node_index(
+                        u32_at(delta_columns.root_ids, right, "delta root node ID")?,
+                        delta_node_count,
+                    )?;
+                    compare_canonical_nodes_between_with_field_limit(
+                        left,
+                        right,
+                        source_columns,
+                        delta_columns,
+                        source_lengths,
+                        delta_lengths,
+                        Some(field_limit),
+                        work,
+                        max_work,
+                    )?
+                }
+                (OverlayRootRef::Delta(left), OverlayRootRef::Source(right)) => {
+                    let left = node_index(
+                        u32_at(delta_columns.root_ids, left, "delta root node ID")?,
+                        delta_node_count,
+                    )?;
+                    let right = node_index(
+                        u32_at(source_columns.root_ids, right, "source root node ID")?,
+                        source_node_count,
+                    )?;
+                    compare_canonical_nodes_between_with_field_limit(
+                        left,
+                        right,
+                        delta_columns,
+                        source_columns,
+                        delta_lengths,
+                        source_lengths,
+                        Some(field_limit),
+                        work,
+                        max_work,
+                    )?
+                }
+                (OverlayRootRef::Delta(left), OverlayRootRef::Delta(right)) => {
+                    let left = node_index(
+                        u32_at(delta_columns.root_ids, left, "delta root node ID")?,
+                        delta_node_count,
+                    )?;
+                    let right = node_index(
+                        u32_at(delta_columns.root_ids, right, "delta root node ID")?,
+                        delta_node_count,
+                    )?;
+                    compare_canonical_nodes_between_with_field_limit(
+                        left,
+                        right,
+                        delta_columns,
+                        delta_columns,
+                        delta_lengths,
+                        delta_lengths,
+                        Some(field_limit),
+                        work,
+                        max_work,
+                    )?
+                }
+            };
+            if ordering == Ordering::Equal {
+                return Ok(());
+            }
+        }
+        *previous_logical_root = Some(current);
+    }
+    compile_root_from_columns(root, columns, node_count, builder, transaction)
+}
+
+fn compile_root_from_columns<B: ByteSource>(
+    root: usize,
+    columns: &EncodedColumns<B>,
+    node_count: usize,
+    builder: &mut NamedHierarchyBuilder,
+    transaction: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    let kind = byte_at(columns.root_kinds, root, "root kind")?;
+    if kind == ROOT_ONTOLOGY_ANNOTATION {
+        return Ok(());
+    }
+    let node = node_index(u32_at(columns.root_ids, root, "root node ID")?, node_count)?;
+    let tag = u16_at(columns.node_tags, node, "root node tag")?;
+    if kind == ROOT_EXTENSION {
+        if tag == 148 {
+            return builder.handle_unsupported(46, "SWRL_RULE");
+        }
+        return Err(CoreError::internal(
+            "validated extension root has an unexpected constructor tag",
+        ));
+    }
+    if kind != ROOT_AXIOM {
+        return Err(CoreError::internal(
+            "validated encoded root has an unexpected category",
+        ));
+    }
+    compile_axiom_node(tag, node, columns, builder, transaction)
+}
+
 fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
     columns: EncodedColumns<B>,
     limits: EncodedLimits,
@@ -1026,43 +1442,53 @@ fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
             }
             state.compiled = true;
         }
-        let result = match tag {
-            60 => compile_declaration(node, &columns, &mut transaction),
-            61 => compile_named_subclass(node, &columns, &mut transaction),
-            62 => compile_named_equivalence(node, &columns, &mut transaction),
-            63 => compile_disjoint_named_classes(node, &columns, &mut transaction),
-            64 => compile_named_disjoint_union(node, &columns, &mut transaction),
-            70 => compile_named_subproperty(node, &columns, &mut transaction),
-            71 => compile_equivalent_named_properties(node, &columns, &mut transaction),
-            74 => compile_named_property_domain(node, &columns, &mut transaction),
-            75 => compile_named_property_range(node, &columns, &mut transaction),
-            78 => compile_reflexive_named_property(node, &columns, &mut transaction),
-            82 => compile_transitive_named_property(node, &columns, &mut transaction),
-            110 => compile_same_named_individuals(node, &columns, &mut transaction),
-            111 => compile_different_named_individuals(node, &columns, &mut transaction),
-            112 => compile_named_class_assertion(node, &columns, &mut transaction),
-            113 => compile_named_object_property_assertion(node, &columns, &mut transaction),
-            120..=123 => Ok(()),
-            tag if unsupported_axiom_feature(tag).is_some() => {
-                let (feature, name) = unsupported_axiom_feature(tag).ok_or_else(|| {
-                    CoreError::internal("unsupported encoded axiom lost its feature mapping")
-                })?;
-                Err(AxiomCompileError::unsupported(feature, name))
-            }
-            tag => Err(AxiomCompileError::Core(CoreError::invalid(format!(
-                "encoded named-hierarchy compiler does not support axiom tag {tag}"
-            )))),
-        };
-        match result {
-            Ok(()) => builder.commit_axiom(&mut transaction)?,
-            Err(AxiomCompileError::Unsupported { feature, name }) => {
-                transaction.reset_axiom();
-                builder.handle_unsupported(feature, name)?;
-            }
-            Err(AxiomCompileError::Core(error)) => return Err(error),
-        }
+        compile_axiom_node(tag, node, &columns, &mut builder, &mut transaction)?;
     }
     builder.freeze([0; 32])
+}
+
+fn compile_axiom_node<B: ByteSource>(
+    tag: u16,
+    node: usize,
+    columns: &EncodedColumns<B>,
+    builder: &mut NamedHierarchyBuilder,
+    transaction: &mut NamedHierarchyBuilder,
+) -> CoreResult<()> {
+    let result = match tag {
+        60 => compile_declaration(node, columns, transaction),
+        61 => compile_named_subclass(node, columns, transaction),
+        62 => compile_named_equivalence(node, columns, transaction),
+        63 => compile_disjoint_named_classes(node, columns, transaction),
+        64 => compile_named_disjoint_union(node, columns, transaction),
+        70 => compile_named_subproperty(node, columns, transaction),
+        71 => compile_equivalent_named_properties(node, columns, transaction),
+        74 => compile_named_property_domain(node, columns, transaction),
+        75 => compile_named_property_range(node, columns, transaction),
+        78 => compile_reflexive_named_property(node, columns, transaction),
+        82 => compile_transitive_named_property(node, columns, transaction),
+        110 => compile_same_named_individuals(node, columns, transaction),
+        111 => compile_different_named_individuals(node, columns, transaction),
+        112 => compile_named_class_assertion(node, columns, transaction),
+        113 => compile_named_object_property_assertion(node, columns, transaction),
+        120..=123 => Ok(()),
+        tag if unsupported_axiom_feature(tag).is_some() => {
+            let (feature, name) = unsupported_axiom_feature(tag).ok_or_else(|| {
+                CoreError::internal("unsupported encoded axiom lost its feature mapping")
+            })?;
+            Err(AxiomCompileError::unsupported(feature, name))
+        }
+        tag => Err(AxiomCompileError::Core(CoreError::invalid(format!(
+            "encoded named-hierarchy compiler does not support axiom tag {tag}"
+        )))),
+    };
+    match result {
+        Ok(()) => builder.commit_axiom(transaction),
+        Err(AxiomCompileError::Unsupported { feature, name }) => {
+            transaction.reset_axiom();
+            builder.handle_unsupported(feature, name)
+        }
+        Err(AxiomCompileError::Core(error)) => Err(error),
+    }
 }
 
 fn annotated_axiom_states<B: ByteSource, P: ByteSource>(
@@ -3181,6 +3607,7 @@ enum CanonicalCompareTask {
     Node {
         left: usize,
         right: usize,
+        field_limit: Option<usize>,
     },
     Fields {
         left: usize,
@@ -3223,11 +3650,22 @@ fn compare_canonical_nodes<B: ByteSource>(
     max_work: u64,
 ) -> CoreResult<Ordering> {
     let mut tasks = Vec::new();
-    push_compare_task(&mut tasks, CanonicalCompareTask::Node { left, right })?;
+    push_compare_task(
+        &mut tasks,
+        CanonicalCompareTask::Node {
+            left,
+            right,
+            field_limit: None,
+        },
+    )?;
     while let Some(task) = tasks.pop() {
         claim_work(work, 1, max_work)?;
         match task {
-            CanonicalCompareTask::Node { left, right } => {
+            CanonicalCompareTask::Node {
+                left,
+                right,
+                field_limit,
+            } => {
                 if left == right {
                     continue;
                 }
@@ -3242,10 +3680,16 @@ fn compare_canonical_nodes<B: ByteSource>(
                 let right_start = usize_at(columns.node_field_offsets, right, "node field offset")?;
                 let right_end =
                     usize_at(columns.node_field_offsets, right + 1, "node field offset")?;
-                let remaining = left_end - left_start;
-                if right_end - right_start != remaining {
+                let arity = left_end - left_start;
+                if right_end - right_start != arity {
                     return Err(CoreError::internal(
                         "equal constructor tags have different validated arities",
+                    ));
+                }
+                let remaining = field_limit.unwrap_or(arity);
+                if remaining > arity {
+                    return Err(CoreError::internal(
+                        "canonical comparison field limit exceeds constructor arity",
                     ));
                 }
                 push_compare_task(
@@ -3332,6 +3776,7 @@ fn compare_canonical_nodes<B: ByteSource>(
                         CanonicalCompareTask::Node {
                             left: left_node,
                             right: right_node,
+                            field_limit: None,
                         },
                     )?;
                 } else if let Some(ordering) = schedule_component_comparison(
@@ -3349,6 +3794,312 @@ fn compare_canonical_nodes<B: ByteSource>(
         }
     }
     Ok(Ordering::Equal)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compare_canonical_nodes_between<L: ByteSource, R: ByteSource>(
+    left: usize,
+    right: usize,
+    left_columns: &EncodedColumns<L>,
+    right_columns: &EncodedColumns<R>,
+    left_lengths: &[u64],
+    right_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    compare_canonical_nodes_between_with_field_limit(
+        left,
+        right,
+        left_columns,
+        right_columns,
+        left_lengths,
+        right_lengths,
+        None,
+        work,
+        max_work,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compare_canonical_nodes_between_with_field_limit<L: ByteSource, R: ByteSource>(
+    left: usize,
+    right: usize,
+    left_columns: &EncodedColumns<L>,
+    right_columns: &EncodedColumns<R>,
+    left_lengths: &[u64],
+    right_lengths: &[u64],
+    field_limit: Option<usize>,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    let mut tasks = Vec::new();
+    push_compare_task(
+        &mut tasks,
+        CanonicalCompareTask::Node {
+            left,
+            right,
+            field_limit,
+        },
+    )?;
+    while let Some(task) = tasks.pop() {
+        claim_work(work, 1, max_work)?;
+        match task {
+            CanonicalCompareTask::Node {
+                left,
+                right,
+                field_limit,
+            } => {
+                let left_tag = u64::from(u16_at(left_columns.node_tags, left, "left node tag")?);
+                let right_tag =
+                    u64::from(u16_at(right_columns.node_tags, right, "right node tag")?);
+                let ordering = compare_u64_varints(left_tag, right_tag);
+                if ordering != Ordering::Equal {
+                    return Ok(ordering);
+                }
+                let left_start = usize_at(
+                    left_columns.node_field_offsets,
+                    left,
+                    "left node field offset",
+                )?;
+                let left_end = usize_at(
+                    left_columns.node_field_offsets,
+                    left + 1,
+                    "left node field offset",
+                )?;
+                let right_start = usize_at(
+                    right_columns.node_field_offsets,
+                    right,
+                    "right node field offset",
+                )?;
+                let right_end = usize_at(
+                    right_columns.node_field_offsets,
+                    right + 1,
+                    "right node field offset",
+                )?;
+                let arity = left_end - left_start;
+                if right_end - right_start != arity {
+                    return Err(CoreError::internal(
+                        "equal cross-segment constructor tags have different validated arities",
+                    ));
+                }
+                let remaining = field_limit.unwrap_or(arity);
+                if remaining > arity {
+                    return Err(CoreError::internal(
+                        "cross-segment comparison field limit exceeds constructor arity",
+                    ));
+                }
+                push_compare_task(
+                    &mut tasks,
+                    CanonicalCompareTask::Fields {
+                        left: left_start,
+                        right: right_start,
+                        remaining,
+                    },
+                )?;
+            }
+            CanonicalCompareTask::Fields {
+                left,
+                right,
+                remaining,
+            } => {
+                if remaining == 0 {
+                    continue;
+                }
+                push_compare_task(
+                    &mut tasks,
+                    CanonicalCompareTask::Fields {
+                        left: left
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded field index overflow"))?,
+                        right: right
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded field index overflow"))?,
+                        remaining: remaining - 1,
+                    },
+                )?;
+                if let Some(ordering) = schedule_component_comparison_between(
+                    ComponentRow::Field(left),
+                    ComponentRow::Field(right),
+                    left_columns,
+                    right_columns,
+                    left_lengths,
+                    right_lengths,
+                    &mut tasks,
+                    work,
+                    max_work,
+                )? {
+                    return Ok(ordering);
+                }
+            }
+            CanonicalCompareTask::Collection {
+                kind,
+                left,
+                right,
+                remaining,
+            } => {
+                if remaining == 0 {
+                    continue;
+                }
+                push_compare_task(
+                    &mut tasks,
+                    CanonicalCompareTask::Collection {
+                        kind,
+                        left: left
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded item index overflow"))?,
+                        right: right
+                            .checked_add(1)
+                            .ok_or_else(|| CoreError::capacity("encoded item index overflow"))?,
+                        remaining: remaining - 1,
+                    },
+                )?;
+                if kind == COMPONENT_SET {
+                    let left_node = node_index(
+                        node_id_at(left_columns.item_values, left, "left set item node ID")?,
+                        left_lengths.len(),
+                    )?;
+                    let right_node = node_index(
+                        node_id_at(right_columns.item_values, right, "right set item node ID")?,
+                        right_lengths.len(),
+                    )?;
+                    let ordering =
+                        compare_u64_varints(left_lengths[left_node], right_lengths[right_node]);
+                    if ordering != Ordering::Equal {
+                        return Ok(ordering);
+                    }
+                    push_compare_task(
+                        &mut tasks,
+                        CanonicalCompareTask::Node {
+                            left: left_node,
+                            right: right_node,
+                            field_limit: None,
+                        },
+                    )?;
+                } else if let Some(ordering) = schedule_component_comparison_between(
+                    ComponentRow::Item(left),
+                    ComponentRow::Item(right),
+                    left_columns,
+                    right_columns,
+                    left_lengths,
+                    right_lengths,
+                    &mut tasks,
+                    work,
+                    max_work,
+                )? {
+                    return Ok(ordering);
+                }
+            }
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn schedule_component_comparison_between<L: ByteSource, R: ByteSource>(
+    left: ComponentRow,
+    right: ComponentRow,
+    left_columns: &EncodedColumns<L>,
+    right_columns: &EncodedColumns<R>,
+    left_lengths: &[u64],
+    right_lengths: &[u64],
+    tasks: &mut Vec<CanonicalCompareTask>,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Option<Ordering>> {
+    let (left_kind, left_value, left_length) = component_parts(left, left_columns)?;
+    let (right_kind, right_value, right_length) = component_parts(right, right_columns)?;
+    let ordering = left_kind.cmp(&right_kind);
+    if ordering != Ordering::Equal {
+        return Ok(Some(ordering));
+    }
+    match left_kind {
+        COMPONENT_NONE => Ok(None),
+        COMPONENT_NODE => {
+            let left_node = node_index(
+                u32::try_from(left_value)
+                    .map_err(|_| CoreError::protocol("left encoded node ID exceeds u32"))?,
+                left_lengths.len(),
+            )?;
+            let right_node = node_index(
+                u32::try_from(right_value)
+                    .map_err(|_| CoreError::protocol("right encoded node ID exceeds u32"))?,
+                right_lengths.len(),
+            )?;
+            let ordering = compare_u64_varints(left_lengths[left_node], right_lengths[right_node]);
+            if ordering != Ordering::Equal {
+                return Ok(Some(ordering));
+            }
+            push_compare_task(
+                tasks,
+                CanonicalCompareTask::Node {
+                    left: left_node,
+                    right: right_node,
+                    field_limit: None,
+                },
+            )?;
+            Ok(None)
+        }
+        COMPONENT_TEXT | COMPONENT_BYTES | COMPONENT_ENUM => {
+            let left_size = u64::try_from(left_length)
+                .map_err(|_| CoreError::capacity("left encoded scalar length exceeds u64"))?;
+            let right_size = u64::try_from(right_length)
+                .map_err(|_| CoreError::capacity("right encoded scalar length exceeds u64"))?;
+            let ordering = compare_u64_varints(left_size, right_size);
+            if ordering != Ordering::Equal {
+                return Ok(Some(ordering));
+            }
+            let ordering = compare_scalar_ranges_between(
+                left_columns.scalar_bytes,
+                right_columns.scalar_bytes,
+                left_value,
+                right_value,
+                left_length,
+                work,
+                max_work,
+            )?;
+            Ok((ordering != Ordering::Equal).then_some(ordering))
+        }
+        COMPONENT_INTEGER => {
+            let ordering = compare_integer_components_between(
+                left_columns.scalar_bytes,
+                right_columns.scalar_bytes,
+                ScalarRange {
+                    start: left_value,
+                    length: left_length,
+                },
+                ScalarRange {
+                    start: right_value,
+                    length: right_length,
+                },
+                work,
+                max_work,
+            )?;
+            Ok((ordering != Ordering::Equal).then_some(ordering))
+        }
+        COMPONENT_SET | COMPONENT_SEQUENCE => {
+            let left_size = u64::try_from(left_length)
+                .map_err(|_| CoreError::capacity("left encoded collection length exceeds u64"))?;
+            let right_size = u64::try_from(right_length)
+                .map_err(|_| CoreError::capacity("right encoded collection length exceeds u64"))?;
+            let ordering = compare_u64_varints(left_size, right_size);
+            if ordering != Ordering::Equal {
+                return Ok(Some(ordering));
+            }
+            push_compare_task(
+                tasks,
+                CanonicalCompareTask::Collection {
+                    kind: left_kind,
+                    left: left_value,
+                    right: right_value,
+                    remaining: left_length,
+                },
+            )?;
+            Ok(None)
+        }
+        _ => Err(CoreError::internal(
+            "invalid component reached cross-segment canonical comparison",
+        )),
+    }
 }
 
 fn schedule_component_comparison<B: ByteSource>(
@@ -3389,6 +4140,7 @@ fn schedule_component_comparison<B: ByteSource>(
                 CanonicalCompareTask::Node {
                     left: left_node,
                     right: right_node,
+                    field_limit: None,
                 },
             )?;
             Ok(None)
@@ -3511,6 +4263,44 @@ fn compare_scalar_ranges<B: ByteSource>(
     Ok(Ordering::Equal)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn compare_scalar_ranges_between<L: ByteSource, R: ByteSource>(
+    left_scalars: L,
+    right_scalars: R,
+    left: usize,
+    right: usize,
+    length: usize,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    claim_work(
+        work,
+        u64::try_from(length)
+            .map_err(|_| CoreError::capacity("cross-segment scalar comparison exceeds u64"))?,
+        max_work,
+    )?;
+    for offset in 0..length {
+        let left_byte = byte_at(
+            left_scalars,
+            left.checked_add(offset)
+                .ok_or_else(|| CoreError::capacity("left encoded scalar offset overflow"))?,
+            "left canonical scalar",
+        )?;
+        let right_byte = byte_at(
+            right_scalars,
+            right
+                .checked_add(offset)
+                .ok_or_else(|| CoreError::capacity("right encoded scalar offset overflow"))?,
+            "right canonical scalar",
+        )?;
+        let ordering = left_byte.cmp(&right_byte);
+        if ordering != Ordering::Equal {
+            return Ok(ordering);
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
 fn compare_integer_components<B: ByteSource>(
     scalars: B,
     left: ScalarRange,
@@ -3532,6 +4322,42 @@ fn compare_integer_components<B: ByteSource>(
             .then(|| integer_varint_byte(scalars, left.start, left.length, index, left_width));
         let right_byte = (index < right_width)
             .then(|| integer_varint_byte(scalars, right.start, right.length, index, right_width));
+        let ordering = match (left_byte, right_byte) {
+            (Some(left_byte), Some(right_byte)) => left_byte?.cmp(&right_byte?),
+            (Some(_), None) => Ordering::Greater,
+            (None, Some(_)) => Ordering::Less,
+            (None, None) => Ordering::Equal,
+        };
+        if ordering != Ordering::Equal {
+            return Ok(ordering);
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
+fn compare_integer_components_between<L: ByteSource, R: ByteSource>(
+    left_scalars: L,
+    right_scalars: R,
+    left: ScalarRange,
+    right: ScalarRange,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    let left_width = canonical_integer_varint_width(left_scalars, left.start, left.length)?;
+    let right_width = canonical_integer_varint_width(right_scalars, right.start, right.length)?;
+    let compared = left_width.max(right_width);
+    claim_work(
+        work,
+        u64::try_from(compared)
+            .map_err(|_| CoreError::capacity("cross-segment integer comparison exceeds u64"))?,
+        max_work,
+    )?;
+    for index in 0..compared {
+        let left_byte = (index < left_width)
+            .then(|| integer_varint_byte(left_scalars, left.start, left.length, index, left_width));
+        let right_byte = (index < right_width).then(|| {
+            integer_varint_byte(right_scalars, right.start, right.length, index, right_width)
+        });
         let ordering = match (left_byte, right_byte) {
             (Some(left_byte), Some(right_byte)) => left_byte?.cmp(&right_byte?),
             (Some(_), None) => Ordering::Greater,
@@ -5674,6 +6500,97 @@ mod tests {
             .unwrap_err();
             assert!(matches!(error, CoreError::Protocol(_)));
         }
+    }
+
+    #[test]
+    fn overlay_delta_tables_merge_canonically_without_flattening() {
+        let mut source = declaration();
+        source.scalar_bytes[4] = b'B';
+        let mut delta = declaration();
+        delta.scalar_bytes[4] = b'A';
+        let expected = compile_encoded_hierarchy_with_policy(
+            two_declarations().borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        let merged = compile_encoded_overlay_delta_with_policy(
+            source.borrowed(),
+            delta.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(merged, expected);
+
+        let duplicate = compile_encoded_overlay_delta_with_policy(
+            source.borrowed(),
+            source.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        let direct = compile_encoded_hierarchy_with_policy(
+            source.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(duplicate, direct);
+
+        let nested = named_existential_superclass();
+        let duplicate = compile_encoded_overlay_delta_with_policy(
+            nested.borrowed(),
+            nested.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        let direct = compile_encoded_hierarchy_with_policy(
+            nested.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(duplicate, direct);
+    }
+
+    #[test]
+    fn overlay_delta_selection_and_limits_apply_to_the_resolved_union() {
+        let source = two_declarations();
+        let mut delta = declaration();
+        delta.scalar_bytes[4] = b'B';
+        let postings = le32(&[2]);
+        let selected = compile_encoded_overlay_delta_selected_with_policy(
+            source.borrowed(),
+            delta.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+            EncodedPostingMode::Exclude,
+            postings.as_slice(),
+        )
+        .unwrap();
+        let expected = compile_encoded_hierarchy_with_policy(
+            source.borrowed(),
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(selected, expected);
+
+        let limits = EncodedLimits {
+            max_roots: 1,
+            ..EncodedLimits::default()
+        };
+        assert!(matches!(
+            compile_encoded_overlay_delta_with_policy(
+                declaration().borrowed(),
+                declaration().borrowed(),
+                limits,
+                EncodedUnsupportedPolicy::Error,
+            ),
+            Err(CoreError::Capacity(message)) if message.contains("overlay root count")
+        ));
     }
 
     #[test]

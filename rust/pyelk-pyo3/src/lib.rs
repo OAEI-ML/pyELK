@@ -13,7 +13,8 @@ use blake2::{Blake2b, Digest};
 use pyelk_core::encoded::{
     ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedLimits, EncodedPostingMode,
     EncodedUnsupportedPolicy, compile_encoded_hierarchy_selected_with_policy,
-    compile_encoded_hierarchy_with_policy, validate_columns,
+    compile_encoded_hierarchy_with_policy, compile_encoded_overlay_delta_selected_with_policy,
+    compile_encoded_overlay_delta_with_policy, validate_columns,
 };
 use pyelk_core::wire::{encode_query, encode_realization, encode_taxonomy};
 use pyelk_core::{
@@ -104,6 +105,7 @@ struct EncodedPostingBinding<'py> {
 
 struct ValidatedEncodedInput<'py> {
     bindings: EncodedBufferBindings<'py>,
+    delta_bindings: Option<EncodedBufferBindings<'py>>,
     source_parts: EncodedSourceParts,
     segment_count: u64,
     referenced_view_count: u64,
@@ -367,9 +369,10 @@ fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
 
 /// Coarse encoded-view compiler entry point retained behind absent capability advertising.
 ///
-/// This executable handoff accepts validated direct segments plus all/exclude overlay-base chains
-/// over one direct source without flattening it.  Delta overlays, composites, mmap-lifetime,
-/// exhaustive-constructor, and performance gates remain release blockers, so
+/// This executable handoff accepts validated direct segments, all/exclude overlay-base chains,
+/// and one local overlay-delta table without flattening the source. Composites, anonymous scope
+/// remapping, mmap-lifetime, exhaustive-constructor, and performance gates remain release
+/// blockers, so
 /// `encoded_view_schemas()` intentionally stays empty.
 #[pyfunction]
 fn create_session_from_encoded(
@@ -398,6 +401,11 @@ fn create_session_from_encoded(
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let input = validate_encoded_input(encoded_view)?;
         let columns = input.bindings.columns()?;
+        let delta_columns = input
+            .delta_bindings
+            .as_ref()
+            .map(EncodedBufferBindings::columns)
+            .transpose()?;
         let posting = input
             .posting
             .as_ref()
@@ -405,20 +413,45 @@ fn create_session_from_encoded(
             .transpose()?;
         let metrics = encoded_ingestion_metrics(
             columns,
+            delta_columns,
             input.segment_count,
             input.referenced_view_count,
             posting.map_or(0, ByteSource::len),
         )?;
-        let mut compilation = if let (Some(binding), Some(root_ids)) = (&input.posting, posting) {
-            compile_encoded_hierarchy_selected_with_policy(
+        let mut compilation = match (delta_columns, &input.posting, posting) {
+            (Some(delta), Some(binding), Some(root_ids)) => {
+                compile_encoded_overlay_delta_selected_with_policy(
+                    columns,
+                    delta,
+                    EncodedLimits::default(),
+                    policy,
+                    binding.mode,
+                    root_ids,
+                )?
+            }
+            (Some(delta), None, None) => compile_encoded_overlay_delta_with_policy(
                 columns,
+                delta,
                 EncodedLimits::default(),
                 policy,
-                binding.mode,
-                root_ids,
-            )?
-        } else {
-            compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?
+            )?,
+            (None, Some(binding), Some(root_ids)) => {
+                compile_encoded_hierarchy_selected_with_policy(
+                    columns,
+                    EncodedLimits::default(),
+                    policy,
+                    binding.mode,
+                    root_ids,
+                )?
+            }
+            (None, None, None) => {
+                compile_encoded_hierarchy_with_policy(columns, EncodedLimits::default(), policy)?
+            }
+            _ => {
+                return Err(CoreError::internal(
+                    "validated encoded posting and delta bindings diverged",
+                ));
+            }
         };
         let compatibility_spelling =
             compatibility_spelling_digest(&compilation.compatibility_observations)?;
@@ -523,36 +556,43 @@ impl<'py> EncodedBufferBinding<'py> {
 
 fn encoded_ingestion_metrics(
     columns: EncodedColumns<BorrowedPyBytes<'_, '_>>,
+    delta_columns: Option<EncodedColumns<BorrowedPyBytes<'_, '_>>>,
     segment_count: u64,
     referenced_view_count: u64,
     posting_bytes: usize,
 ) -> CoreResult<EncodedIngestionMetrics> {
-    let buffers = [
-        columns.root_kinds,
-        columns.root_ids,
-        columns.node_tags,
-        columns.node_field_offsets,
-        columns.field_kinds,
-        columns.field_values,
-        columns.field_lengths,
-        columns.item_kinds,
-        columns.item_values,
-        columns.item_lengths,
-        columns.scalar_bytes,
-    ];
     let mut buffer_bytes = 0_u64;
     let mut zero_copy_buffers = 0_u64;
-    for buffer in buffers {
-        buffer_bytes = buffer_bytes
-            .checked_add(
-                u64::try_from(buffer.len())
-                    .map_err(|_| CoreError::capacity("encoded buffer length exceeds u64"))?,
-            )
-            .ok_or_else(|| CoreError::capacity("encoded buffer byte total exceeds u64"))?;
-        zero_copy_buffers += u64::from(buffer.bytes.is_some());
+    let mut buffer_count = 0_u64;
+    for columns in [Some(columns), delta_columns].into_iter().flatten() {
+        let buffers = [
+            columns.root_kinds,
+            columns.root_ids,
+            columns.node_tags,
+            columns.node_field_offsets,
+            columns.field_kinds,
+            columns.field_values,
+            columns.field_lengths,
+            columns.item_kinds,
+            columns.item_values,
+            columns.item_lengths,
+            columns.scalar_bytes,
+        ];
+        for buffer in buffers {
+            buffer_bytes = buffer_bytes
+                .checked_add(
+                    u64::try_from(buffer.len())
+                        .map_err(|_| CoreError::capacity("encoded buffer length exceeds u64"))?,
+                )
+                .ok_or_else(|| CoreError::capacity("encoded buffer byte total exceeds u64"))?;
+            zero_copy_buffers += u64::from(buffer.bytes.is_some());
+            buffer_count = buffer_count
+                .checked_add(1)
+                .ok_or_else(|| CoreError::capacity("encoded buffer count overflow"))?;
+        }
     }
     Ok(EncodedIngestionMetrics {
-        buffer_count: ENCODED_BUFFER_COUNT as u64,
+        buffer_count,
         buffer_bytes,
         zero_copy_buffers,
         segment_count,
@@ -579,6 +619,7 @@ fn validate_encoded_input<'py>(
     let mut segment_count = 0_u64;
     let mut referenced_view_count = 0_u64;
     let mut posting = None;
+    let mut delta_bindings = None;
     loop {
         if !seen.insert(current.as_ptr() as usize) {
             return Err(CoreError::protocol(
@@ -610,10 +651,24 @@ fn validate_encoded_input<'py>(
                 })?)
                 .ok_or_else(|| CoreError::capacity("encoded structural segment count overflow"))?;
 
-        if segments.len() != 1 {
+        if !(1..=2).contains(&segments.len()) {
             return Err(CoreError::invalid(
-                "encoded compiler slice currently accepts direct or single-base overlay segments",
+                "encoded compiler slice currently accepts direct or base-plus-delta overlay segments",
             ));
+        }
+        let has_delta = segments.len() == 2;
+        let mut local_bindings = Some(bindings);
+        if has_delta {
+            if delta_bindings.is_some() {
+                return Err(CoreError::invalid(
+                    "encoded compiler slice currently accepts only one overlay delta table",
+                ));
+            }
+            let delta = segments.get_item(1).map_err(|_| {
+                CoreError::protocol("encoded overlay delta segment is inaccessible")
+            })?;
+            validate_overlay_delta_segment(&delta, &owner, validated.root_count)?;
+            delta_bindings = local_bindings.take();
         }
         let segment = segments
             .get_item(0)
@@ -628,9 +683,17 @@ fn validate_encoded_input<'py>(
         )?;
         match (role, posting_mode) {
             (1, 0) => {
+                if has_delta {
+                    return Err(CoreError::protocol(
+                        "encoded overlay delta must follow an overlay base segment",
+                    ));
+                }
                 validate_direct_segment(&current, &owner)?;
                 return Ok(ValidatedEncodedInput {
-                    bindings,
+                    bindings: local_bindings.ok_or_else(|| {
+                        CoreError::internal("direct encoded bindings were unexpectedly moved")
+                    })?,
+                    delta_bindings,
                     source_parts,
                     segment_count,
                     referenced_view_count,
@@ -643,7 +706,7 @@ fn validate_encoded_input<'py>(
                         "selected overlay sources currently require one direct source",
                     ));
                 }
-                if validated.root_count != 0 {
+                if !has_delta && validated.root_count != 0 {
                     return Err(CoreError::protocol(
                         "single-segment overlay base must not carry local roots",
                     ));
@@ -693,7 +756,7 @@ fn validate_encoded_input<'py>(
             }
             _ => {
                 return Err(CoreError::invalid(
-                    "encoded compiler slice currently accepts direct or single-base overlay segments",
+                    "encoded compiler slice currently accepts direct or base-plus-delta overlay segments",
                 ));
             }
         }
@@ -912,6 +975,49 @@ fn validate_owner_capabilities(owner: &Bound<'_, PyAny>, model_schema: u64) -> C
     if owner_model != model_schema {
         return Err(CoreError::protocol(
             "encoded view model schema differs from its owner",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_overlay_delta_segment(
+    segment: &Bound<'_, PyAny>,
+    top_owner: &Bound<'_, PyAny>,
+    local_root_count: usize,
+) -> CoreResult<()> {
+    let role = exact_nonnegative_integer(
+        &required_attribute(segment, "role")?,
+        "encoded delta segment role",
+    )?;
+    let posting_mode = exact_nonnegative_integer(
+        &required_attribute(segment, "posting_mode")?,
+        "encoded delta segment posting_mode",
+    )?;
+    if role != 3 || posting_mode != 0 {
+        return Err(CoreError::protocol(
+            "encoded overlay delta role or posting mode is invalid",
+        ));
+    }
+    if !required_attribute(segment, "owner")?.is(top_owner) {
+        return Err(CoreError::protocol(
+            "encoded overlay delta does not retain the top owner",
+        ));
+    }
+    if !required_attribute(segment, "source")?.is_none() {
+        return Err(CoreError::protocol(
+            "encoded overlay delta must not reference a source view",
+        ));
+    }
+    if !required_attribute(segment, "member_token")?.is_none() {
+        return Err(CoreError::protocol(
+            "encoded overlay delta must not carry a member token",
+        ));
+    }
+    validate_empty_segment_bytes(segment, "root_ids")?;
+    validate_empty_segment_bytes(segment, "anonymous_scope_map")?;
+    if local_root_count == 0 {
+        return Err(CoreError::protocol(
+            "encoded overlay delta must carry local structural roots",
         ));
     }
     Ok(())

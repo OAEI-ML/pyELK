@@ -199,6 +199,69 @@ def _excluding_overlay_encoded(
     return overlay, encoded, ordinal
 
 
+def _delta_overlay_encoded(
+    source: Any,
+    encoded_source: Any,
+    added_axioms: tuple[Any, ...],
+    encoded_delta: Any,
+    *,
+    remove_axioms: tuple[Any, ...] = (),
+) -> tuple[Any, Any]:
+    import pyowl_core as owl
+    from pyowl_core.backends import native_views
+
+    source_axioms = sorted(source.iter_axioms(), key=lambda axiom: axiom.canonical_bytes())
+    removed_ordinals = tuple(source_axioms.index(axiom) + 1 for axiom in remove_axioms)
+    overlay = owl.apply_delta(
+        source,
+        owl.OntologyDelta(
+            add_axioms=added_axioms,
+            remove_axioms=remove_axioms,
+            policy=owl.DeltaPolicy.IDEMPOTENT,
+        ),
+    )
+    posting_mode = 2 if removed_ordinals else 0
+    base = native_views.EncodedStructuralSegmentV1(
+        2,
+        encoded_source.owner,
+        encoded_source,
+        posting_mode,
+        memoryview(b"".join(ordinal.to_bytes(4, "little") for ordinal in removed_ordinals)),
+        memoryview(b""),
+        None,
+        encoded_source,
+    )
+    delta = native_views.EncodedStructuralSegmentV1(
+        3,
+        overlay,
+        None,
+        0,
+        memoryview(b""),
+        memoryview(b""),
+        None,
+        encoded_delta,
+    )
+    segments = (base, delta)
+    candidate = SimpleNamespace(
+        schema_name=encoded_delta.schema_name,
+        schema_version=encoded_delta.schema_version,
+        model_schema=encoded_delta.model_schema,
+        owner=overlay,
+        buffers=encoded_delta.buffers,
+        descriptor=encoded_delta.descriptor,
+        structural_fingerprint=native_views._fingerprint(encoded_delta.buffers, segments),
+        segments=segments,
+        scope=encoded_delta.scope,
+        document_key=encoded_delta.document_key,
+    )
+    return overlay, native_views.validate_encoded_structural_view_v1(
+        candidate,
+        expected_owner=overlay,
+        expected_scope=encoded_delta.scope,
+        expected_document_key=encoded_delta.document_key,
+    )
+
+
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
     assert native_module.implementation_version() == "0.1.0.dev0"
@@ -323,9 +386,7 @@ def test_hidden_overlay_exclusion_compiles_only_selected_direct_roots(
         for axiom in snapshot.iter_axioms()
         if type(axiom).__name__ == "FunctionalObjectProperty"
     )
-    overlay, encoded, _ordinal = _excluding_overlay_encoded(
-        snapshot, direct_encoded, removed
-    )
+    overlay, encoded, _ordinal = _excluding_overlay_encoded(snapshot, direct_encoded, removed)
     native = native_module.create_session_from_encoded(encoded, 1, "error")
     scalar = native_module.create_session(
         compile_ontology(overlay, unsupported="error").encode(),
@@ -341,6 +402,158 @@ def test_hidden_overlay_exclusion_compiles_only_selected_direct_roots(
     finally:
         native.close()
         scalar.close()
+
+
+def test_hidden_overlay_delta_merges_source_and_local_columns_exactly(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    source, encoded_source = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-overlay-delta#>)
+        Ontology(<urn:encoded-overlay-delta>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        )"""
+    )
+    delta_source, encoded_delta = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-overlay-delta#>)
+        Ontology(<urn:encoded-overlay-delta-local>
+        Declaration(Class(:C))
+        SubClassOf(:C :A)
+        )"""
+    )
+    removed = next(axiom for axiom in source.iter_axioms() if type(axiom).__name__ == "SubClassOf")
+    added = tuple(delta_source.iter_axioms())
+    overlay, encoded = _delta_overlay_encoded(
+        source,
+        encoded_source,
+        added,
+        encoded_delta,
+        remove_axioms=(removed,),
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(overlay, unsupported="error").encode(),
+        1,
+    )
+    try:
+        diagnostics = native.diagnostics()
+        assert diagnostics["encoded_segment_count"] == 3
+        assert diagnostics["encoded_referenced_view_count"] == 1
+        assert diagnostics["encoded_buffer_count"] == 22
+        assert diagnostics["encoded_zero_copy_buffers"] == 22
+        assert diagnostics["encoded_posting_bytes"] == 4
+        assert diagnostics["encoded_buffer_bytes"] == sum(
+            value.nbytes for value in encoded_source.buffers.values()
+        ) + sum(value.nbytes for value in encoded_delta.buffers.values())
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_private_ir_bytes"] == 0
+        assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+    from pyowl_core.backends import native_views
+
+    base, delta = encoded.segments
+    hostile_delta = SimpleNamespace(
+        role=5,
+        owner=delta.owner,
+        source=delta.source,
+        posting_mode=delta.posting_mode,
+        root_ids=delta.root_ids,
+        anonymous_scope_map=delta.anonymous_scope_map,
+        member_token=delta.member_token,
+    )
+    hostile_segments = (base, hostile_delta)
+    with pytest.raises(ValueError, match=r"overlay|delta|role"):
+        native_module.create_session_from_encoded(
+            _encoded_wrapper(
+                encoded,
+                segments=hostile_segments,
+                structural_fingerprint=native_views._fingerprint(encoded.buffers, hostile_segments),
+            ),
+            1,
+            "error",
+        )
+
+
+def test_hidden_overlay_delta_deduplicates_cross_table_annotation_variants(
+    native_module: ModuleType,
+) -> None:
+    from pyelk.indexing.compiler import compile_ontology
+
+    source, encoded_source = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-overlay-annotation#>)
+        Ontology(<urn:encoded-overlay-annotation>
+        Declaration(AnnotationProperty(:ap))
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(Annotation(:ap "one") :A :B)
+        )"""
+    )
+    delta_source, encoded_delta = _direct_encoded_snapshot(
+        b"""Prefix(:=<urn:encoded-overlay-annotation#>)
+        Ontology(<urn:encoded-overlay-annotation-local>
+        Declaration(AnnotationProperty(:ap))
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        SubClassOf(Annotation(:ap "two") :A :B)
+        )"""
+    )
+    added = tuple(delta_source.iter_axioms())
+    overlay, encoded = _delta_overlay_encoded(
+        source,
+        encoded_source,
+        added,
+        encoded_delta,
+    )
+    native = native_module.create_session_from_encoded(encoded, 1, "error")
+    scalar = native_module.create_session(
+        compile_ontology(overlay, unsupported="error").encode(),
+        1,
+    )
+    try:
+        assert native.diagnostics()["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
+        assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+    finally:
+        native.close()
+        scalar.close()
+
+
+def test_hidden_overlay_delta_session_retains_every_segment_owner(
+    native_module: ModuleType,
+) -> None:
+    source, encoded_source = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-overlay-retain:A>)))"
+    )
+    delta_source, encoded_delta = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded-overlay-retain:B>)))"
+    )
+    overlay, encoded = _delta_overlay_encoded(
+        source,
+        encoded_source,
+        tuple(delta_source.iter_axioms()),
+        encoded_delta,
+    )
+    source_ref = weakref.ref(encoded_source)
+    delta_ref = weakref.ref(encoded_delta)
+    top_ref = weakref.ref(encoded)
+    session = native_module.create_session_from_encoded(encoded, 1, "error")
+    del source, encoded_source, delta_source, encoded_delta, overlay, encoded
+    gc.collect()
+    assert source_ref() is not None
+    assert delta_ref() is not None
+    assert top_ref() is not None
+    session.close()
+    gc.collect()
+    assert source_ref() is None
+    assert delta_ref() is None
+    assert top_ref() is None
 
 
 def test_hidden_overlay_slice_rejects_malformed_selected_or_local_base_segments(
@@ -367,9 +580,7 @@ def test_hidden_overlay_slice_rejects_malformed_selected_or_local_base_segments(
             _encoded_wrapper(
                 encoded,
                 segments=(selected,),
-                structural_fingerprint=native_views._fingerprint(
-                    encoded.buffers, (selected,)
-                ),
+                structural_fingerprint=native_views._fingerprint(encoded.buffers, (selected,)),
             ),
             1,
             "error",
@@ -551,9 +762,7 @@ def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
         _encoded_wrapper(encoded, buffers=altered),
         _encoded_wrapper(
             encoded,
-            structural_fingerprint=SimpleNamespace(
-                algorithm="sha256", schema=1, digest=b"\0" * 32
-            ),
+            structural_fingerprint=SimpleNamespace(algorithm="sha256", schema=1, digest=b"\0" * 32),
         ),
     )
     for candidate in cases:
