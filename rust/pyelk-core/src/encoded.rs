@@ -3387,6 +3387,142 @@ fn compile_different_named_individuals<B: ByteSource>(
     Ok(builder.add_disjoint_expressions(members, Some(FEATURE_DIFFERENT_INDIVIDUALS))?)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ClassProjectionRule {
+    NamedClass,
+    Intersection,
+    Union,
+    Complement,
+    OneOf,
+    ObjectSomeValuesFrom,
+    ObjectHasValue,
+    ObjectHasSelf,
+    DataHasValue,
+    Unsupported(usize, &'static str),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClassProjectionDispatch {
+    tag: u16,
+    rule: ClassProjectionRule,
+}
+
+const CLASS_PROJECTION_RULES: [ClassProjectionDispatch; 19] = [
+    ClassProjectionDispatch {
+        tag: 2,
+        rule: ClassProjectionRule::NamedClass,
+    },
+    ClassProjectionDispatch {
+        tag: 3,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_ANONYMOUS_INDIVIDUAL,
+            "ANONYMOUS_INDIVIDUAL",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 30,
+        rule: ClassProjectionRule::Intersection,
+    },
+    ClassProjectionDispatch {
+        tag: 31,
+        rule: ClassProjectionRule::Union,
+    },
+    ClassProjectionDispatch {
+        tag: 32,
+        rule: ClassProjectionRule::Complement,
+    },
+    ClassProjectionDispatch {
+        tag: 33,
+        rule: ClassProjectionRule::OneOf,
+    },
+    ClassProjectionDispatch {
+        tag: 34,
+        rule: ClassProjectionRule::ObjectSomeValuesFrom,
+    },
+    ClassProjectionDispatch {
+        tag: 35,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_OBJECT_ALL_VALUES_FROM,
+            "OBJECT_ALL_VALUES_FROM",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 36,
+        rule: ClassProjectionRule::ObjectHasValue,
+    },
+    ClassProjectionDispatch {
+        tag: 37,
+        rule: ClassProjectionRule::ObjectHasSelf,
+    },
+    ClassProjectionDispatch {
+        tag: 38,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_OBJECT_MIN_CARDINALITY,
+            "OBJECT_MIN_CARDINALITY",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 39,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_OBJECT_MAX_CARDINALITY,
+            "OBJECT_MAX_CARDINALITY",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 40,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_OBJECT_EXACT_CARDINALITY,
+            "OBJECT_EXACT_CARDINALITY",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 41,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_DATA_SOME_VALUES_FROM,
+            "DATA_SOME_VALUES_FROM",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 42,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_DATA_ALL_VALUES_FROM,
+            "DATA_ALL_VALUES_FROM",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 43,
+        rule: ClassProjectionRule::DataHasValue,
+    },
+    ClassProjectionDispatch {
+        tag: 44,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_DATA_MIN_CARDINALITY,
+            "DATA_MIN_CARDINALITY",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 45,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_DATA_MAX_CARDINALITY,
+            "DATA_MAX_CARDINALITY",
+        ),
+    },
+    ClassProjectionDispatch {
+        tag: 46,
+        rule: ClassProjectionRule::Unsupported(
+            FEATURE_DATA_EXACT_CARDINALITY,
+            "DATA_EXACT_CARDINALITY",
+        ),
+    },
+];
+
+fn class_projection_rule(tag: u16) -> Option<ClassProjectionRule> {
+    CLASS_PROJECTION_RULES
+        .binary_search_by_key(&tag, |dispatch| dispatch.tag)
+        .ok()
+        .map(|index| CLASS_PROJECTION_RULES[index].rule)
+}
+
 fn decode_named_class<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
@@ -3436,14 +3572,9 @@ fn decode_class_expression<B: ByteSource>(
             } => {
                 let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
                 let node = node_index(identifier, node_count)?;
-                match u16_at(columns.node_tags, node, "class-expression node tag")? {
-                    3 => {
-                        return Err(AxiomCompileError::unsupported(
-                            FEATURE_ANONYMOUS_INDIVIDUAL,
-                            "ANONYMOUS_INDIVIDUAL",
-                        ));
-                    }
-                    2 => {
+                let tag = u16_at(columns.node_tags, node, "class-expression node tag")?;
+                match class_projection_rule(tag) {
+                    Some(ClassProjectionRule::NamedClass) => {
                         let entity = decode_named_class(identifier, columns)?;
                         let handle = builder.add_named_occurrence(&entity, negative, positive)?;
                         if positive && entity.iri == OWL_NOTHING_IRI {
@@ -3451,10 +3582,13 @@ fn decode_class_expression<B: ByteSource>(
                         }
                         results.push(handle);
                     }
-                    tag @ (30 | 31) => {
+                    Some(
+                        operation
+                        @ (ClassProjectionRule::Intersection | ClassProjectionRule::Union),
+                    ) => {
                         let children = node_collection(node, 0, columns)?;
                         tasks.push(ExpressionTask::Finish {
-                            operation: if tag == 30 {
+                            operation: if operation == ClassProjectionRule::Intersection {
                                 ExpressionFinish::Intersection
                             } else {
                                 ExpressionFinish::Union
@@ -3471,7 +3605,7 @@ fn decode_class_expression<B: ByteSource>(
                             }
                         }));
                     }
-                    32 => {
+                    Some(ClassProjectionRule::Complement) => {
                         tasks.push(ExpressionTask::Finish {
                             operation: ExpressionFinish::Complement,
                             child_count: 1,
@@ -3484,7 +3618,7 @@ fn decode_class_expression<B: ByteSource>(
                             positive: negative,
                         });
                     }
-                    33 => {
+                    Some(ClassProjectionRule::OneOf) => {
                         let members = node_collection(node, 0, columns)?;
                         if !members.is_empty() {
                             builder.add_feature(FEATURE_OBJECT_ONE_OF, 1)?;
@@ -3509,7 +3643,7 @@ fn decode_class_expression<B: ByteSource>(
                             builder,
                         )?);
                     }
-                    34 => {
+                    Some(ClassProjectionRule::ObjectSomeValuesFrom) => {
                         let property = decode_object_property_for_axiom(
                             node_field(node, 0, columns)?,
                             columns,
@@ -3527,7 +3661,7 @@ fn decode_class_expression<B: ByteSource>(
                             positive,
                         });
                     }
-                    36 => {
+                    Some(ClassProjectionRule::ObjectHasValue) => {
                         let property = decode_object_property_for_axiom(
                             node_field(node, 0, columns)?,
                             columns,
@@ -3545,7 +3679,7 @@ fn decode_class_expression<B: ByteSource>(
                             builder,
                         )?);
                     }
-                    37 => {
+                    Some(ClassProjectionRule::ObjectHasSelf) => {
                         let property = decode_object_property_for_axiom(
                             node_field(node, 0, columns)?,
                             columns,
@@ -3560,7 +3694,7 @@ fn decode_class_expression<B: ByteSource>(
                             positive,
                         )?);
                     }
-                    43 => {
+                    Some(ClassProjectionRule::DataHasValue) => {
                         let property =
                             decode_data_property(node_field(node, 0, columns)?, columns)?;
                         let (payload, observation) = decode_literal_compatibility_key(
@@ -3575,16 +3709,10 @@ fn decode_class_expression<B: ByteSource>(
                             positive,
                         )?);
                     }
-                    tag @ (35 | 38..=42 | 44..=46) => {
-                        let (feature, name) =
-                            unsupported_expression_feature(tag).ok_or_else(|| {
-                                CoreError::internal(
-                                    "unsupported encoded expression lost its feature mapping",
-                                )
-                            })?;
+                    Some(ClassProjectionRule::Unsupported(feature, name)) => {
                         return Err(AxiomCompileError::unsupported(feature, name));
                     }
-                    tag => {
+                    None => {
                         return Err(AxiomCompileError::Core(CoreError::invalid(format!(
                             "encoded compiler does not support class-expression tag {tag}"
                         ))));
@@ -4048,18 +4176,12 @@ fn remapped_axiom_handle(handles: &[usize], handle: usize) -> CoreResult<usize> 
         .ok_or_else(|| CoreError::internal("encoded axiom references an unknown expression"))
 }
 
+#[cfg(test)]
 fn unsupported_expression_feature(tag: u16) -> Option<(usize, &'static str)> {
-    match tag {
-        35 => Some((FEATURE_OBJECT_ALL_VALUES_FROM, "OBJECT_ALL_VALUES_FROM")),
-        38 => Some((FEATURE_OBJECT_MIN_CARDINALITY, "OBJECT_MIN_CARDINALITY")),
-        39 => Some((FEATURE_OBJECT_MAX_CARDINALITY, "OBJECT_MAX_CARDINALITY")),
-        40 => Some((FEATURE_OBJECT_EXACT_CARDINALITY, "OBJECT_EXACT_CARDINALITY")),
-        41 => Some((FEATURE_DATA_SOME_VALUES_FROM, "DATA_SOME_VALUES_FROM")),
-        42 => Some((FEATURE_DATA_ALL_VALUES_FROM, "DATA_ALL_VALUES_FROM")),
-        44 => Some((FEATURE_DATA_MIN_CARDINALITY, "DATA_MIN_CARDINALITY")),
-        45 => Some((FEATURE_DATA_MAX_CARDINALITY, "DATA_MAX_CARDINALITY")),
-        46 => Some((FEATURE_DATA_EXACT_CARDINALITY, "DATA_EXACT_CARDINALITY")),
-        _ => None,
+    if let Some(ClassProjectionRule::Unsupported(feature, name)) = class_projection_rule(tag) {
+        Some((feature, name))
+    } else {
+        None
     }
 }
 
@@ -6646,6 +6768,47 @@ mod tests {
         assert_eq!((supported, unsupported, ignored), (15, 18, 4));
         assert_eq!(axiom_projection_rule(59), None);
         assert_eq!(axiom_projection_rule(124), None);
+    }
+
+    #[test]
+    fn class_projection_rule_table_is_complete_sorted_and_authoritative() {
+        const TAGS: [u16; 19] = [
+            2, 3, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+        ];
+        assert_eq!(
+            CLASS_PROJECTION_RULES
+                .iter()
+                .map(|dispatch| dispatch.tag)
+                .collect::<Vec<_>>(),
+            TAGS
+        );
+        assert!(
+            CLASS_PROJECTION_RULES
+                .windows(2)
+                .all(|pair| pair[0].tag < pair[1].tag)
+        );
+
+        let mut supported = 0;
+        let mut unsupported = 0;
+        for dispatch in CLASS_PROJECTION_RULES {
+            assert_eq!(class_projection_rule(dispatch.tag), Some(dispatch.rule));
+            match dispatch.rule {
+                ClassProjectionRule::Unsupported(feature, name) => {
+                    unsupported += 1;
+                    assert_eq!(
+                        unsupported_expression_feature(dispatch.tag),
+                        Some((feature, name))
+                    );
+                }
+                _ => {
+                    supported += 1;
+                    assert_eq!(unsupported_expression_feature(dispatch.tag), None);
+                }
+            }
+        }
+        assert_eq!((supported, unsupported), (9, 10));
+        assert_eq!(class_projection_rule(1), None);
+        assert_eq!(class_projection_rule(47), None);
     }
 
     #[test]
