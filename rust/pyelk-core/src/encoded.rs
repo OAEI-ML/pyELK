@@ -3845,24 +3845,125 @@ fn decode_named_individual<B: ByteSource>(
     Ok(entity)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ObjectPropertyProjectionRule {
+    Named,
+    InverseUnsupported,
+    Chain,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ObjectPropertyProjectionDispatch {
+    tag: u16,
+    rule: ObjectPropertyProjectionRule,
+}
+
+const OBJECT_PROPERTY_PROJECTION_RULES: [ObjectPropertyProjectionDispatch; 3] = [
+    ObjectPropertyProjectionDispatch {
+        tag: 2,
+        rule: ObjectPropertyProjectionRule::Named,
+    },
+    ObjectPropertyProjectionDispatch {
+        tag: 10,
+        rule: ObjectPropertyProjectionRule::InverseUnsupported,
+    },
+    ObjectPropertyProjectionDispatch {
+        tag: 11,
+        rule: ObjectPropertyProjectionRule::Chain,
+    },
+];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ObjectPropertyProjectionMode {
+    Single,
+    SubProperty,
+}
+
+enum DecodedObjectProperty {
+    Single(Entity),
+    Chain(Vec<Entity>),
+}
+
+fn object_property_projection_rule(tag: u16) -> Option<ObjectPropertyProjectionRule> {
+    OBJECT_PROPERTY_PROJECTION_RULES
+        .binary_search_by_key(&tag, |dispatch| dispatch.tag)
+        .ok()
+        .map(|index| OBJECT_PROPERTY_PROJECTION_RULES[index].rule)
+}
+
+fn decode_object_property_projection<B: ByteSource>(
+    identifier: u32,
+    mode: ObjectPropertyProjectionMode,
+    columns: &EncodedColumns<B>,
+) -> AxiomCompileResult<DecodedObjectProperty> {
+    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
+    let node = node_index(identifier, node_count)?;
+    let tag = u16_at(
+        columns.node_tags,
+        node,
+        "object-property expression node tag",
+    )?;
+    match object_property_projection_rule(tag) {
+        Some(ObjectPropertyProjectionRule::Named) => Ok(DecodedObjectProperty::Single(
+            decode_named_object_property(identifier, columns)?,
+        )),
+        Some(ObjectPropertyProjectionRule::InverseUnsupported) => Err(
+            AxiomCompileError::unsupported(FEATURE_OBJECT_INVERSE_OF, "OBJECT_INVERSE_OF"),
+        ),
+        Some(ObjectPropertyProjectionRule::Chain)
+            if mode == ObjectPropertyProjectionMode::SubProperty =>
+        {
+            let members = node_collection(node, 0, columns)?;
+            if members.len() < 2 {
+                return Err(AxiomCompileError::Core(CoreError::invalid(
+                    "encoded object property chain must contain at least two members",
+                )));
+            }
+            let mut properties = Vec::new();
+            properties
+                .try_reserve_exact(members.len())
+                .map_err(|_| CoreError::capacity("encoded property-chain allocation failed"))?;
+            for member in members {
+                match decode_object_property_projection(
+                    member,
+                    ObjectPropertyProjectionMode::Single,
+                    columns,
+                )? {
+                    DecodedObjectProperty::Single(property) => properties.push(property),
+                    DecodedObjectProperty::Chain(_) => {
+                        return Err(AxiomCompileError::Core(CoreError::internal(
+                            "single-property projection returned a chain",
+                        )));
+                    }
+                }
+            }
+            Ok(DecodedObjectProperty::Chain(properties))
+        }
+        Some(ObjectPropertyProjectionRule::Chain) => {
+            Err(AxiomCompileError::Core(CoreError::invalid(
+                "encoded object property chain is not valid in a single-property position",
+            )))
+        }
+        None => Err(AxiomCompileError::Core(CoreError::invalid(format!(
+            "encoded compiler does not support object-property expression tag {tag}"
+        )))),
+    }
+}
+
 fn decode_object_property_for_axiom<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
 ) -> AxiomCompileResult<Entity> {
-    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
-    let node = node_index(identifier, node_count)?;
-    if u16_at(
-        columns.node_tags,
-        node,
-        "object-property expression node tag",
-    )? == 10
-    {
-        return Err(AxiomCompileError::unsupported(
-            FEATURE_OBJECT_INVERSE_OF,
-            "OBJECT_INVERSE_OF",
-        ));
+    match decode_object_property_projection(
+        identifier,
+        ObjectPropertyProjectionMode::Single,
+        columns,
+    )? {
+        DecodedObjectProperty::Single(property) => Ok(property),
+        DecodedObjectProperty::Chain(_) => Err(AxiomCompileError::Core(CoreError::internal(
+            "single-property projection returned a chain",
+        ))),
     }
-    Ok(decode_named_object_property(identifier, columns)?)
 }
 
 fn decode_named_object_property<B: ByteSource>(
@@ -3975,33 +4076,13 @@ fn decode_property_chain_for_axiom<B: ByteSource>(
     identifier: u32,
     columns: &EncodedColumns<B>,
 ) -> AxiomCompileResult<Vec<Entity>> {
-    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
-    let node = node_index(identifier, node_count)?;
-    match u16_at(columns.node_tags, node, "sub-property node tag")? {
-        2 => Ok(vec![decode_object_property_for_axiom(identifier, columns)?]),
-        10 => Err(AxiomCompileError::unsupported(
-            FEATURE_OBJECT_INVERSE_OF,
-            "OBJECT_INVERSE_OF",
-        )),
-        11 => {
-            let members = node_collection(node, 0, columns)?;
-            if members.len() < 2 {
-                return Err(AxiomCompileError::Core(CoreError::invalid(
-                    "encoded object property chain must contain at least two members",
-                )));
-            }
-            let mut properties = Vec::new();
-            properties
-                .try_reserve_exact(members.len())
-                .map_err(|_| CoreError::capacity("encoded property-chain allocation failed"))?;
-            for member in members {
-                properties.push(decode_object_property_for_axiom(member, columns)?);
-            }
-            Ok(properties)
-        }
-        _ => Err(AxiomCompileError::Core(CoreError::invalid(
-            "encoded named-hierarchy compiler does not support inverse object properties",
-        ))),
+    match decode_object_property_projection(
+        identifier,
+        ObjectPropertyProjectionMode::SubProperty,
+        columns,
+    )? {
+        DecodedObjectProperty::Single(property) => Ok(vec![property]),
+        DecodedObjectProperty::Chain(properties) => Ok(properties),
     }
 }
 
@@ -6809,6 +6890,31 @@ mod tests {
         assert_eq!((supported, unsupported), (9, 10));
         assert_eq!(class_projection_rule(1), None);
         assert_eq!(class_projection_rule(47), None);
+    }
+
+    #[test]
+    fn object_property_projection_rule_table_is_complete_sorted_and_authoritative() {
+        const TAGS: [u16; 3] = [2, 10, 11];
+        assert_eq!(
+            OBJECT_PROPERTY_PROJECTION_RULES
+                .iter()
+                .map(|dispatch| dispatch.tag)
+                .collect::<Vec<_>>(),
+            TAGS
+        );
+        assert!(
+            OBJECT_PROPERTY_PROJECTION_RULES
+                .windows(2)
+                .all(|pair| pair[0].tag < pair[1].tag)
+        );
+        for dispatch in OBJECT_PROPERTY_PROJECTION_RULES {
+            assert_eq!(
+                object_property_projection_rule(dispatch.tag),
+                Some(dispatch.rule)
+            );
+        }
+        assert_eq!(object_property_projection_rule(1), None);
+        assert_eq!(object_property_projection_rule(12), None);
     }
 
     #[test]
