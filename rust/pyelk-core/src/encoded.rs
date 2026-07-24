@@ -1949,6 +1949,191 @@ fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
     builder.freeze([0; 32])
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AxiomProjectionRule {
+    Declaration,
+    SubClass,
+    EquivalentClasses,
+    DisjointClasses,
+    DisjointUnion,
+    SubObjectProperty,
+    EquivalentObjectProperties,
+    ObjectPropertyDomain,
+    ObjectPropertyRange,
+    ReflexiveObjectProperty,
+    TransitiveObjectProperty,
+    SameIndividual,
+    DifferentIndividuals,
+    ClassAssertion,
+    ObjectPropertyAssertion,
+    IgnoreNonlogical,
+    Unsupported(usize, &'static str),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AxiomProjectionDispatch {
+    tag: u16,
+    rule: AxiomProjectionRule,
+}
+
+const AXIOM_PROJECTION_RULES: [AxiomProjectionDispatch; 37] = [
+    AxiomProjectionDispatch {
+        tag: 60,
+        rule: AxiomProjectionRule::Declaration,
+    },
+    AxiomProjectionDispatch {
+        tag: 61,
+        rule: AxiomProjectionRule::SubClass,
+    },
+    AxiomProjectionDispatch {
+        tag: 62,
+        rule: AxiomProjectionRule::EquivalentClasses,
+    },
+    AxiomProjectionDispatch {
+        tag: 63,
+        rule: AxiomProjectionRule::DisjointClasses,
+    },
+    AxiomProjectionDispatch {
+        tag: 64,
+        rule: AxiomProjectionRule::DisjointUnion,
+    },
+    AxiomProjectionDispatch {
+        tag: 70,
+        rule: AxiomProjectionRule::SubObjectProperty,
+    },
+    AxiomProjectionDispatch {
+        tag: 71,
+        rule: AxiomProjectionRule::EquivalentObjectProperties,
+    },
+    AxiomProjectionDispatch {
+        tag: 72,
+        rule: AxiomProjectionRule::Unsupported(18, "DISJOINT_OBJECT_PROPERTIES"),
+    },
+    AxiomProjectionDispatch {
+        tag: 73,
+        rule: AxiomProjectionRule::Unsupported(25, "INVERSE_OBJECT_PROPERTIES"),
+    },
+    AxiomProjectionDispatch {
+        tag: 74,
+        rule: AxiomProjectionRule::ObjectPropertyDomain,
+    },
+    AxiomProjectionDispatch {
+        tag: 75,
+        rule: AxiomProjectionRule::ObjectPropertyRange,
+    },
+    AxiomProjectionDispatch {
+        tag: 76,
+        rule: AxiomProjectionRule::Unsupported(22, "FUNCTIONAL_OBJECT_PROPERTY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 77,
+        rule: AxiomProjectionRule::Unsupported(24, "INVERSE_FUNCTIONAL_OBJECT_PROPERTY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 78,
+        rule: AxiomProjectionRule::ReflexiveObjectProperty,
+    },
+    AxiomProjectionDispatch {
+        tag: 79,
+        rule: AxiomProjectionRule::Unsupported(26, "IRREFLEXIVE_OBJECT_PROPERTY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 80,
+        rule: AxiomProjectionRule::Unsupported(47, "SYMMETRIC_OBJECT_PROPERTY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 81,
+        rule: AxiomProjectionRule::Unsupported(1, "ASYMMETRIC_OBJECT_PROPERTY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 82,
+        rule: AxiomProjectionRule::TransitiveObjectProperty,
+    },
+    AxiomProjectionDispatch {
+        tag: 90,
+        rule: AxiomProjectionRule::Unsupported(45, "SUB_DATA_PROPERTY_OF"),
+    },
+    AxiomProjectionDispatch {
+        tag: 91,
+        rule: AxiomProjectionRule::Unsupported(20, "EQUIVALENT_DATA_PROPERTIES"),
+    },
+    AxiomProjectionDispatch {
+        tag: 92,
+        rule: AxiomProjectionRule::Unsupported(17, "DISJOINT_DATA_PROPERTIES"),
+    },
+    AxiomProjectionDispatch {
+        tag: 93,
+        rule: AxiomProjectionRule::Unsupported(10, "DATA_PROPERTY_DOMAIN"),
+    },
+    AxiomProjectionDispatch {
+        tag: 94,
+        rule: AxiomProjectionRule::Unsupported(11, "DATA_PROPERTY_RANGE"),
+    },
+    AxiomProjectionDispatch {
+        tag: 95,
+        rule: AxiomProjectionRule::Unsupported(21, "FUNCTIONAL_DATA_PROPERTY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 100,
+        rule: AxiomProjectionRule::Unsupported(14, "DATATYPE_DEFINITION"),
+    },
+    AxiomProjectionDispatch {
+        tag: 101,
+        rule: AxiomProjectionRule::Unsupported(23, "HAS_KEY"),
+    },
+    AxiomProjectionDispatch {
+        tag: 110,
+        rule: AxiomProjectionRule::SameIndividual,
+    },
+    AxiomProjectionDispatch {
+        tag: 111,
+        rule: AxiomProjectionRule::DifferentIndividuals,
+    },
+    AxiomProjectionDispatch {
+        tag: 112,
+        rule: AxiomProjectionRule::ClassAssertion,
+    },
+    AxiomProjectionDispatch {
+        tag: 113,
+        rule: AxiomProjectionRule::ObjectPropertyAssertion,
+    },
+    AxiomProjectionDispatch {
+        tag: 114,
+        rule: AxiomProjectionRule::Unsupported(28, "NEGATIVE_OBJECT_PROPERTY_ASSERTION"),
+    },
+    AxiomProjectionDispatch {
+        tag: 115,
+        rule: AxiomProjectionRule::Unsupported(9, "DATA_PROPERTY_ASSERTION"),
+    },
+    AxiomProjectionDispatch {
+        tag: 116,
+        rule: AxiomProjectionRule::Unsupported(27, "NEGATIVE_DATA_PROPERTY_ASSERTION"),
+    },
+    AxiomProjectionDispatch {
+        tag: 120,
+        rule: AxiomProjectionRule::IgnoreNonlogical,
+    },
+    AxiomProjectionDispatch {
+        tag: 121,
+        rule: AxiomProjectionRule::IgnoreNonlogical,
+    },
+    AxiomProjectionDispatch {
+        tag: 122,
+        rule: AxiomProjectionRule::IgnoreNonlogical,
+    },
+    AxiomProjectionDispatch {
+        tag: 123,
+        rule: AxiomProjectionRule::IgnoreNonlogical,
+    },
+];
+
+fn axiom_projection_rule(tag: u16) -> Option<AxiomProjectionRule> {
+    AXIOM_PROJECTION_RULES
+        .binary_search_by_key(&tag, |dispatch| dispatch.tag)
+        .ok()
+        .map(|index| AXIOM_PROJECTION_RULES[index].rule)
+}
+
 fn compile_axiom_node<B: ByteSource>(
     tag: u16,
     node: usize,
@@ -1956,30 +2141,53 @@ fn compile_axiom_node<B: ByteSource>(
     builder: &mut NamedHierarchyBuilder,
     transaction: &mut NamedHierarchyBuilder,
 ) -> CoreResult<()> {
-    let result = match tag {
-        60 => compile_declaration(node, columns, transaction),
-        61 => compile_named_subclass(node, columns, transaction),
-        62 => compile_named_equivalence(node, columns, transaction),
-        63 => compile_disjoint_named_classes(node, columns, transaction),
-        64 => compile_named_disjoint_union(node, columns, transaction),
-        70 => compile_named_subproperty(node, columns, transaction),
-        71 => compile_equivalent_named_properties(node, columns, transaction),
-        74 => compile_named_property_domain(node, columns, transaction),
-        75 => compile_named_property_range(node, columns, transaction),
-        78 => compile_reflexive_named_property(node, columns, transaction),
-        82 => compile_transitive_named_property(node, columns, transaction),
-        110 => compile_same_named_individuals(node, columns, transaction),
-        111 => compile_different_named_individuals(node, columns, transaction),
-        112 => compile_named_class_assertion(node, columns, transaction),
-        113 => compile_named_object_property_assertion(node, columns, transaction),
-        120..=123 => Ok(()),
-        tag if unsupported_axiom_feature(tag).is_some() => {
-            let (feature, name) = unsupported_axiom_feature(tag).ok_or_else(|| {
-                CoreError::internal("unsupported encoded axiom lost its feature mapping")
-            })?;
+    let result = match axiom_projection_rule(tag) {
+        Some(AxiomProjectionRule::Declaration) => compile_declaration(node, columns, transaction),
+        Some(AxiomProjectionRule::SubClass) => compile_named_subclass(node, columns, transaction),
+        Some(AxiomProjectionRule::EquivalentClasses) => {
+            compile_named_equivalence(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::DisjointClasses) => {
+            compile_disjoint_named_classes(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::DisjointUnion) => {
+            compile_named_disjoint_union(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::SubObjectProperty) => {
+            compile_named_subproperty(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::EquivalentObjectProperties) => {
+            compile_equivalent_named_properties(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::ObjectPropertyDomain) => {
+            compile_named_property_domain(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::ObjectPropertyRange) => {
+            compile_named_property_range(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::ReflexiveObjectProperty) => {
+            compile_reflexive_named_property(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::TransitiveObjectProperty) => {
+            compile_transitive_named_property(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::SameIndividual) => {
+            compile_same_named_individuals(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::DifferentIndividuals) => {
+            compile_different_named_individuals(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::ClassAssertion) => {
+            compile_named_class_assertion(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::ObjectPropertyAssertion) => {
+            compile_named_object_property_assertion(node, columns, transaction)
+        }
+        Some(AxiomProjectionRule::IgnoreNonlogical) => Ok(()),
+        Some(AxiomProjectionRule::Unsupported(feature, name)) => {
             Err(AxiomCompileError::unsupported(feature, name))
         }
-        tag => Err(AxiomCompileError::Core(CoreError::invalid(format!(
+        None => Err(AxiomCompileError::Core(CoreError::invalid(format!(
             "encoded named-hierarchy compiler does not support axiom tag {tag}"
         )))),
     };
@@ -3855,27 +4063,12 @@ fn unsupported_expression_feature(tag: u16) -> Option<(usize, &'static str)> {
     }
 }
 
+#[cfg(test)]
 fn unsupported_axiom_feature(tag: u16) -> Option<(usize, &'static str)> {
-    match tag {
-        72 => Some((18, "DISJOINT_OBJECT_PROPERTIES")),
-        73 => Some((25, "INVERSE_OBJECT_PROPERTIES")),
-        76 => Some((22, "FUNCTIONAL_OBJECT_PROPERTY")),
-        77 => Some((24, "INVERSE_FUNCTIONAL_OBJECT_PROPERTY")),
-        79 => Some((26, "IRREFLEXIVE_OBJECT_PROPERTY")),
-        80 => Some((47, "SYMMETRIC_OBJECT_PROPERTY")),
-        81 => Some((1, "ASYMMETRIC_OBJECT_PROPERTY")),
-        90 => Some((45, "SUB_DATA_PROPERTY_OF")),
-        91 => Some((20, "EQUIVALENT_DATA_PROPERTIES")),
-        92 => Some((17, "DISJOINT_DATA_PROPERTIES")),
-        93 => Some((10, "DATA_PROPERTY_DOMAIN")),
-        94 => Some((11, "DATA_PROPERTY_RANGE")),
-        95 => Some((21, "FUNCTIONAL_DATA_PROPERTY")),
-        100 => Some((14, "DATATYPE_DEFINITION")),
-        101 => Some((23, "HAS_KEY")),
-        114 => Some((28, "NEGATIVE_OBJECT_PROPERTY_ASSERTION")),
-        115 => Some((9, "DATA_PROPERTY_ASSERTION")),
-        116 => Some((27, "NEGATIVE_DATA_PROPERTY_ASSERTION")),
-        _ => None,
+    if let Some(AxiomProjectionRule::Unsupported(feature, name)) = axiom_projection_rule(tag) {
+        Some((feature, name))
+    } else {
+        None
     }
 }
 
@@ -6406,6 +6599,53 @@ mod tests {
         }
         assert!(constructor_roles(0).is_none());
         assert!(constructor_roles(149).is_none());
+    }
+
+    #[test]
+    fn axiom_projection_rule_table_is_complete_sorted_and_authoritative() {
+        const TAGS: [u16; 37] = [
+            60, 61, 62, 63, 64, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 90, 91, 92, 93,
+            94, 95, 100, 101, 110, 111, 112, 113, 114, 115, 116, 120, 121, 122, 123,
+        ];
+        assert_eq!(
+            AXIOM_PROJECTION_RULES
+                .iter()
+                .map(|dispatch| dispatch.tag)
+                .collect::<Vec<_>>(),
+            TAGS
+        );
+        assert!(
+            AXIOM_PROJECTION_RULES
+                .windows(2)
+                .all(|pair| pair[0].tag < pair[1].tag)
+        );
+
+        let mut supported = 0;
+        let mut unsupported = 0;
+        let mut ignored = 0;
+        for dispatch in AXIOM_PROJECTION_RULES {
+            assert_eq!(axiom_projection_rule(dispatch.tag), Some(dispatch.rule));
+            match dispatch.rule {
+                AxiomProjectionRule::Unsupported(feature, name) => {
+                    unsupported += 1;
+                    assert_eq!(
+                        unsupported_axiom_feature(dispatch.tag),
+                        Some((feature, name))
+                    );
+                }
+                AxiomProjectionRule::IgnoreNonlogical => {
+                    ignored += 1;
+                    assert_eq!(unsupported_axiom_feature(dispatch.tag), None);
+                }
+                _ => {
+                    supported += 1;
+                    assert_eq!(unsupported_axiom_feature(dispatch.tag), None);
+                }
+            }
+        }
+        assert_eq!((supported, unsupported, ignored), (15, 18, 4));
+        assert_eq!(axiom_projection_rule(59), None);
+        assert_eq!(axiom_projection_rule(124), None);
     }
 
     #[test]
