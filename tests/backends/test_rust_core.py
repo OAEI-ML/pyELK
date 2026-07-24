@@ -1851,6 +1851,7 @@ def test_hidden_encoded_session_deduplicates_annotated_axioms(
     scalar = native_module.create_session(compiled.encode(), 1)
     try:
         assert direct.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
+        assert direct.diagnostics()["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
     finally:
         direct.close()
         scalar.close()

@@ -507,12 +507,6 @@ impl From<CoreError> for AxiomCompileError {
 
 type AxiomCompileResult<T> = Result<T, AxiomCompileError>;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct AnnotatedAxiomState {
-    has_unannotated: bool,
-    compiled: bool,
-}
-
 #[derive(Clone, Copy, Debug)]
 struct DfsFrame {
     node: usize,
@@ -1901,8 +1895,8 @@ fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
     selection: Option<EncodedRootSelection<P>>,
 ) -> CoreResult<EncodedCompilation> {
     let validated = validate_columns(columns, limits)?;
-    let mut annotated_axioms = annotated_axiom_states(&columns, validated.root_count, selection)?;
     let mut observed_axiom_roots = BTreeSet::new();
+    let mut previous_logical_axiom = None;
     let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
     let mut transaction = NamedHierarchyBuilder::transaction();
     let mut selected_roots = EncodedRootCursor::new(selection);
@@ -1934,15 +1928,12 @@ fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
         if !observed_axiom_roots.insert(identifier) {
             continue;
         }
-        if !(120..=123).contains(&tag) && annotation_count(node, &columns)? != 0 {
+        if !(120..=123).contains(&tag) {
             let key = stripped_axiom_key(node, &columns)?;
-            let state = annotated_axioms.get_mut(&key).ok_or_else(|| {
-                CoreError::internal("annotated encoded axiom lost its deduplication state")
-            })?;
-            if state.has_unannotated || state.compiled {
+            if previous_logical_axiom.as_ref() == Some(&key) {
                 continue;
             }
-            state.compiled = true;
+            previous_logical_axiom = Some(key);
         }
         compile_axiom_node(tag, node, &columns, &mut builder, &mut transaction)?;
     }
@@ -2199,55 +2190,6 @@ fn compile_axiom_node<B: ByteSource>(
         }
         Err(AxiomCompileError::Core(error)) => Err(error),
     }
-}
-
-fn annotated_axiom_states<B: ByteSource, P: ByteSource>(
-    columns: &EncodedColumns<B>,
-    root_count: usize,
-    selection: Option<EncodedRootSelection<P>>,
-) -> CoreResult<BTreeMap<Vec<u64>, AnnotatedAxiomState>> {
-    let node_count = aligned_count(columns.node_tags, 2, "node_tags")?;
-    let mut states = BTreeMap::new();
-    let mut selected_roots = EncodedRootCursor::new(selection);
-    for root in 0..root_count {
-        if !selected_roots.includes(root)? {
-            continue;
-        }
-        if byte_at(columns.root_kinds, root, "root kind")? != ROOT_AXIOM {
-            continue;
-        }
-        let identifier = u32_at(columns.root_ids, root, "root ID")?;
-        let node = node_index(identifier, node_count)?;
-        let tag = u16_at(columns.node_tags, node, "root node tag")?;
-        if (120..=123).contains(&tag) || annotation_count(node, columns)? == 0 {
-            continue;
-        }
-        states
-            .entry(stripped_axiom_key(node, columns)?)
-            .or_insert_with(AnnotatedAxiomState::default);
-    }
-    if states.is_empty() {
-        return Ok(states);
-    }
-    let mut selected_roots = EncodedRootCursor::new(selection);
-    for root in 0..root_count {
-        if !selected_roots.includes(root)? {
-            continue;
-        }
-        if byte_at(columns.root_kinds, root, "root kind")? != ROOT_AXIOM {
-            continue;
-        }
-        let identifier = u32_at(columns.root_ids, root, "root ID")?;
-        let node = node_index(identifier, node_count)?;
-        let tag = u16_at(columns.node_tags, node, "root node tag")?;
-        if (120..=123).contains(&tag) || annotation_count(node, columns)? != 0 {
-            continue;
-        }
-        if let Some(state) = states.get_mut(&stripped_axiom_key(node, columns)?) {
-            state.has_unannotated = true;
-        }
-    }
-    Ok(states)
 }
 
 fn stripped_axiom_key<B: ByteSource>(
@@ -4170,14 +4112,6 @@ fn accept_annotations<B: ByteSource>(
         ));
     }
     Ok(())
-}
-
-fn annotation_count<B: ByteSource>(node: usize, columns: &EncodedColumns<B>) -> CoreResult<usize> {
-    usize_at(
-        columns.field_lengths,
-        annotation_field(node, columns)?,
-        "annotation count",
-    )
 }
 
 fn annotation_field<B: ByteSource>(node: usize, columns: &EncodedColumns<B>) -> CoreResult<usize> {
