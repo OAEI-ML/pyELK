@@ -1163,10 +1163,11 @@ fn create_session_from_encoded(
         };
         let compatibility_spelling =
             py.detach(|| compatibility_spelling_digest(&compilation.compatibility_observations))?;
+        let (logical, signature) = input.source_parts.compiled_fingerprints(&compilation)?;
         compilation.ontology.source_fingerprint = encoded_source_fingerprint(
             py,
-            &input.source_parts.logical,
-            &input.source_parts.signature,
+            &logical,
+            &signature,
             unsupported,
             input.source_parts.model_schema,
             &compatibility_spelling,
@@ -1499,11 +1500,9 @@ fn validate_encoded_input<'py>(
     encoded_view: &Bound<'py, PyAny>,
 ) -> CoreResult<ValidatedEncodedInput<'py>> {
     let (top_owner, model_schema) = validate_encoded_envelope(encoded_view)?;
-    let logical = read_fingerprint(&top_owner, "logical_fingerprint")?;
-    let signature = read_fingerprint(&top_owner, "signature_fingerprint")?;
     let source_parts = EncodedSourceParts {
-        logical,
-        signature,
+        logical: None,
+        signature: None,
         model_schema,
     };
 
@@ -1605,6 +1604,11 @@ fn validate_encoded_input<'py>(
                     ));
                 }
                 validate_direct_segment(&current, &owner)?;
+                let source_parts = if delta_bindings.is_none() && posting.is_none() {
+                    EncodedSourceParts::from_owner(&top_owner, model_schema)?
+                } else {
+                    source_parts
+                };
                 return Ok(ValidatedEncodedInput {
                     bindings: local_bindings.ok_or_else(|| {
                         CoreError::internal("direct encoded bindings were unexpectedly moved")
@@ -2357,9 +2361,49 @@ struct FingerprintParts {
 }
 
 struct EncodedSourceParts {
-    logical: FingerprintParts,
-    signature: FingerprintParts,
+    logical: Option<FingerprintParts>,
+    signature: Option<FingerprintParts>,
     model_schema: u64,
+}
+
+impl FingerprintParts {
+    fn sha256(digest: [u8; 32]) -> Self {
+        Self {
+            algorithm: "sha256".to_owned(),
+            schema: 1,
+            digest,
+        }
+    }
+}
+
+impl EncodedSourceParts {
+    fn from_owner(owner: &Bound<'_, PyAny>, model_schema: u64) -> CoreResult<Self> {
+        Ok(Self {
+            logical: Some(read_fingerprint(owner, "logical_fingerprint")?),
+            signature: Some(read_fingerprint(owner, "signature_fingerprint")?),
+            model_schema,
+        })
+    }
+
+    fn compiled_fingerprints(
+        &self,
+        compilation: &pyelk_core::encoded::EncodedCompilation,
+    ) -> CoreResult<(FingerprintParts, FingerprintParts)> {
+        if let Some(fingerprints) = compilation.semantic_fingerprints {
+            return Ok((
+                FingerprintParts::sha256(fingerprints.logical),
+                FingerprintParts::sha256(fingerprints.signature),
+            ));
+        }
+        Ok((
+            self.logical.clone().ok_or_else(|| {
+                CoreError::internal("encoded logical fingerprint was not resolved")
+            })?,
+            self.signature.clone().ok_or_else(|| {
+                CoreError::internal("encoded signature fingerprint was not resolved")
+            })?,
+        ))
+    }
 }
 
 fn read_fingerprint(owner: &Bound<'_, PyAny>, name: &str) -> CoreResult<FingerprintParts> {

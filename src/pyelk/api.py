@@ -36,7 +36,12 @@ from pyelk.indexing.metadata import (
     metadata_from_compiled,
 )
 from pyelk.indexing.summary import compiler_digest
-from pyelk.inputs import InputCapture, capture_input, load_snapshot
+from pyelk.inputs import (
+    InputCapture,
+    _acquire_input,
+    _complete_input_capture,
+    load_snapshot,
+)
 from pyelk.reasoning.completeness import issues_for
 from pyelk.reasoning.contracts import (
     BackendInfo,
@@ -85,7 +90,6 @@ class Reasoner:
     """ELK-compatible reasoning over one immutable pyowl-core view revision."""
 
     __slots__ = (
-        "_capture",
         "_class_taxonomy_value",
         "_closed",
         "_compiler_digest",
@@ -97,6 +101,7 @@ class Reasoner:
         "_materialized_scalar_rows",
         "_metadata",
         "_object_taxonomy_value",
+        "_ontology",
         "_policy_features",
         "_raw_class_taxonomy_value",
         "_raw_object_taxonomy_value",
@@ -127,30 +132,28 @@ class Reasoner:
         )
         self._lock = RLock()
         self._closed = False
-        capture = capture_input(
+        ontology, imports = _acquire_input(
             ontology,
             document_iri=document_iri,
             options=load_options,
             resolver=resolver,
         )
-        if (
-            capture.imports.requires_incomplete_imports
-            and not self._config.allow_incomplete_imports
-        ):
+        if imports.requires_incomplete_imports and not self._config.allow_incomplete_imports:
             raise owl.UnresolvedImportError(
                 "the ontology view has an incomplete import closure; "
                 "set allow_incomplete_imports=True to reason over the available closure"
             )
-        self._capture: InputCapture | None = capture
+        self._ontology: owl.OntologyView | None = ontology
         self._policy_features = (
-            (PolicyFeature.IGNORED_IMPORT,) if capture.imports.requires_incomplete_imports else ()
+            (PolicyFeature.IGNORED_IMPORT,) if imports.requires_incomplete_imports else ()
         )
         expected_compiler_digest: str | None
-        encoded = try_create_encoded_backend_session(capture.ontology.view, self._config)
+        encoded = try_create_encoded_backend_session(ontology, self._config)
         if encoded is None:
+            capture = _complete_input_capture(ontology, imports)
             compile_started = perf_counter()
             compiled, materialized_scalar_rows = _compile_ontology_with_materialization_count(
-                capture.ontology.view,
+                ontology,
                 unsupported=self._config.unsupported,
             )
             metadata = metadata_from_compiled(compiled)
@@ -212,7 +215,7 @@ class Reasoner:
                 self._compiler_digest = None
                 self._metadata = None
                 self._symbols = None
-                self._capture = None
+                self._ontology = None
                 self._entity_by_record = {}
                 self._raw_class_taxonomy_value = None
                 self._raw_object_taxonomy_value = None
@@ -254,9 +257,9 @@ class Reasoner:
     def ontology(self) -> owl.OntologyView:
         with self._lock:
             self._ensure_open()
-            if self._capture is None:  # pragma: no cover - open invariant
+            if self._ontology is None:  # pragma: no cover - open invariant
                 raise ReasonerClosedError
-            return self._capture.ontology.view
+            return self._ontology
 
     def diagnostics(self) -> Mapping[str, DiagnosticScalar]:
         """Return immutable, path-safe compiler, ingestion, and session diagnostics."""

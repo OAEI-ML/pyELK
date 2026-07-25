@@ -271,8 +271,8 @@ def _require_view_capabilities(
         )
 
 
-def capture_compatible_view(view: OntologyView) -> CapturedOntology:
-    """Validate and retain an already-coerced core view by exact identity."""
+def _require_compatible_view(view: OntologyView) -> CoreVersionInfo:
+    """Validate the bounded core contract without reading ontology-sized state."""
 
     versions = require_core_compatibility()
     if not isinstance(view, OntologyView):
@@ -283,6 +283,13 @@ def capture_compatible_view(view: OntologyView) -> CapturedOntology:
             versions=versions,
         )
     _require_view_capabilities(view.capabilities, versions)
+    return versions
+
+
+def capture_compatible_view(view: OntologyView) -> CapturedOntology:
+    """Validate and retain an already-coerced core view by exact identity."""
+
+    versions = _require_compatible_view(view)
     for name in (
         "structural_fingerprint",
         "logical_fingerprint",

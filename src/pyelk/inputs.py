@@ -25,7 +25,7 @@ from pyowl_core import (
     OntologyView,
 )
 
-from .core import CapturedOntology, capture_compatible_view
+from .core import CapturedOntology, _require_compatible_view, capture_compatible_view
 
 # These aliases intentionally preserve core identity, signatures, exceptions, and future
 # compatible 0.1 implementation fixes.  In particular, load_snapshot continues to reject
@@ -208,16 +208,44 @@ def capture_input(
 ) -> InputCapture:
     """Coerce exactly once, validate, and retain a bounded input observation."""
 
+    view, imports = _acquire_input(
+        source,
+        document_iri=document_iri,
+        options=options,
+        resolver=resolver,
+    )
+    return _complete_input_capture(view, imports)
+
+
+def _acquire_input(
+    source: OntologyInput,
+    *,
+    document_iri: IRI | str | None = None,
+    options: LoadOptions | None = None,
+    resolver: ImportResolver | None = None,
+) -> tuple[OntologyView, ImportClosureMetadata]:
+    """Acquire once and validate only bounded metadata before path selection."""
+
     view = _core.coerce_snapshot(
         source,
         document_iri=document_iri,
         options=options,
         resolver=resolver,
     )
+    _require_compatible_view(view)
+    return view, describe_import_closure(view)
+
+
+def _complete_input_capture(
+    view: OntologyView,
+    imports: ImportClosureMetadata,
+) -> InputCapture:
+    """Capture fingerprints only for a path that consumes scalar view semantics."""
+
     ontology = capture_compatible_view(view)
     return InputCapture(
         ontology=ontology,
-        imports=describe_import_closure(view),
+        imports=imports,
         revision=describe_view_revision(ontology),
     )
 

@@ -240,7 +240,7 @@ def test_provider_is_called_once_and_view_identity_is_retained() -> None:
     assert snapshot.signature()
 
 
-def test_public_facade_runs_from_encoded_metadata_without_scalar_compilation(
+def test_public_facade_selects_encoded_metadata_before_scalar_capture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     snapshot = _snapshot(
@@ -262,10 +262,20 @@ def test_public_facade_runs_from_encoded_metadata_without_scalar_compilation(
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("scalar compiler/backend path was reached")
 
+    def forbidden_fingerprint(_view: object) -> object:
+        raise AssertionError("encoded selection read a scalar view fingerprint")
+
+    for name in (
+        "structural_fingerprint",
+        "logical_fingerprint",
+        "signature_fingerprint",
+    ):
+        monkeypatch.setattr(type(snapshot), name, property(forbidden_fingerprint))
     monkeypatch.setattr("pyelk.api._compile_ontology_with_materialization_count", forbidden)
     monkeypatch.setattr("pyelk.api.create_backend_session", forbidden)
 
     with Reasoner(snapshot, config) as reasoner:
+        assert reasoner.ontology is snapshot
         assert reasoner._entity_by_record == {}
         assert reasoner.is_consistent().value is True
         assert reasoner.classify().value.supers(_class("A"), direct=True) == (

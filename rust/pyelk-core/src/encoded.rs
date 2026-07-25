@@ -10,6 +10,8 @@ use std::cmp::Ordering;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
+use sha2::{Digest, Sha256};
+
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{
     Entity, EntityKind, Expression, ExpressionTag, FEATURE_VECTOR_LENGTH,
@@ -274,6 +276,28 @@ impl ByteSource for &[u8] {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum OptionalByteSource<B: ByteSource> {
+    Empty,
+    Bytes(B),
+}
+
+impl<B: ByteSource> ByteSource for OptionalByteSource<B> {
+    fn len(self) -> usize {
+        match self {
+            Self::Empty => 0,
+            Self::Bytes(source) => source.len(),
+        }
+    }
+
+    fn byte(self, index: usize) -> Option<u8> {
+        match self {
+            Self::Empty => None,
+            Self::Bytes(source) => source.byte(index),
+        }
+    }
+}
+
 /// Borrowed public encoded-view columns, each exposed through one immutable
 /// byte-source type. No input column is copied by validation.
 #[derive(Clone, Copy, Debug)]
@@ -341,6 +365,14 @@ pub struct EncodedColumnShape {
 pub struct EncodedCompilation {
     pub ontology: Ontology,
     pub compatibility_observations: Vec<Vec<u8>>,
+    pub semantic_fingerprints: Option<EncodedSemanticFingerprints>,
+}
+
+/// Exact pyowl-core logical/signature digests recovered from a segmented effective view.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EncodedSemanticFingerprints {
+    pub logical: [u8; 32],
+    pub signature: [u8; 32],
 }
 
 /// Whole-axiom policy matching pyELK's scalar compiler option.
@@ -1066,9 +1098,7 @@ pub fn compile_encoded_hierarchy_selected_with_policy<B: ByteSource, P: ByteSour
     mode: EncodedPostingMode,
     postings: P,
 ) -> CoreResult<EncodedCompilation> {
-    let root_count = aligned_count(columns.root_ids, 4, "root_ids")?;
-    let selection = EncodedRootSelection::validate(mode, postings, root_count)?;
-    compile_encoded_hierarchy_with_selection(columns, limits, unsupported, Some(selection))
+    compile_encoded_hierarchy_with_selection(columns, limits, unsupported, Some((mode, postings)))
 }
 
 /// Compile an arbitrary set of already-resolved structural segments through one canonical merge.
@@ -1080,6 +1110,15 @@ pub fn compile_encoded_segments_with_policy<B: ByteSource, P: ByteSource>(
     segments: &[EncodedCompilationSegment<B, P>],
     limits: EncodedLimits,
     unsupported: EncodedUnsupportedPolicy,
+) -> CoreResult<EncodedCompilation> {
+    compile_encoded_segments(segments, limits, unsupported, true)
+}
+
+fn compile_encoded_segments<B: ByteSource, P: ByteSource>(
+    segments: &[EncodedCompilationSegment<B, P>],
+    limits: EncodedLimits,
+    unsupported: EncodedUnsupportedPolicy,
+    fingerprint_semantics: bool,
 ) -> CoreResult<EncodedCompilation> {
     if segments.is_empty() {
         return Err(CoreError::protocol(
@@ -1166,6 +1205,9 @@ pub fn compile_encoded_segments_with_policy<B: ByteSource, P: ByteSource>(
     for roots in &mut root_iters {
         current_roots.push(roots.next()?);
     }
+    let mut semantic_fingerprints = fingerprint_semantics
+        .then(|| SegmentedSemanticFingerprints::new(&tables))
+        .transpose()?;
     let mut equal_tables = Vec::new();
     equal_tables
         .try_reserve_exact(tables.len())
@@ -1209,6 +1251,17 @@ pub fn compile_encoded_segments_with_policy<B: ByteSource, P: ByteSource>(
         }
         let selected_root = current_roots[selected_table]
             .ok_or_else(|| CoreError::internal("selected segment root disappeared"))?;
+        if let Some(fingerprints) = &mut semantic_fingerprints {
+            fingerprints.observe_root(
+                SegmentRootRef {
+                    table: selected_table,
+                    root: selected_root,
+                },
+                &tables,
+                &mut work,
+                limits.max_work,
+            )?;
+        }
         compile_segment_root(
             SegmentRootRef {
                 table: selected_table,
@@ -1225,7 +1278,11 @@ pub fn compile_encoded_segments_with_policy<B: ByteSource, P: ByteSource>(
             current_roots[table] = root_iters[table].next()?;
         }
     }
-    builder.freeze([0; 32])
+    let mut compilation = builder.freeze([0; 32])?;
+    compilation.semantic_fingerprints = semantic_fingerprints
+        .map(|fingerprints| fingerprints.finish(&tables, &mut work, limits.max_work))
+        .transpose()?;
+    Ok(compilation)
 }
 
 fn validate_compilation_segment_limits<B: ByteSource, P: ByteSource>(
@@ -1317,14 +1374,12 @@ pub fn compile_encoded_overlay_delta_selected_with_policy<B: ByteSource, P: Byte
     mode: EncodedPostingMode,
     postings: P,
 ) -> CoreResult<EncodedCompilation> {
-    let source_root_count = aligned_count(source_columns.root_ids, 4, "source root_ids")?;
-    let selection = EncodedRootSelection::validate(mode, postings, source_root_count)?;
     compile_encoded_overlay_delta_with_selection(
         source_columns,
         delta_columns,
         limits,
         unsupported,
-        Some(selection),
+        Some((mode, postings)),
     )
 }
 
@@ -1333,185 +1388,30 @@ fn compile_encoded_overlay_delta_with_selection<B: ByteSource, P: ByteSource>(
     delta_columns: EncodedColumns<B>,
     limits: EncodedLimits,
     unsupported: EncodedUnsupportedPolicy,
-    source_selection: Option<EncodedRootSelection<P>>,
+    source_selection: Option<(EncodedPostingMode, P)>,
 ) -> CoreResult<EncodedCompilation> {
-    validate_combined_column_limits(&source_columns, &delta_columns, limits)?;
-    let (source_validated, source_lengths) = validate_columns_with_lengths(source_columns, limits)?;
-    let (delta_validated, delta_lengths) = validate_columns_with_lengths(delta_columns, limits)?;
-    let mut work = source_validated
-        .work
-        .checked_add(delta_validated.work)
-        .ok_or_else(|| CoreError::capacity("encoded overlay validation work overflow"))?;
-    if work > limits.max_work {
-        return Err(CoreError::capacity(
-            "encoded overlay validation exceeds the combined work limit",
-        ));
-    }
-    let tables = [
-        CompilableSegment {
-            columns: source_columns,
-            canonical_lengths: source_lengths,
-            node_count: source_validated.node_count,
-            scope_replacements: Vec::new(),
-        },
-        CompilableSegment {
-            columns: delta_columns,
-            canonical_lengths: delta_lengths,
-            node_count: delta_validated.node_count,
-            scope_replacements: Vec::new(),
-        },
-    ];
-    let mut source_roots = SelectedRootIter::new(source_selection, source_validated.root_count);
-    let mut delta_roots = SelectedRootIter::<B>::new(None, delta_validated.root_count);
-    let mut source_root = source_roots.next()?;
-    let mut delta_root = delta_roots.next()?;
-    let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
-    let mut transaction = NamedHierarchyBuilder::transaction();
-    let mut previous_logical_root = None;
-    while source_root.is_some() || delta_root.is_some() {
-        let ordering = match (source_root, delta_root) {
-            (Some(left), Some(right)) => {
-                let left_kind = byte_at(source_columns.root_kinds, left, "source root kind")?;
-                let right_kind = byte_at(delta_columns.root_kinds, right, "delta root kind")?;
-                let kind_order = left_kind.cmp(&right_kind);
-                if kind_order != Ordering::Equal {
-                    kind_order
-                } else {
-                    let left_node = node_index(
-                        u32_at(source_columns.root_ids, left, "source root node ID")?,
-                        source_validated.node_count,
-                    )?;
-                    let right_node = node_index(
-                        u32_at(delta_columns.root_ids, right, "delta root node ID")?,
-                        delta_validated.node_count,
-                    )?;
-                    compare_canonical_nodes_between(
-                        left_node,
-                        right_node,
-                        &tables[0].columns,
-                        &tables[1].columns,
-                        &tables[0].canonical_lengths,
-                        &tables[1].canonical_lengths,
-                        &mut work,
-                        limits.max_work,
-                    )?
-                }
-            }
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (None, None) => break,
-        };
-        match ordering {
-            Ordering::Less => {
-                compile_segment_root(
-                    SegmentRootRef {
-                        table: 0,
-                        root: source_root.ok_or_else(|| {
-                            CoreError::internal("source overlay cursor unexpectedly ended")
-                        })?,
-                    },
-                    &tables,
-                    &mut previous_logical_root,
-                    &mut work,
-                    limits.max_work,
-                    &mut builder,
-                    &mut transaction,
-                )?;
-                source_root = source_roots.next()?;
-            }
-            Ordering::Greater => {
-                compile_segment_root(
-                    SegmentRootRef {
-                        table: 1,
-                        root: delta_root.ok_or_else(|| {
-                            CoreError::internal("delta overlay cursor unexpectedly ended")
-                        })?,
-                    },
-                    &tables,
-                    &mut previous_logical_root,
-                    &mut work,
-                    limits.max_work,
-                    &mut builder,
-                    &mut transaction,
-                )?;
-                delta_root = delta_roots.next()?;
-            }
-            Ordering::Equal => {
-                compile_segment_root(
-                    SegmentRootRef {
-                        table: 0,
-                        root: source_root.ok_or_else(|| {
-                            CoreError::internal("equal overlay source cursor unexpectedly ended")
-                        })?,
-                    },
-                    &tables,
-                    &mut previous_logical_root,
-                    &mut work,
-                    limits.max_work,
-                    &mut builder,
-                    &mut transaction,
-                )?;
-                source_root = source_roots.next()?;
-                delta_root = delta_roots.next()?;
-            }
-        }
-    }
-    builder.freeze([0; 32])
-}
-
-fn validate_combined_column_limits<B: ByteSource>(
-    source: &EncodedColumns<B>,
-    delta: &EncodedColumns<B>,
-    limits: EncodedLimits,
-) -> CoreResult<()> {
-    let checked_sum = |left: usize, right: usize, name: &str| {
-        left.checked_add(right)
-            .ok_or_else(|| CoreError::capacity(format!("encoded overlay {name} overflow")))
-    };
-    enforce_count(
-        checked_sum(
-            aligned_count(source.root_ids, 4, "source root_ids")?,
-            aligned_count(delta.root_ids, 4, "delta root_ids")?,
-            "root count",
-        )?,
-        limits.max_roots,
-        "encoded overlay root count",
-    )?;
-    enforce_count(
-        checked_sum(
-            aligned_count(source.node_tags, 2, "source node_tags")?,
-            aligned_count(delta.node_tags, 2, "delta node_tags")?,
-            "node count",
-        )?,
-        limits.max_nodes,
-        "encoded overlay node count",
-    )?;
-    enforce_count(
-        checked_sum(
-            source.field_kinds.len(),
-            delta.field_kinds.len(),
-            "field count",
-        )?,
-        limits.max_fields,
-        "encoded overlay field count",
-    )?;
-    enforce_count(
-        checked_sum(
-            source.item_kinds.len(),
-            delta.item_kinds.len(),
-            "item count",
-        )?,
-        limits.max_items,
-        "encoded overlay item count",
-    )?;
-    enforce_count(
-        checked_sum(
-            source.scalar_bytes.len(),
-            delta.scalar_bytes.len(),
-            "scalar byte count",
-        )?,
-        limits.max_scalar_bytes,
-        "encoded overlay scalar byte count",
+    let (posting_mode, postings) = source_selection
+        .map_or((None, OptionalByteSource::Empty), |(mode, postings)| {
+            (Some(mode), OptionalByteSource::Bytes(postings))
+        });
+    let empty = OptionalByteSource::Empty;
+    compile_encoded_segments_with_policy(
+        &[
+            EncodedCompilationSegment {
+                columns: source_columns,
+                posting_mode,
+                postings,
+                anonymous_scope_map: empty,
+            },
+            EncodedCompilationSegment {
+                columns: delta_columns,
+                posting_mode: None,
+                postings: empty,
+                anonymous_scope_map: empty,
+            },
+        ],
+        limits,
+        unsupported,
     )
 }
 
@@ -1665,10 +1565,815 @@ fn fixed_bytes_32<B: ByteSource>(source: B, start: usize, name: &str) -> CoreRes
     Ok(value)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SegmentRootRef {
     table: usize,
     root: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SegmentNodeRef {
+    table: usize,
+    node: usize,
+}
+
+struct SegmentedSemanticFingerprints {
+    logical_roots: Vec<SegmentRootRef>,
+    extension_roots: Vec<SegmentRootRef>,
+    entity_nodes: Vec<SegmentNodeRef>,
+    visited_nodes: Vec<Vec<u8>>,
+}
+
+impl SegmentedSemanticFingerprints {
+    fn new<B: ByteSource>(tables: &[CompilableSegment<B>]) -> CoreResult<Self> {
+        let mut visited_nodes = Vec::new();
+        visited_nodes
+            .try_reserve_exact(tables.len())
+            .map_err(|_| CoreError::capacity("encoded fingerprint table allocation failed"))?;
+        for table in tables {
+            let mut visited = Vec::new();
+            visited.try_reserve_exact(table.node_count).map_err(|_| {
+                CoreError::capacity("encoded fingerprint reachability allocation failed")
+            })?;
+            visited.resize(table.node_count, 0);
+            visited_nodes.push(visited);
+        }
+        Ok(Self {
+            logical_roots: Vec::new(),
+            extension_roots: Vec::new(),
+            entity_nodes: Vec::new(),
+            visited_nodes,
+        })
+    }
+
+    fn observe_root<B: ByteSource>(
+        &mut self,
+        current: SegmentRootRef,
+        tables: &[CompilableSegment<B>],
+        work: &mut u64,
+        max_work: u64,
+    ) -> CoreResult<()> {
+        let table = tables
+            .get(current.table)
+            .ok_or_else(|| CoreError::internal("encoded fingerprint table is out of bounds"))?;
+        let columns = table.mapped_columns();
+        let kind = byte_at(
+            columns.root_kinds,
+            current.root,
+            "encoded fingerprint root kind",
+        )?;
+        let node = node_index(
+            u32_at(
+                columns.root_ids,
+                current.root,
+                "encoded fingerprint root ID",
+            )?,
+            table.node_count,
+        )?;
+        collect_reachable_entities(
+            current.table,
+            node,
+            &columns,
+            self.visited_nodes.get_mut(current.table).ok_or_else(|| {
+                CoreError::internal("encoded fingerprint visited table is out of bounds")
+            })?,
+            &mut self.entity_nodes,
+            work,
+            max_work,
+        )?;
+
+        let tag = u16_at(columns.node_tags, node, "encoded fingerprint root tag")?;
+        if kind == ROOT_AXIOM && is_logical_axiom_tag(tag) {
+            observe_stripped_root(&mut self.logical_roots, current, tables, work, max_work)?;
+        } else if kind == ROOT_EXTENSION {
+            observe_stripped_root(&mut self.extension_roots, current, tables, work, max_work)?;
+        }
+        Ok(())
+    }
+
+    fn finish<B: ByteSource>(
+        mut self,
+        tables: &[CompilableSegment<B>],
+        work: &mut u64,
+        max_work: u64,
+    ) -> CoreResult<EncodedSemanticFingerprints> {
+        let mut comparison_error = None;
+        self.entity_nodes.sort_unstable_by(|left, right| {
+            if comparison_error.is_some() {
+                return Ordering::Equal;
+            }
+            match compare_segment_nodes(*left, *right, tables, work, max_work) {
+                Ok(ordering) => ordering,
+                Err(error) => {
+                    comparison_error = Some(error);
+                    Ordering::Equal
+                }
+            }
+        });
+        if let Some(error) = comparison_error {
+            return Err(error);
+        }
+
+        let mut entities = Vec::new();
+        entities
+            .try_reserve_exact(self.entity_nodes.len())
+            .map_err(|_| CoreError::capacity("encoded fingerprint entity allocation failed"))?;
+        for entity in self.entity_nodes {
+            let duplicate = if let Some(previous) = entities.last().copied() {
+                compare_segment_nodes(previous, entity, tables, work, max_work)? == Ordering::Equal
+            } else {
+                false
+            };
+            if !duplicate {
+                entities.push(entity);
+            }
+        }
+
+        let logical = hash_segmented_logical(
+            &self.logical_roots,
+            &self.extension_roots,
+            tables,
+            work,
+            max_work,
+        )?;
+        let signature = hash_segmented_signature(&entities, tables, work, max_work)?;
+        Ok(EncodedSemanticFingerprints { logical, signature })
+    }
+}
+
+fn is_logical_axiom_tag(tag: u16) -> bool {
+    matches!(
+        tag,
+        61..=64 | 70..=82 | 90..=95 | 100..=101 | 110..=116
+    )
+}
+
+fn observe_stripped_root<B: ByteSource>(
+    roots: &mut Vec<SegmentRootRef>,
+    current: SegmentRootRef,
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<()> {
+    let current_table = tables
+        .get(current.table)
+        .ok_or_else(|| CoreError::internal("encoded fingerprint table is out of bounds"))?;
+    let current_columns = current_table.mapped_columns();
+    let current_node = node_index(
+        u32_at(
+            current_columns.root_ids,
+            current.root,
+            "encoded fingerprint root ID",
+        )?,
+        current_table.node_count,
+    )?;
+    let current_start = usize_at(
+        current_columns.node_field_offsets,
+        current_node,
+        "encoded fingerprint field offset",
+    )?;
+    let field_limit = annotation_field(current_node, &current_columns)?
+        .checked_sub(current_start)
+        .ok_or_else(|| CoreError::internal("encoded fingerprint annotation field is reversed"))?;
+    if let Some(previous) = roots.last().copied() {
+        let previous_table = tables.get(previous.table).ok_or_else(|| {
+            CoreError::internal("previous encoded fingerprint table is out of bounds")
+        })?;
+        let previous_columns = previous_table.mapped_columns();
+        let previous_node = node_index(
+            u32_at(
+                previous_columns.root_ids,
+                previous.root,
+                "previous encoded fingerprint root ID",
+            )?,
+            previous_table.node_count,
+        )?;
+        if compare_canonical_nodes_between_with_field_limit(
+            previous_node,
+            current_node,
+            &previous_columns,
+            &current_columns,
+            &previous_table.canonical_lengths,
+            &current_table.canonical_lengths,
+            Some(field_limit),
+            work,
+            max_work,
+        )? == Ordering::Equal
+        {
+            return Ok(());
+        }
+    }
+    roots
+        .try_reserve(1)
+        .map_err(|_| CoreError::capacity("encoded fingerprint root allocation failed"))?;
+    roots.push(current);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_reachable_entities<B: ByteSource>(
+    table: usize,
+    root: usize,
+    columns: &EncodedColumns<B>,
+    visited: &mut [u8],
+    entities: &mut Vec<SegmentNodeRef>,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<()> {
+    let mut stack = Vec::new();
+    stack
+        .try_reserve(1)
+        .map_err(|_| CoreError::capacity("encoded fingerprint graph stack allocation failed"))?;
+    let state = visited
+        .get_mut(root)
+        .ok_or_else(|| CoreError::internal("encoded fingerprint root is out of bounds"))?;
+    if *state != 0 {
+        return Ok(());
+    }
+    *state = 1;
+    stack.push(root);
+    while let Some(node) = stack.pop() {
+        claim_work(work, 1, max_work)?;
+        if u16_at(columns.node_tags, node, "encoded fingerprint node tag")? == 2 {
+            entities
+                .try_reserve(1)
+                .map_err(|_| CoreError::capacity("encoded fingerprint entity allocation failed"))?;
+            entities.push(SegmentNodeRef { table, node });
+        }
+        let start = usize_at(
+            columns.node_field_offsets,
+            node,
+            "encoded fingerprint node field offset",
+        )?;
+        let end = usize_at(
+            columns.node_field_offsets,
+            node.checked_add(1).ok_or_else(|| {
+                CoreError::capacity("encoded fingerprint node field offset overflow")
+            })?,
+            "encoded fingerprint node field end",
+        )?;
+        for field in start..end {
+            claim_work(work, 1, max_work)?;
+            let (kind, value, length) = component_parts(ComponentRow::Field(field), columns)?;
+            match kind {
+                COMPONENT_NODE => push_fingerprint_child(
+                    value,
+                    visited,
+                    &mut stack,
+                    "encoded fingerprint field node ID",
+                )?,
+                COMPONENT_SET | COMPONENT_SEQUENCE => {
+                    let item_end = value.checked_add(length).ok_or_else(|| {
+                        CoreError::capacity("encoded fingerprint item range overflow")
+                    })?;
+                    for item in value..item_end {
+                        claim_work(work, 1, max_work)?;
+                        let (item_kind, item_value, _) =
+                            component_parts(ComponentRow::Item(item), columns)?;
+                        if item_kind == COMPONENT_NODE {
+                            push_fingerprint_child(
+                                item_value,
+                                visited,
+                                &mut stack,
+                                "encoded fingerprint item node ID",
+                            )?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn push_fingerprint_child(
+    identifier: usize,
+    visited: &mut [u8],
+    stack: &mut Vec<usize>,
+    name: &str,
+) -> CoreResult<()> {
+    let identifier = u32::try_from(identifier)
+        .map_err(|_| CoreError::protocol(format!("{name} exceeds u32")))?;
+    let child = node_index(identifier, visited.len())?;
+    let state = visited
+        .get_mut(child)
+        .ok_or_else(|| CoreError::internal("encoded fingerprint child is out of bounds"))?;
+    if *state == 0 {
+        *state = 1;
+        stack.try_reserve(1).map_err(|_| {
+            CoreError::capacity("encoded fingerprint graph stack allocation failed")
+        })?;
+        stack.push(child);
+    }
+    Ok(())
+}
+
+fn compare_segment_nodes<B: ByteSource>(
+    left: SegmentNodeRef,
+    right: SegmentNodeRef,
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<Ordering> {
+    let left_table = tables
+        .get(left.table)
+        .ok_or_else(|| CoreError::internal("left encoded fingerprint table is out of bounds"))?;
+    let right_table = tables
+        .get(right.table)
+        .ok_or_else(|| CoreError::internal("right encoded fingerprint table is out of bounds"))?;
+    compare_canonical_nodes_between(
+        left.node,
+        right.node,
+        &left_table.mapped_columns(),
+        &right_table.mapped_columns(),
+        &left_table.canonical_lengths,
+        &right_table.canonical_lengths,
+        work,
+        max_work,
+    )
+}
+
+fn hash_segmented_logical<B: ByteSource>(
+    logical_roots: &[SegmentRootRef],
+    extension_roots: &[SegmentRootRef],
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<[u8; 32]> {
+    let mut digest = Sha256::new();
+    digest.update(b"pyowl-core:snapshot-logical:v1\0");
+    digest.update(b"datatype-policy:owl2-v1\0");
+    hash_varint(
+        &mut digest,
+        u64::try_from(logical_roots.len())
+            .map_err(|_| CoreError::capacity("encoded logical root count exceeds u64"))?,
+    );
+    for root in logical_roots {
+        hash_stripped_root_frame(&mut digest, *root, tables, work, max_work)?;
+    }
+    hash_varint(
+        &mut digest,
+        u64::try_from(extension_roots.len())
+            .map_err(|_| CoreError::capacity("encoded extension root count exceeds u64"))?,
+    );
+    for root in extension_roots {
+        digest.update(b"E");
+        hash_stripped_root_frame(&mut digest, *root, tables, work, max_work)?;
+    }
+    Ok(digest.finalize().into())
+}
+
+fn hash_segmented_signature<B: ByteSource>(
+    entities: &[SegmentNodeRef],
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<[u8; 32]> {
+    let mut digest = Sha256::new();
+    digest.update(b"pyowl-core:snapshot-signature:v1\0");
+    digest.update([1]);
+    hash_varint(
+        &mut digest,
+        u64::try_from(entities.len())
+            .map_err(|_| CoreError::capacity("encoded signature entity count exceeds u64"))?,
+    );
+    for entity in entities {
+        let table = tables.get(entity.table).ok_or_else(|| {
+            CoreError::internal("encoded signature entity table is out of bounds")
+        })?;
+        let length = *table.canonical_lengths.get(entity.node).ok_or_else(|| {
+            CoreError::internal("encoded signature entity length is out of bounds")
+        })?;
+        hash_varint(&mut digest, length);
+        hash_canonical_node(
+            &mut digest,
+            entity.node,
+            None,
+            &table.mapped_columns(),
+            &table.canonical_lengths,
+            work,
+            max_work,
+        )?;
+    }
+    Ok(digest.finalize().into())
+}
+
+fn hash_stripped_root_frame<B: ByteSource>(
+    digest: &mut Sha256,
+    root: SegmentRootRef,
+    tables: &[CompilableSegment<B>],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<()> {
+    let table = tables
+        .get(root.table)
+        .ok_or_else(|| CoreError::internal("encoded fingerprint root table is out of bounds"))?;
+    let columns = table.mapped_columns();
+    let node = node_index(
+        u32_at(
+            columns.root_ids,
+            root.root,
+            "encoded fingerprint root node ID",
+        )?,
+        table.node_count,
+    )?;
+    let start = usize_at(
+        columns.node_field_offsets,
+        node,
+        "encoded fingerprint root field offset",
+    )?;
+    let field_limit = annotation_field(node, &columns)?
+        .checked_sub(start)
+        .ok_or_else(|| CoreError::internal("encoded fingerprint annotation field is reversed"))?;
+    let length = canonical_node_prefix_length(
+        node,
+        field_limit,
+        &columns,
+        &table.canonical_lengths,
+        work,
+        max_work,
+    )?
+    .checked_add(2)
+    .ok_or_else(|| CoreError::capacity("encoded fingerprint root length overflow"))?;
+    hash_varint(digest, length);
+    hash_canonical_node(
+        digest,
+        node,
+        Some(field_limit),
+        &columns,
+        &table.canonical_lengths,
+        work,
+        max_work,
+    )?;
+    digest.update([COMPONENT_SET, 0]);
+    Ok(())
+}
+
+fn canonical_node_prefix_length<B: ByteSource>(
+    node: usize,
+    field_limit: usize,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<u64> {
+    let tag = u64::from(u16_at(
+        columns.node_tags,
+        node,
+        "encoded fingerprint node tag",
+    )?);
+    let mut total = u64::try_from(canonical_varint_width(tag))
+        .map_err(|_| CoreError::capacity("encoded fingerprint length exceeds u64"))?;
+    let start = usize_at(
+        columns.node_field_offsets,
+        node,
+        "encoded fingerprint field offset",
+    )?;
+    let end = usize_at(
+        columns.node_field_offsets,
+        node.checked_add(1)
+            .ok_or_else(|| CoreError::capacity("encoded fingerprint field offset overflow"))?,
+        "encoded fingerprint field end",
+    )?;
+    if field_limit > end - start {
+        return Err(CoreError::internal(
+            "encoded fingerprint field limit exceeds constructor arity",
+        ));
+    }
+    for field in start..start + field_limit {
+        claim_work(work, 1, max_work)?;
+        add_canonical_length(
+            &mut total,
+            canonical_component_length(
+                ComponentRow::Field(field),
+                columns,
+                canonical_lengths,
+                work,
+                max_work,
+            )?,
+        )?;
+    }
+    Ok(total)
+}
+
+fn canonical_component_length<B: ByteSource>(
+    row: ComponentRow,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<u64> {
+    let (kind, value, length) = component_parts(row, columns)?;
+    if !matches!(kind, COMPONENT_SET | COMPONENT_SEQUENCE) {
+        return canonical_leaf_length(kind, value, length, columns, canonical_lengths);
+    }
+    let count = u64::try_from(length)
+        .map_err(|_| CoreError::capacity("encoded fingerprint collection count exceeds u64"))?;
+    let mut total = 1_u64;
+    add_canonical_length(
+        &mut total,
+        u64::try_from(canonical_varint_width(count))
+            .map_err(|_| CoreError::capacity("encoded fingerprint length exceeds u64"))?,
+    )?;
+    let end = value
+        .checked_add(length)
+        .ok_or_else(|| CoreError::capacity("encoded fingerprint item range overflow"))?;
+    for item in value..end {
+        claim_work(work, 1, max_work)?;
+        let (item_kind, item_value, item_length) =
+            component_parts(ComponentRow::Item(item), columns)?;
+        if kind == COMPONENT_SET {
+            if item_kind != COMPONENT_NODE {
+                return Err(CoreError::internal(
+                    "encoded canonical set fingerprint item is not a node",
+                ));
+            }
+            let identifier = u32::try_from(item_value)
+                .map_err(|_| CoreError::protocol("encoded set node ID exceeds u32"))?;
+            let node = node_index(identifier, canonical_lengths.len())?;
+            let nested = canonical_lengths[node];
+            add_canonical_length(
+                &mut total,
+                u64::try_from(canonical_varint_width(nested))
+                    .map_err(|_| CoreError::capacity("encoded fingerprint length exceeds u64"))?,
+            )?;
+            add_canonical_length(&mut total, nested)?;
+        } else {
+            add_canonical_length(
+                &mut total,
+                canonical_leaf_length(
+                    item_kind,
+                    item_value,
+                    item_length,
+                    columns,
+                    canonical_lengths,
+                )?,
+            )?;
+        }
+    }
+    Ok(total)
+}
+
+#[derive(Clone, Copy)]
+enum CanonicalHashTask {
+    Node {
+        node: usize,
+        field_limit: Option<usize>,
+    },
+    Fields {
+        next: usize,
+        end: usize,
+    },
+    Component(ComponentRow),
+    Collection {
+        kind: u8,
+        next: usize,
+        end: usize,
+    },
+}
+
+fn hash_canonical_node<B: ByteSource>(
+    digest: &mut Sha256,
+    node: usize,
+    field_limit: Option<usize>,
+    columns: &EncodedColumns<B>,
+    canonical_lengths: &[u64],
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<()> {
+    let mut tasks = Vec::new();
+    tasks
+        .try_reserve(1)
+        .map_err(|_| CoreError::capacity("encoded fingerprint stack allocation failed"))?;
+    tasks.push(CanonicalHashTask::Node { node, field_limit });
+    while let Some(task) = tasks.pop() {
+        claim_work(work, 1, max_work)?;
+        match task {
+            CanonicalHashTask::Node { node, field_limit } => {
+                hash_varint(
+                    digest,
+                    u64::from(u16_at(
+                        columns.node_tags,
+                        node,
+                        "encoded fingerprint node tag",
+                    )?),
+                );
+                let start = usize_at(
+                    columns.node_field_offsets,
+                    node,
+                    "encoded fingerprint field offset",
+                )?;
+                let full_end = usize_at(
+                    columns.node_field_offsets,
+                    node.checked_add(1).ok_or_else(|| {
+                        CoreError::capacity("encoded fingerprint field offset overflow")
+                    })?,
+                    "encoded fingerprint field end",
+                )?;
+                let end = if let Some(limit) = field_limit {
+                    if limit > full_end - start {
+                        return Err(CoreError::internal(
+                            "encoded fingerprint field limit exceeds constructor arity",
+                        ));
+                    }
+                    start.checked_add(limit).ok_or_else(|| {
+                        CoreError::capacity("encoded fingerprint field limit overflow")
+                    })?
+                } else {
+                    full_end
+                };
+                push_hash_task(&mut tasks, CanonicalHashTask::Fields { next: start, end })?;
+            }
+            CanonicalHashTask::Fields { next, end } => {
+                if next == end {
+                    continue;
+                }
+                push_hash_task(
+                    &mut tasks,
+                    CanonicalHashTask::Fields {
+                        next: next.checked_add(1).ok_or_else(|| {
+                            CoreError::capacity("encoded fingerprint field index overflow")
+                        })?,
+                        end,
+                    },
+                )?;
+                push_hash_task(
+                    &mut tasks,
+                    CanonicalHashTask::Component(ComponentRow::Field(next)),
+                )?;
+            }
+            CanonicalHashTask::Collection { kind, next, end } => {
+                if next == end {
+                    continue;
+                }
+                push_hash_task(
+                    &mut tasks,
+                    CanonicalHashTask::Collection {
+                        kind,
+                        next: next.checked_add(1).ok_or_else(|| {
+                            CoreError::capacity("encoded fingerprint item index overflow")
+                        })?,
+                        end,
+                    },
+                )?;
+                if kind == COMPONENT_SET {
+                    let (item_kind, value, _) = component_parts(ComponentRow::Item(next), columns)?;
+                    if item_kind != COMPONENT_NODE {
+                        return Err(CoreError::internal(
+                            "encoded canonical set fingerprint item is not a node",
+                        ));
+                    }
+                    let identifier = u32::try_from(value)
+                        .map_err(|_| CoreError::protocol("encoded set node ID exceeds u32"))?;
+                    let child = node_index(identifier, canonical_lengths.len())?;
+                    hash_varint(digest, canonical_lengths[child]);
+                    push_hash_task(
+                        &mut tasks,
+                        CanonicalHashTask::Node {
+                            node: child,
+                            field_limit: None,
+                        },
+                    )?;
+                } else {
+                    push_hash_task(
+                        &mut tasks,
+                        CanonicalHashTask::Component(ComponentRow::Item(next)),
+                    )?;
+                }
+            }
+            CanonicalHashTask::Component(row) => {
+                let (kind, value, length) = component_parts(row, columns)?;
+                digest.update([kind]);
+                match kind {
+                    COMPONENT_NONE => {}
+                    COMPONENT_NODE => {
+                        let identifier = u32::try_from(value).map_err(|_| {
+                            CoreError::protocol("encoded fingerprint node ID exceeds u32")
+                        })?;
+                        let child = node_index(identifier, canonical_lengths.len())?;
+                        hash_varint(digest, canonical_lengths[child]);
+                        push_hash_task(
+                            &mut tasks,
+                            CanonicalHashTask::Node {
+                                node: child,
+                                field_limit: None,
+                            },
+                        )?;
+                    }
+                    COMPONENT_TEXT | COMPONENT_BYTES | COMPONENT_ENUM => {
+                        hash_varint(
+                            digest,
+                            u64::try_from(length).map_err(|_| {
+                                CoreError::capacity("encoded fingerprint scalar length exceeds u64")
+                            })?,
+                        );
+                        hash_scalar_range(
+                            digest,
+                            columns.scalar_bytes,
+                            value,
+                            length,
+                            work,
+                            max_work,
+                        )?;
+                    }
+                    COMPONENT_INTEGER => {
+                        let width =
+                            canonical_integer_varint_width(columns.scalar_bytes, value, length)?;
+                        for index in 0..width {
+                            digest.update([integer_varint_byte(
+                                columns.scalar_bytes,
+                                value,
+                                length,
+                                index,
+                                width,
+                            )?]);
+                        }
+                    }
+                    COMPONENT_SET | COMPONENT_SEQUENCE => {
+                        hash_varint(
+                            digest,
+                            u64::try_from(length).map_err(|_| {
+                                CoreError::capacity(
+                                    "encoded fingerprint collection length exceeds u64",
+                                )
+                            })?,
+                        );
+                        let end = value.checked_add(length).ok_or_else(|| {
+                            CoreError::capacity("encoded fingerprint item range overflow")
+                        })?;
+                        push_hash_task(
+                            &mut tasks,
+                            CanonicalHashTask::Collection {
+                                kind,
+                                next: value,
+                                end,
+                            },
+                        )?;
+                    }
+                    _ => {
+                        return Err(CoreError::internal(
+                            "invalid component reached canonical fingerprinting",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn push_hash_task(tasks: &mut Vec<CanonicalHashTask>, task: CanonicalHashTask) -> CoreResult<()> {
+    tasks
+        .try_reserve(1)
+        .map_err(|_| CoreError::capacity("encoded fingerprint stack allocation failed"))?;
+    tasks.push(task);
+    Ok(())
+}
+
+fn hash_scalar_range<B: ByteSource>(
+    digest: &mut Sha256,
+    source: B,
+    start: usize,
+    length: usize,
+    work: &mut u64,
+    max_work: u64,
+) -> CoreResult<()> {
+    claim_work(
+        work,
+        u64::try_from(length)
+            .map_err(|_| CoreError::capacity("encoded fingerprint scalar work exceeds u64"))?,
+        max_work,
+    )?;
+    let mut buffer = [0_u8; 1024];
+    let mut offset = 0_usize;
+    while offset < length {
+        let chunk = (length - offset).min(buffer.len());
+        for (index, slot) in buffer[..chunk].iter_mut().enumerate() {
+            *slot = byte_at(
+                source,
+                start
+                    .checked_add(offset)
+                    .and_then(|value| value.checked_add(index))
+                    .ok_or_else(|| {
+                        CoreError::capacity("encoded fingerprint scalar offset overflow")
+                    })?,
+                "encoded fingerprint scalar",
+            )?;
+        }
+        digest.update(&buffer[..chunk]);
+        offset = offset
+            .checked_add(chunk)
+            .ok_or_else(|| CoreError::capacity("encoded fingerprint scalar offset overflow"))?;
+    }
+    Ok(())
+}
+
+fn hash_varint(digest: &mut Sha256, value: u64) {
+    let width = canonical_varint_width(value);
+    for index in 0..width {
+        digest.update([u64_varint_byte(value, index, width)]);
+    }
 }
 
 fn compare_segment_roots<B: ByteSource>(
@@ -1892,52 +2597,24 @@ fn compile_encoded_hierarchy_with_selection<B: ByteSource, P: ByteSource>(
     columns: EncodedColumns<B>,
     limits: EncodedLimits,
     unsupported: EncodedUnsupportedPolicy,
-    selection: Option<EncodedRootSelection<P>>,
+    selection: Option<(EncodedPostingMode, P)>,
 ) -> CoreResult<EncodedCompilation> {
-    let validated = validate_columns(columns, limits)?;
-    let mut observed_axiom_roots = BTreeSet::new();
-    let mut previous_logical_axiom = None;
-    let mut builder = NamedHierarchyBuilder::with_policy(unsupported);
-    let mut transaction = NamedHierarchyBuilder::transaction();
-    let mut selected_roots = EncodedRootCursor::new(selection);
-    for root in 0..validated.root_count {
-        if !selected_roots.includes(root)? {
-            continue;
-        }
-        let kind = byte_at(columns.root_kinds, root, "root kind")?;
-        if kind == ROOT_ONTOLOGY_ANNOTATION {
-            continue;
-        }
-        let identifier = u32_at(columns.root_ids, root, "root ID")?;
-        let node = node_index(identifier, validated.node_count)?;
-        let tag = u16_at(columns.node_tags, node, "root node tag")?;
-        if kind == ROOT_EXTENSION {
-            if tag == 148 {
-                builder.handle_unsupported(46, "SWRL_RULE")?;
-                continue;
-            }
-            return Err(CoreError::internal(
-                "validated extension root has an unexpected constructor tag",
-            ));
-        }
-        if kind != ROOT_AXIOM {
-            return Err(CoreError::internal(
-                "validated encoded root has an unexpected category",
-            ));
-        }
-        if !observed_axiom_roots.insert(identifier) {
-            continue;
-        }
-        if !(120..=123).contains(&tag) {
-            let key = stripped_axiom_key(node, &columns)?;
-            if previous_logical_axiom.as_ref() == Some(&key) {
-                continue;
-            }
-            previous_logical_axiom = Some(key);
-        }
-        compile_axiom_node(tag, node, &columns, &mut builder, &mut transaction)?;
-    }
-    builder.freeze([0; 32])
+    let fingerprint_semantics = selection.is_some();
+    let (posting_mode, postings) = selection
+        .map_or((None, OptionalByteSource::Empty), |(mode, postings)| {
+            (Some(mode), OptionalByteSource::Bytes(postings))
+        });
+    compile_encoded_segments(
+        &[EncodedCompilationSegment {
+            columns,
+            posting_mode,
+            postings,
+            anonymous_scope_map: OptionalByteSource::Empty,
+        }],
+        limits,
+        unsupported,
+        fingerprint_semantics,
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2190,75 +2867,6 @@ fn compile_axiom_node<B: ByteSource>(
         }
         Err(AxiomCompileError::Core(error)) => Err(error),
     }
-}
-
-fn stripped_axiom_key<B: ByteSource>(
-    node: usize,
-    columns: &EncodedColumns<B>,
-) -> CoreResult<Vec<u64>> {
-    let start = usize_at(columns.node_field_offsets, node, "node field offset")?;
-    let annotation = annotation_field(node, columns)?;
-    let field_count = annotation
-        .checked_sub(start)
-        .ok_or_else(|| CoreError::internal("encoded axiom field range is reversed"))?;
-    let base_words = field_count
-        .checked_mul(3)
-        .and_then(|count| count.checked_add(2))
-        .ok_or_else(|| CoreError::capacity("encoded axiom key size overflow"))?;
-    let mut key = Vec::new();
-    key.try_reserve_exact(base_words)
-        .map_err(|_| CoreError::capacity("encoded axiom key allocation failed"))?;
-    key.push(u64::from(u16_at(
-        columns.node_tags,
-        node,
-        "axiom node tag",
-    )?));
-    key.push(
-        u64::try_from(field_count)
-            .map_err(|_| CoreError::capacity("encoded axiom field count exceeds u64"))?,
-    );
-    for field in start..annotation {
-        let kind = byte_at(columns.field_kinds, field, "axiom field kind")?;
-        let value = u64_at(columns.field_values, field, "axiom field value")?;
-        let length = usize_at(columns.field_lengths, field, "axiom field length")?;
-        key.push(u64::from(kind));
-        key.push(
-            u64::try_from(length)
-                .map_err(|_| CoreError::capacity("encoded axiom field length exceeds u64"))?,
-        );
-        match kind {
-            COMPONENT_NODE => key.push(value),
-            COMPONENT_SET | COMPONENT_SEQUENCE => {
-                let item_start = usize::try_from(value)
-                    .map_err(|_| CoreError::capacity("encoded axiom item offset exceeds usize"))?;
-                let item_end = item_start
-                    .checked_add(length)
-                    .ok_or_else(|| CoreError::capacity("encoded axiom item range overflow"))?;
-                let item_words = length
-                    .checked_mul(3)
-                    .ok_or_else(|| CoreError::capacity("encoded axiom item key size overflow"))?;
-                key.try_reserve(item_words)
-                    .map_err(|_| CoreError::capacity("encoded axiom item key allocation failed"))?;
-                for item in item_start..item_end {
-                    let item_kind = byte_at(columns.item_kinds, item, "axiom item kind")?;
-                    if item_kind != COMPONENT_NODE {
-                        return Err(CoreError::internal(
-                            "encoded logical axiom collection contains a scalar item",
-                        ));
-                    }
-                    key.push(u64::from(item_kind));
-                    key.push(u64_at(columns.item_values, item, "axiom item value")?);
-                    key.push(u64_at(columns.item_lengths, item, "axiom item length")?);
-                }
-            }
-            _ => {
-                return Err(CoreError::internal(
-                    "encoded logical axiom contains a scalar field",
-                ));
-            }
-        }
-    }
-    Ok(key)
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -2838,6 +3446,7 @@ impl NamedHierarchyBuilder {
                 source_fingerprint,
             },
             compatibility_observations,
+            semantic_fingerprints: None,
         })
     }
 
@@ -6181,6 +6790,39 @@ mod tests {
         }
     }
 
+    fn swrl_rule() -> OwnedColumns {
+        OwnedColumns {
+            root_kinds: vec![ROOT_EXTENSION],
+            root_ids: le32(&[9]),
+            node_tags: le16(&[1, 1, 1, 2, 2, 140, 141, 141, 148]),
+            node_field_offsets: le64(&[0, 1, 2, 3, 5, 7, 8, 10, 12, 15]),
+            field_kinds: vec![
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_TEXT,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_ENUM,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_NODE,
+                COMPONENT_SET,
+                COMPONENT_SET,
+                COMPONENT_SET,
+            ],
+            field_values: le64(&[0, 20, 40, 60, 1, 65, 2, 3, 4, 6, 5, 6, 0, 1, 2]),
+            field_lengths: le64(&[20, 20, 20, 5, 0, 5, 0, 0, 0, 0, 0, 0, 1, 1, 0]),
+            item_kinds: vec![COMPONENT_NODE, COMPONENT_NODE],
+            item_values: le64(&[7, 8]),
+            item_lengths: le64(&[0, 0]),
+            scalar_bytes: b"http://example.org/Ahttp://example.org/Bhttp://example.org/xclassclass"
+                .to_vec(),
+        }
+    }
+
     fn named_existential_superclass() -> OwnedColumns {
         OwnedColumns {
             root_kinds: vec![ROOT_AXIOM],
@@ -7536,7 +8178,12 @@ mod tests {
             EncodedUnsupportedPolicy::Error,
         )
         .unwrap();
-        assert_eq!(merged, expected);
+        assert_eq!(merged.ontology, expected.ontology);
+        assert_eq!(
+            merged.compatibility_observations,
+            expected.compatibility_observations
+        );
+        assert!(merged.semantic_fingerprints.is_some());
 
         let duplicate = compile_encoded_overlay_delta_with_policy(
             source.borrowed(),
@@ -7551,7 +8198,12 @@ mod tests {
             EncodedUnsupportedPolicy::Error,
         )
         .unwrap();
-        assert_eq!(duplicate, direct);
+        assert_eq!(duplicate.ontology, direct.ontology);
+        assert_eq!(
+            duplicate.compatibility_observations,
+            direct.compatibility_observations
+        );
+        assert!(duplicate.semantic_fingerprints.is_some());
 
         let nested = named_existential_superclass();
         let duplicate = compile_encoded_overlay_delta_with_policy(
@@ -7567,7 +8219,12 @@ mod tests {
             EncodedUnsupportedPolicy::Error,
         )
         .unwrap();
-        assert_eq!(duplicate, direct);
+        assert_eq!(duplicate.ontology, direct.ontology);
+        assert_eq!(
+            duplicate.compatibility_observations,
+            direct.compatibility_observations
+        );
+        assert!(duplicate.semantic_fingerprints.is_some());
     }
 
     #[test]
@@ -7591,7 +8248,12 @@ mod tests {
             EncodedUnsupportedPolicy::Error,
         )
         .unwrap();
-        assert_eq!(selected, expected);
+        assert_eq!(selected.ontology, expected.ontology);
+        assert_eq!(
+            selected.compatibility_observations,
+            expected.compatibility_observations
+        );
+        assert!(selected.semantic_fingerprints.is_some());
 
         let limits = EncodedLimits {
             max_roots: 1,
@@ -7604,7 +8266,7 @@ mod tests {
                 limits,
                 EncodedUnsupportedPolicy::Error,
             ),
-            Err(CoreError::Capacity(message)) if message.contains("overlay root count")
+            Err(CoreError::Capacity(message)) if message.contains("segment root count")
         ));
     }
 
@@ -7648,7 +8310,26 @@ mod tests {
             EncodedUnsupportedPolicy::Error,
         )
         .unwrap();
-        assert_eq!(actual, expected);
+        assert_eq!(actual.ontology, expected.ontology);
+        assert_eq!(
+            actual.compatibility_observations,
+            expected.compatibility_observations
+        );
+        assert_eq!(
+            actual.semantic_fingerprints,
+            Some(EncodedSemanticFingerprints {
+                logical: [
+                    0xdb, 0x90, 0x13, 0x21, 0x4f, 0xd3, 0xb9, 0x29, 0xe1, 0xb4, 0xd2, 0xef, 0xea,
+                    0x6b, 0x3f, 0x02, 0xd5, 0x10, 0x70, 0x84, 0x2f, 0x47, 0x5d, 0x7b, 0xb6, 0x9a,
+                    0xe8, 0x4e, 0x7d, 0xb5, 0xdb, 0x15,
+                ],
+                signature: [
+                    0x54, 0x44, 0x78, 0xa8, 0x3a, 0xd3, 0x74, 0x85, 0x86, 0xf3, 0x09, 0x88, 0x16,
+                    0x16, 0x1c, 0x01, 0x43, 0xb7, 0x30, 0x15, 0x00, 0xe2, 0x9c, 0x2c, 0x53, 0xd0,
+                    0xcf, 0x73, 0x1f, 0x5a, 0x78, 0x50,
+                ],
+            })
+        );
 
         let postings = le32(&[1]);
         let selected_source = two_declarations();
@@ -7666,14 +8347,81 @@ mod tests {
                 anonymous_scope_map: empty_postings,
             },
         ];
+        let selected = compile_encoded_segments_with_policy(
+            &selected,
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(selected.ontology, expected.ontology);
         assert_eq!(
-            compile_encoded_segments_with_policy(
-                &selected,
-                EncodedLimits::default(),
-                EncodedUnsupportedPolicy::Error,
-            )
-            .unwrap(),
-            expected
+            selected.compatibility_observations,
+            expected.compatibility_observations
+        );
+        assert_eq!(selected.semantic_fingerprints, actual.semantic_fingerprints);
+    }
+
+    #[test]
+    fn segmented_semantic_fingerprints_match_core_canonical_model_v1() {
+        let source = named_subclass();
+        let empty = &[][..];
+        let compilation = compile_encoded_segments_with_policy(
+            &[EncodedCompilationSegment {
+                columns: source.borrowed(),
+                posting_mode: None,
+                postings: empty,
+                anonymous_scope_map: empty,
+            }],
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Error,
+        )
+        .unwrap();
+        assert_eq!(
+            compilation.semantic_fingerprints,
+            Some(EncodedSemanticFingerprints {
+                logical: [
+                    0xbe, 0xaf, 0x86, 0x60, 0x68, 0xbd, 0x31, 0x73, 0x49, 0xcf, 0xa5, 0x27, 0x99,
+                    0x6b, 0x80, 0x01, 0xbf, 0x82, 0xb0, 0xd2, 0xb2, 0x05, 0xd6, 0x57, 0x9a, 0x71,
+                    0x09, 0x53, 0x51, 0x1f, 0x8d, 0x91,
+                ],
+                signature: [
+                    0x54, 0x44, 0x78, 0xa8, 0x3a, 0xd3, 0x74, 0x85, 0x86, 0xf3, 0x09, 0x88, 0x16,
+                    0x16, 0x1c, 0x01, 0x43, 0xb7, 0x30, 0x15, 0x00, 0xe2, 0x9c, 0x2c, 0x53, 0xd0,
+                    0xcf, 0x73, 0x1f, 0x5a, 0x78, 0x50,
+                ],
+            })
+        );
+    }
+
+    #[test]
+    fn segmented_extension_fingerprints_match_core_canonical_model_v1() {
+        let source = swrl_rule();
+        let empty = &[][..];
+        let compilation = compile_encoded_segments_with_policy(
+            &[EncodedCompilationSegment {
+                columns: source.borrowed(),
+                posting_mode: None,
+                postings: empty,
+                anonymous_scope_map: empty,
+            }],
+            EncodedLimits::default(),
+            EncodedUnsupportedPolicy::Ignore,
+        )
+        .unwrap();
+        assert_eq!(
+            compilation.semantic_fingerprints,
+            Some(EncodedSemanticFingerprints {
+                logical: [
+                    0xfe, 0x11, 0x56, 0xfa, 0x19, 0x08, 0xac, 0x30, 0xcb, 0x43, 0xc7, 0xeb, 0xfb,
+                    0x9f, 0xa4, 0x62, 0xfc, 0xca, 0xa6, 0x25, 0xb5, 0xaf, 0xef, 0x14, 0xa7, 0x58,
+                    0x1a, 0x92, 0xa0, 0x8f, 0x13, 0x41,
+                ],
+                signature: [
+                    0x09, 0x5e, 0x76, 0xc7, 0x1f, 0x21, 0xf8, 0x01, 0xed, 0x07, 0x0a, 0x32, 0x56,
+                    0x90, 0xef, 0x18, 0xc5, 0x3e, 0xc4, 0x2e, 0x2e, 0x89, 0x78, 0x00, 0xe4, 0xc7,
+                    0x17, 0x0f, 0x95, 0xc2, 0x2e, 0xd2,
+                ],
+            })
         );
     }
 

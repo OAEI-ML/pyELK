@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import Any
+from unittest.mock import PropertyMock, patch
 
 import pytest
 
@@ -911,11 +912,28 @@ def test_hidden_composite_members_merge_without_flattening(
             (encoded_right, 0, (), b"b" * 32),
         ),
     )
-    native = native_module.create_session_from_encoded(encoded, 1, "error")
     scalar = native_module.create_session(
         compile_ontology(composite, unsupported="error").encode(),
         1,
     )
+    fingerprint_error = AssertionError(
+        "segmented native compilation crossed the composite scalar fingerprint facade"
+    )
+    with (
+        patch.object(
+            type(composite),
+            "logical_fingerprint",
+            new_callable=PropertyMock,
+            side_effect=fingerprint_error,
+        ),
+        patch.object(
+            type(composite),
+            "signature_fingerprint",
+            new_callable=PropertyMock,
+            side_effect=fingerprint_error,
+        ),
+    ):
+        native = native_module.create_session_from_encoded(encoded, 1, "error")
     try:
         diagnostics = native.diagnostics()
         assert diagnostics["encoded_compiler_gil_released"] is True

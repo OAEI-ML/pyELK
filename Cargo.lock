@@ -403,6 +403,7 @@ dependencies = [
  "blake2",
  "criterion",
  "rayon",
+ "sha2",
 ]
 
 [[package]]

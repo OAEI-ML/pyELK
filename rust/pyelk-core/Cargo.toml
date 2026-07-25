@@ -10,6 +10,7 @@ description = "Python-free native reasoning core for pyELK"
 [dependencies]
 blake2.workspace = true
 rayon.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
