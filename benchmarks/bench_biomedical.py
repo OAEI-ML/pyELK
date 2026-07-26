@@ -27,7 +27,7 @@ import sys
 import tempfile
 import time
 import tracemalloc
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from functools import partial
@@ -486,6 +486,74 @@ def _expected_semantic_digests(
     return result
 
 
+def _biomedical_gate_blockers(
+    *,
+    selected: Sequence[str],
+    warmups: int,
+    repeats: int,
+    trace_allocations: bool,
+    semantic_expectations: Mapping[str, str] | None,
+    owner_backends: Mapping[str, str],
+    backend_results: Mapping[str, Mapping[str, object]],
+    parity: Mapping[str, bool],
+) -> list[str]:
+    required_views = ("source", "target", "composite")
+    blockers: list[str] = []
+    if semantic_expectations is None:
+        blockers.append("caller-pinned semantic/completeness digests were not supplied")
+    if warmups < 2 or repeats < 5:
+        blockers.append("dedicated protocol requires at least two warm-ups and five samples")
+    if trace_allocations:
+        blockers.append("allocation tracing makes wall-time evidence non-gating")
+    if set(selected) != {"python", "rust"}:
+        blockers.append("gate requires exact Python and Rust backend parity")
+    if any(parity.get(name) is not True for name in required_views):
+        blockers.append("source, target, and composite backend parity is incomplete")
+    if any(owner_backends.get(name) != "native" for name in required_views):
+        blockers.append("biomedical views are not all retained native owners")
+
+    rust = backend_results.get("rust")
+    rust_views = rust.get("views") if isinstance(rust, Mapping) else None
+    if not isinstance(rust_views, Mapping):
+        blockers.append("Rust backend evidence is missing")
+        return blockers
+    expected_references = {"source": 0, "target": 0, "composite": 2}
+    for name in required_views:
+        row = rust_views.get(name)
+        ingestion = row.get("ingestion") if isinstance(row, Mapping) else None
+        if not isinstance(ingestion, Mapping):
+            blockers.append(f"{name}: Rust ingestion diagnostics are missing")
+            continue
+        buffer_count = ingestion.get("encoded_buffer_count")
+        detached = ingestion.get("encoded_detached_buffer_count")
+        indexed = ingestion.get("encoded_indexed_buffer_count")
+        segment_count = ingestion.get("encoded_segment_count")
+        expected_segments = 1 if name != "composite" else 5
+        valid = (
+            ingestion.get("ingestion_path") == "encoded-native"
+            and ingestion.get("materialized_scalar_rows") == 0
+            and ingestion.get("encoded_private_ir_bytes") == 0
+            and ingestion.get("encoded_staging_copy_bytes") == 0
+            and ingestion.get("encoded_compiler_gil_released") is True
+            and isinstance(buffer_count, int)
+            and not isinstance(buffer_count, bool)
+            and buffer_count > 0
+            and ingestion.get("encoded_zero_copy_buffers") == buffer_count
+            and isinstance(detached, int)
+            and not isinstance(detached, bool)
+            and isinstance(indexed, int)
+            and not isinstance(indexed, bool)
+            and detached + indexed == buffer_count
+            and ingestion.get("encoded_referenced_view_count") == expected_references[name]
+            and ingestion.get("encoded_segment_count") == expected_segments
+            and isinstance(segment_count, int)
+            and not isinstance(segment_count, bool)
+        )
+        if not valid:
+            blockers.append(f"{name}: Rust handoff is not exact retained encoded-native")
+    return blockers
+
+
 @contextmanager
 def _workspace_native(path: Path | None) -> Iterator[None]:
     if path is None:
@@ -711,19 +779,21 @@ def run(
                     f"{expected_digest}, observed {actual_digest}"
                 )
 
+    owner_backends = {name: view.capabilities.backend for name, view in views.items()}
+    gate_blockers = _biomedical_gate_blockers(
+        selected=selected,
+        warmups=warmups,
+        repeats=repeats,
+        trace_allocations=trace_allocations,
+        semantic_expectations=expected_digests,
+        owner_backends=owner_backends,
+        backend_results=backend_results,
+        parity=parity,
+    )
     return {
         "schema": "pyelk.biomedical-benchmark/2",
-        "gate_eligible": False,
-        "gate_blockers": [
-            *(
-                ["caller-pinned semantic/completeness digests were not supplied"]
-                if expected_digests is None
-                else []
-            ),
-            "owner review and a clean labelled dedicated-runner record are still required",
-            "Java-relative and prior-release RSS thresholds are evaluated outside this runner",
-            "exact private IR transfer bytes/copy count are not exposed by the public facade",
-        ],
+        "gate_eligible": not gate_blockers,
+        "gate_blockers": gate_blockers,
         "corpus": {
             "name": corpus_name.strip(),
             "source": corpus_source.strip(),
@@ -763,6 +833,10 @@ def run(
             "workers": workers,
             "requested_backends": list(selected),
             "allocation_tracing": trace_allocations,
+            "eligibility_scope": (
+                "hash-pinned semantic parity and retained encoded-native handoff; the integrated "
+                "runner owns machine labelling, Java comparison, and cross-benchmark thresholds"
+            ),
             "timing_warning": (
                 "tracemalloc was enabled and wall timings are diagnostic only"
                 if trace_allocations
@@ -800,7 +874,7 @@ def run(
             "source_retained_by_identity": True,
             "target_retained_by_identity": True,
             "composite_members_retained_by_identity": True,
-            "owner_backends": {name: view.capabilities.backend for name, view in views.items()},
+            "owner_backends": owner_backends,
             "serialized_intermediate_created": False,
             "fingerprints": {
                 name: {

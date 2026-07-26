@@ -158,6 +158,55 @@ def test_encoded_workload_gate_uses_aggregate_speedup_and_per_workload_regressio
     ]
 
 
+def test_biomedical_gate_requires_retained_encoded_native_handoffs() -> None:
+    def ingestion(*, buffers: int, references: int, segments: int) -> dict[str, object]:
+        return {
+            "ingestion_path": "encoded-native",
+            "materialized_scalar_rows": 0,
+            "encoded_private_ir_bytes": 0,
+            "encoded_staging_copy_bytes": 0,
+            "encoded_compiler_gil_released": True,
+            "encoded_buffer_count": buffers,
+            "encoded_zero_copy_buffers": buffers,
+            "encoded_detached_buffer_count": buffers,
+            "encoded_indexed_buffer_count": 0,
+            "encoded_referenced_view_count": references,
+            "encoded_segment_count": segments,
+        }
+
+    rust_views = {
+        "source": {"ingestion": ingestion(buffers=11, references=0, segments=1)},
+        "target": {"ingestion": ingestion(buffers=11, references=0, segments=1)},
+        "composite": {"ingestion": ingestion(buffers=33, references=2, segments=5)},
+    }
+    backend_results = {"python": {}, "rust": {"views": rust_views}}
+    arguments = {
+        "selected": ("python", "rust"),
+        "warmups": 2,
+        "repeats": 5,
+        "trace_allocations": False,
+        "semantic_expectations": {
+            "source": "1" * 64,
+            "target": "2" * 64,
+            "composite": "3" * 64,
+        },
+        "owner_backends": {
+            "source": "native",
+            "target": "native",
+            "composite": "native",
+        },
+        "backend_results": backend_results,
+        "parity": {"source": True, "target": True, "composite": True},
+    }
+
+    assert bench_biomedical._biomedical_gate_blockers(**arguments) == []
+
+    rust_views["source"]["ingestion"]["ingestion_path"] = "scalar-wire"
+    assert bench_biomedical._biomedical_gate_blockers(**arguments) == [
+        "source: Rust handoff is not exact retained encoded-native"
+    ]
+
+
 def test_quick_integrated_benchmark_is_java_free_and_semantic_checking(
     tmp_path: Path,
 ) -> None:
