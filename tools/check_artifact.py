@@ -264,6 +264,34 @@ def _audit_record(members: dict[str, bytes]) -> None:
             raise AuditError(f"wheel RECORD size mismatch: {name}")
 
 
+def _audit_wheel_identity(path: Path, members: dict[str, bytes], version: str) -> None:
+    expected_root = f"pyelk_reasoner-{version}.dist-info"
+    filename_prefix = path.name[:-4].rsplit("-", 3)[0]
+    if filename_prefix != f"pyelk_reasoner-{version}":
+        raise AuditError("wheel filename does not match the project metadata identity")
+    dist_info_roots = {
+        PurePosixPath(name).parts[0]
+        for name in members
+        if PurePosixPath(name).parts[0].endswith(".dist-info")
+    }
+    if dist_info_roots != {expected_root}:
+        raise AuditError(
+            f"wheel .dist-info identity roots differ: expected {expected_root!r}, "
+            f"found {sorted(dist_info_roots)}"
+        )
+    required = {
+        "pyelk/__init__.py",
+        f"{expected_root}/METADATA",
+        f"{expected_root}/WHEEL",
+        f"{expected_root}/RECORD",
+        f"{expected_root}/licenses/LICENSE",
+        f"{expected_root}/licenses/NOTICE.pyelk",
+    }
+    missing = required - set(members)
+    if missing:
+        raise AuditError(f"wheel is missing exact identity members: {sorted(missing)}")
+
+
 def _audit_names_and_payloads(members: dict[str, bytes]) -> tuple[str, ...]:
     native_members = []
     current_root = str(Path.cwd().resolve()).encode()
@@ -299,9 +327,10 @@ def _python_hashes(members: dict[str, bytes], *, sdist: bool) -> dict[str, str]:
 
 
 def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> ArtifactReport:
-    _audit_record(members)
     message, metadata_raw = _metadata(members, wheel=True)
     name, version, requires_python = _audit_metadata(message)
+    _audit_wheel_identity(path, members, version)
+    _audit_record(members)
     tags = _wheel_tags(path, members)
     native_members = _audit_names_and_payloads(members)
     inferred = "native-wheel" if native_members else "pure-wheel"
@@ -361,6 +390,12 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
     if len(roots) != 1:
         raise AuditError(f"sdist must have one top-level directory, found {sorted(roots)}")
     root = next(iter(roots))
+    expected_root = f"pyelk_reasoner-{version}"
+    if root != expected_root or path.name != f"{expected_root}.tar.gz":
+        raise AuditError(
+            "sdist archive identity does not match project metadata; "
+            f"expected root/file {expected_root!r}, found {root!r}/{path.name!r}"
+        )
     logical = {name[len(root) + 1 :] for name in members if name.startswith(root + "/")}
     required = {
         "Cargo.lock",

@@ -56,6 +56,7 @@ def _wheel(
     metadata: bytes = METADATA,
     source: bytes = b"VALUE = 1\n",
     extra: dict[str, bytes] | None = None,
+    dist_info: str = "pyelk_reasoner-0.1.0.dev0.dist-info",
     extra_tags: tuple[str, ...] = (),
     record_suffix: bytes = b"",
     tamper_after_record: dict[str, bytes] | None = None,
@@ -74,15 +75,15 @@ def _wheel(
         "pyelk/__init__.py": source,
         "pyelk/_native.pyi": b"def version() -> str: ...\n",
         "pyelk/py.typed": b"",
-        "pyelk_reasoner-0.1.0.dev0.dist-info/METADATA": metadata,
-        "pyelk_reasoner-0.1.0.dev0.dist-info/WHEEL": wheel,
-        "pyelk_reasoner-0.1.0.dev0.dist-info/licenses/LICENSE": b"license\n",
-        "pyelk_reasoner-0.1.0.dev0.dist-info/licenses/NOTICE.pyelk": b"notice\n",
+        f"{dist_info}/METADATA": metadata,
+        f"{dist_info}/WHEEL": wheel,
+        f"{dist_info}/licenses/LICENSE": b"license\n",
+        f"{dist_info}/licenses/NOTICE.pyelk": b"notice\n",
     }
     if native:
         files["pyelk/_native.abi3.so"] = b"native"
     files.update(extra or {})
-    record_name = "pyelk_reasoner-0.1.0.dev0.dist-info/RECORD"
+    record_name = f"{dist_info}/RECORD"
     files[record_name] = _record(files, record_name) + record_suffix
     files.update(tamper_after_record or {})
     with zipfile.ZipFile(path, "w") as archive:
@@ -91,7 +92,12 @@ def _wheel(
     return path
 
 
-def _sdist(tmp_path: Path, *, extra: dict[str, bytes] | None = None) -> Path:
+def _sdist(
+    tmp_path: Path,
+    *,
+    extra: dict[str, bytes] | None = None,
+    root: str = "pyelk_reasoner-0.1.0.dev0",
+) -> Path:
     path = tmp_path / "pyelk_reasoner-0.1.0.dev0.tar.gz"
     files = {
         "PKG-INFO": METADATA,
@@ -112,7 +118,7 @@ def _sdist(tmp_path: Path, *, extra: dict[str, bytes] | None = None) -> Path:
     files.update(extra or {})
     with tarfile.open(path, "w:gz") as archive:
         for name, value in files.items():
-            info = tarfile.TarInfo(f"pyelk_reasoner-0.1.0.dev0/{name}")
+            info = tarfile.TarInfo(f"{root}/{name}")
             info.size = len(value)
             archive.addfile(info, io.BytesIO(value))
     return path
@@ -126,6 +132,32 @@ def test_valid_artifacts_and_equivalent_payloads_pass(tmp_path: Path) -> None:
     assert AUDITOR.inspect_artifact(native).kind == "native-wheel"
     assert AUDITOR.inspect_artifact(sdist).kind == "sdist"
     assert AUDITOR.compare_wheels(pure, native)[1].tags == ("cp310-abi3-test_platform",)
+
+
+def test_wheel_requires_exact_filename_and_dist_info_identity(tmp_path: Path) -> None:
+    foreign_root = _wheel(
+        tmp_path,
+        native=False,
+        dist_info="foreign_project-0.1.0.dev0.dist-info",
+    )
+    with pytest.raises(AuditError, match="identity roots differ"):
+        AUDITOR.inspect_artifact(foreign_root)
+
+    wheel = _wheel(tmp_path, native=False)
+    foreign_filename = tmp_path / "foreign_project-0.1.0.dev0-py3-none-any.whl"
+    wheel.rename(foreign_filename)
+    with pytest.raises(AuditError, match="filename does not match"):
+        AUDITOR.inspect_artifact(foreign_filename)
+
+
+def test_sdist_requires_exact_filename_and_root_identity(tmp_path: Path) -> None:
+    with pytest.raises(AuditError, match="sdist archive identity"):
+        AUDITOR.inspect_artifact(
+            _sdist(
+                tmp_path,
+                root="foreign_project-0.1.0.dev0",
+            )
+        )
 
 
 def test_compressed_repaired_platform_tags_are_expanded(tmp_path: Path) -> None:
