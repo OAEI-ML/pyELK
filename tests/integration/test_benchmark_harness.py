@@ -134,6 +134,30 @@ def test_current_rss_observer_is_available_on_linux_and_macos() -> None:
     assert observed > 0
 
 
+def test_encoded_workload_gate_uses_aggregate_speedup_and_per_workload_regression() -> None:
+    assert (
+        bench_encoded_ingestion._workload_gate_blockers(
+            "representative",
+            scalar_total=1.5,
+            encoded_total=1.0,
+            boundary_fraction=0.049,
+            rss_ratio=1.10,
+        )
+        == []
+    )
+    assert bench_encoded_ingestion._workload_gate_blockers(
+        "regressed",
+        scalar_total=1.0,
+        encoded_total=1.11,
+        boundary_fraction=0.05,
+        rss_ratio=1.11,
+    ) == [
+        "regressed: encoded path is more than 10% slower",
+        "regressed: encoded boundary plus validation is not below 5%",
+        "regressed: encoded current-RSS growth regresses by more than 10%",
+    ]
+
+
 def test_quick_integrated_benchmark_is_java_free_and_semantic_checking(
     tmp_path: Path,
 ) -> None:

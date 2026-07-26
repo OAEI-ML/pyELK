@@ -616,6 +616,26 @@ def _require_stable(samples: list[_SampleResult], label: str) -> None:
             raise AssertionError(f"{label} result changed between benchmark samples")
 
 
+def _workload_gate_blockers(
+    name: str,
+    *,
+    scalar_total: float,
+    encoded_total: float,
+    boundary_fraction: float,
+    rss_ratio: float | None,
+) -> list[str]:
+    blockers: list[str] = []
+    if encoded_total > scalar_total * 1.10:
+        blockers.append(f"{name}: encoded path is more than 10% slower")
+    if boundary_fraction >= 0.05:
+        blockers.append(f"{name}: encoded boundary plus validation is not below 5%")
+    if rss_ratio is None:
+        blockers.append(f"{name}: comparable current-RSS growth is unavailable")
+    elif rss_ratio > 1.10:
+        blockers.append(f"{name}: encoded current-RSS growth regresses by more than 10%")
+    return blockers
+
+
 def run(
     *,
     class_count: int,
@@ -773,16 +793,15 @@ def run(
                 "incremental_current_rss_ratio": rss_ratio,
             },
         }
-        if speedup < 2.0:
-            blockers.append(f"{name}: encoded speedup {speedup:.3f}x is below 2x")
-        if encoded_total > scalar_total * 1.10:
-            blockers.append(f"{name}: encoded path is more than 10% slower")
-        if boundary_fraction >= 0.05:
-            blockers.append(f"{name}: encoded boundary plus validation is not below 5%")
-        if rss_ratio is None:
-            blockers.append(f"{name}: comparable current-RSS growth is unavailable")
-        elif rss_ratio > 1.10:
-            blockers.append(f"{name}: encoded current-RSS growth regresses by more than 10%")
+        blockers.extend(
+            _workload_gate_blockers(
+                name,
+                scalar_total=scalar_total,
+                encoded_total=encoded_total,
+                boundary_fraction=boundary_fraction,
+                rss_ratio=rss_ratio,
+            )
+        )
 
     native_schema = native_schemas.get(ENCODED_SCHEMA_NAME)
     if native_schema is None or native_schema < ENCODED_SCHEMA_VERSION:
