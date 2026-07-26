@@ -56,6 +56,7 @@ def _wheel(
     metadata: bytes = METADATA,
     source: bytes = b"VALUE = 1\n",
     extra: dict[str, bytes] | None = None,
+    extra_tags: tuple[str, ...] = (),
     record_suffix: bytes = b"",
     tamper_after_record: dict[str, bytes] | None = None,
 ) -> Path:
@@ -65,7 +66,9 @@ def _wheel(
         b"Wheel-Version: 1.0\n"
         b"Generator: packaging-test\n"
         + f"Root-Is-Purelib: {'false' if native else 'true'}\n".encode()
-        + f"Tag: {tag}\n\n".encode()
+        + f"Tag: {tag}\n".encode()
+        + b"".join(f"Tag: {extra_tag}\n".encode() for extra_tag in extra_tags)
+        + b"\n"
     )
     files = {
         "pyelk/__init__.py": source,
@@ -148,6 +151,16 @@ def test_compressed_repaired_platform_tags_are_expanded(tmp_path: Path) -> None:
         for name, value in files.items():
             target.writestr(name, value)
     assert AUDITOR.inspect_artifact(repaired).kind == "native-wheel"
+
+
+def test_wheel_metadata_cannot_claim_tags_absent_from_filename(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        native=True,
+        extra_tags=("cp310-abi3-unrelated_platform",),
+    )
+    with pytest.raises(AuditError, match="filename and WHEEL metadata tags differ"):
+        AUDITOR.inspect_artifact(wheel)
 
 
 @pytest.mark.parametrize(

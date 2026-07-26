@@ -216,9 +216,14 @@ def _wheel_tags(path: Path, members: dict[str, bytes]) -> tuple[str, ...]:
     tags = tuple(wheel_message.get_all("Tag", []))
     if not tags:
         raise AuditError("WHEEL metadata has no Tag")
-    missing = filename_tags - set(tags)
-    if missing:
-        raise AuditError(f"wheel filename tags are absent from WHEEL metadata: {sorted(missing)}")
+    if len(tags) != len(set(tags)):
+        raise AuditError("WHEEL metadata contains duplicate Tag entries")
+    if set(tags) != filename_tags:
+        raise AuditError(
+            "wheel filename and WHEEL metadata tags differ; "
+            f"filename-only={sorted(filename_tags - set(tags))}, "
+            f"metadata-only={sorted(set(tags) - filename_tags)}"
+        )
     return tags
 
 
