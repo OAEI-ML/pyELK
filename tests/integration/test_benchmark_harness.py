@@ -481,9 +481,7 @@ def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
     }
 
 
-def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
     candidates = (
         ROOT / "target" / "release" / "lib_native.dylib",
         ROOT / "target" / "release" / "lib_native.so",
@@ -493,12 +491,6 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
     native_path = next((path for path in candidates if path.is_file()), None)
     if native_path is None:
         pytest.skip("workspace native extension is not built")
-    monkeypatch.setattr(
-        bench_encoded_ingestion,
-        "ENCODED_SCHEMA_NAME",
-        "pyowl-core/test-unadvertised-structural-columns",
-    )
-
     payload = bench_encoded_ingestion.run(
         class_count=20,
         repeats=1,
@@ -540,6 +532,8 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
 
 
 def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
+    from pyowl_core.backends import native as core_native
+
     candidates = (
         ROOT / "target" / "release" / "lib_native.dylib",
         ROOT / "target" / "release" / "lib_native.so",
@@ -549,6 +543,8 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
     native_path = next((path for path in candidates if path.is_file()), None)
     if native_path is None:
         pytest.skip("workspace native extension is not built")
+    if not core_native.probe(refresh=True).available:
+        pytest.skip("installed pyowl-core native extension is unavailable")
     probe = bench_encoded_ingestion._workloads(4)["direct"]
     if (
         probe.capabilities.encoded_view_schemas.get(bench_encoded_ingestion.ENCODED_SCHEMA_NAME)
@@ -569,7 +565,7 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
 
     assert payload["gate_eligible"] is False
     capabilities = payload["capabilities"]
-    assert capabilities["producer_modes"] == ["public-negotiated"]
+    assert capabilities["producer_modes"] == ["public-negotiated-retained"]
     assert set(capabilities["core_advertised_schemas"].values()) == {
         bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
     }

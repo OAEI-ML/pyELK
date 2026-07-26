@@ -316,12 +316,40 @@ def _hierarchy_snapshot(namespace: str, class_count: int) -> owl.OntologySnapsho
     )
 
 
+def _retained_hierarchy_snapshot(namespace: str, class_count: int) -> owl.OntologyView:
+    lines = [f"Ontology(<{namespace}>"]
+    lines.extend(f"Declaration(Class(<{namespace}#C{index}>))" for index in range(class_count))
+    for start in range(0, class_count, _HIERARCHY_COMPONENT_CLASSES):
+        stop = min(class_count, start + _HIERARCHY_COMPONENT_CLASSES)
+        lines.extend(
+            f"SubClassOf(<{namespace}#C{index}> <{namespace}#C{index + 1}>)"
+            for index in range(start, stop - 1)
+        )
+    lines.append(")")
+    return owl.load_snapshot(
+        "\n".join(lines).encode(),
+        options=owl.LoadOptions(
+            format=owl.DocumentFormat.FUNCTIONAL,
+            imports=owl.ImportPolicy.IGNORE,
+            backend=owl.BackendPreference.NATIVE,
+            offline=True,
+            collect_provenance=False,
+        ),
+    )
+
+
 def _workloads(
     class_count: int,
     *,
     mapped_path: Path | None = None,
+    retained_native: bool = False,
 ) -> dict[str, owl.OntologyView]:
-    direct = _hierarchy_snapshot("urn:pyelk:encoded:direct", class_count)
+    def snapshot(namespace: str, count: int) -> owl.OntologyView:
+        if retained_native:
+            return _retained_hierarchy_snapshot(namespace, count)
+        return _hierarchy_snapshot(namespace, count)
+
+    direct = snapshot("urn:pyelk:encoded:direct", class_count)
     extra = owl.Class(owl.IRI("urn:pyelk:encoded:direct#Extra"))
     first = owl.Class(owl.IRI("urn:pyelk:encoded:direct#C0"))
     overlay = owl.apply_delta(
@@ -331,7 +359,7 @@ def _workloads(
         ),
     )
     member_count = max(2, class_count // 2)
-    source_base = _hierarchy_snapshot("urn:pyelk:encoded:source", member_count)
+    source_base = snapshot("urn:pyelk:encoded:source", member_count)
     removed_source_edge = owl.SubClassOf(
         owl.Class(owl.IRI("urn:pyelk:encoded:source#C0")),
         owl.Class(owl.IRI("urn:pyelk:encoded:source#C1")),
@@ -340,7 +368,7 @@ def _workloads(
         source_base,
         owl.OntologyDelta(remove_axioms=owl.CanonicalSet((removed_source_edge,))),
     )
-    target = _hierarchy_snapshot("urn:pyelk:encoded:target", member_count)
+    target = snapshot("urn:pyelk:encoded:target", member_count)
     bridge = owl.SubClassOf(
         owl.Class(owl.IRI(f"urn:pyelk:encoded:source#C{member_count - 1}")),
         owl.Class(owl.IRI("urn:pyelk:encoded:target#C0")),
@@ -353,7 +381,7 @@ def _workloads(
     )
     workloads: dict[str, owl.OntologyView] = {"direct": direct}
     if mapped_path is not None:
-        mapped_seed = _hierarchy_snapshot("urn:pyelk:encoded:mmap", class_count)
+        mapped_seed = snapshot("urn:pyelk:encoded:mmap", class_count)
         mapped_path.write_bytes(owl.encode_snapshot(mapped_seed))
         workloads["mmap"] = owl.open_snapshot(mapped_path, mmap=True, verify=True)
     workloads.update({"overlay": overlay, "composite": composite})
@@ -472,18 +500,27 @@ def _scalar_sample(
 
 
 def _acquire_encoded(view: owl.OntologyView, *, experimental_producer: bool) -> tuple[Any, str]:
+    if experimental_producer:
+        return (
+            native_views.produce_encoded_structural_view_v1(view),
+            "experimental-scalar-fallback",
+        )
     advertised = view.capabilities.encoded_view_schemas.get(ENCODED_SCHEMA_NAME)
     if advertised is not None and advertised >= ENCODED_SCHEMA_VERSION:
         negotiated = negotiate_encoded_structural_view(view)
         if negotiated.handoff is None:  # pragma: no cover - guarded by advertised capability
             raise AssertionError("advertised encoded view was not negotiated")
-        return negotiated.handoff.encoded_view, "public-negotiated"
-    if not experimental_producer:
-        raise RuntimeError(
-            "pyowl-core does not advertise structural columns; use --experimental-producer "
-            "for non-gating fallback smoke evidence"
+        retained = view.capabilities.backend == "native" or isinstance(
+            view, owl.MappedOntologySnapshot
         )
-    return native_views.produce_encoded_structural_view_v1(view), "experimental-scalar-fallback"
+        return (
+            negotiated.handoff.encoded_view,
+            "public-negotiated-retained" if retained else "public-negotiated-python",
+        )
+    raise RuntimeError(
+        "pyowl-core does not advertise structural columns; use --experimental-producer "
+        "for non-gating fallback smoke evidence"
+    )
 
 
 def _encoded_sample(
@@ -520,12 +557,11 @@ def _encoded_sample(
         )
         root_kinds = encoded.buffers["root_kinds"]
         scalar_roots = sum(int(value == _ROOT_AXIOM) for value in root_kinds)
-        scalar_materializations = scalar_roots if producer.startswith("experimental") else 0
+        scalar_producer = producer != "public-negotiated-retained"
+        scalar_materializations = scalar_roots if scalar_producer else 0
         segmented_owner = hasattr(view, "base") or hasattr(view, "members")
         base_flattening_bytes = (
-            int(diagnostics["encoded_buffer_bytes"])
-            if producer.startswith("experimental") and segmented_owner
-            else 0
+            int(diagnostics["encoded_buffer_bytes"]) if scalar_producer and segmented_owner else 0
         )
         counters: dict[str, int | str | bool | None] = {
             "parser_calls": 0,
@@ -536,9 +572,9 @@ def _encoded_sample(
             "staging_copy_bytes": int(diagnostics["encoded_staging_copy_bytes"]),
             "scalar_axiom_materializations": scalar_materializations,
             "scalar_materialization_counter_source": (
-                "fallback root traversal"
+                "fallback/public Python root traversal"
                 if scalar_materializations
-                else "advertised producer contract"
+                else "retained or mapped public producer contract"
             ),
             "per_axiom_ffi_calls": 0,
             "coarse_buffer_calls": int(diagnostics["encoded_buffer_count"]),
@@ -665,6 +701,7 @@ def run(
         lambda: _workloads(
             class_count,
             mapped_path=Path(workspace.name) / "mapped.pyocore",
+            retained_native=not experimental_producer,
         )
     )
     for view in workloads.values():
@@ -815,8 +852,8 @@ def run(
         blockers.append(
             "core does not advertise structural-columns v1 for: " + ", ".join(unavailable_core)
         )
-    if producers != {"public-negotiated"}:
-        blockers.append("benchmark used the experimental scalar fallback producer")
+    if producers != {"public-negotiated-retained"}:
+        blockers.append("benchmark did not use only retained or mapped public producers")
     if scalar_materialization_observed:
         blockers.append("encoded acquisition materialized scalar axioms")
 
