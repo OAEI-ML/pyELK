@@ -124,6 +124,16 @@ def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None
     )
 
 
+def test_current_rss_observer_is_available_on_linux_and_macos() -> None:
+    if sys.platform not in {"darwin", "linux"}:
+        pytest.skip("current RSS observer is platform-specific")
+
+    observed = bench_encoded_ingestion._current_rss_bytes()
+
+    assert isinstance(observed, int)
+    assert observed > 0
+
+
 def test_quick_integrated_benchmark_is_java_free_and_semantic_checking(
     tmp_path: Path,
 ) -> None:

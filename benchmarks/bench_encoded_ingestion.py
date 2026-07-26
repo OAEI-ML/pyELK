@@ -13,6 +13,7 @@ keeping the report explicitly ineligible for release claims.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import gc
 import hashlib
 import importlib
@@ -28,6 +29,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict, dataclass
+from functools import cache
 from itertools import pairwise
 from pathlib import Path
 from types import ModuleType
@@ -46,6 +48,30 @@ from pyelk.indexing.encoded import (
 T = TypeVar("T")
 _ROOT_AXIOM = 2
 _HIERARCHY_COMPONENT_CLASSES = 8
+_DARWIN_PROC_PIDTASKINFO = 4
+
+
+class _DarwinProcTaskInfo(ctypes.Structure):
+    _fields_ = [
+        ("pti_virtual_size", ctypes.c_uint64),
+        ("pti_resident_size", ctypes.c_uint64),
+        ("pti_total_user", ctypes.c_uint64),
+        ("pti_total_system", ctypes.c_uint64),
+        ("pti_threads_user", ctypes.c_uint64),
+        ("pti_threads_system", ctypes.c_uint64),
+        ("pti_policy", ctypes.c_int32),
+        ("pti_faults", ctypes.c_int32),
+        ("pti_pageins", ctypes.c_int32),
+        ("pti_cow_faults", ctypes.c_int32),
+        ("pti_messages_sent", ctypes.c_int32),
+        ("pti_messages_received", ctypes.c_int32),
+        ("pti_syscalls_mach", ctypes.c_int32),
+        ("pti_syscalls_unix", ctypes.c_int32),
+        ("pti_csw", ctypes.c_int32),
+        ("pti_threadnum", ctypes.c_int32),
+        ("pti_numrunning", ctypes.c_int32),
+        ("pti_priority", ctypes.c_int32),
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +117,41 @@ def _peak_rss_bytes() -> int | None:
     return int(value if sys.platform == "darwin" else value * 1024)
 
 
+@cache
+def _darwin_proc_pidinfo() -> Any | None:
+    if platform.system() != "Darwin":
+        return None
+    try:
+        function = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True).proc_pidinfo
+    except (AttributeError, OSError):
+        return None
+    function.argtypes = (
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    )
+    function.restype = ctypes.c_int
+    return function
+
+
 def _current_rss_bytes() -> int | None:
+    if platform.system() == "Darwin":
+        proc_pidinfo = _darwin_proc_pidinfo()
+        if proc_pidinfo is None:
+            return None
+        task = _DarwinProcTaskInfo()
+        task_size = ctypes.sizeof(task)
+        received = proc_pidinfo(
+            os.getpid(),
+            _DARWIN_PROC_PIDTASKINFO,
+            0,
+            ctypes.byref(task),
+            task_size,
+        )
+        return int(task.pti_resident_size) if received == task_size else None
+
     statm = Path("/proc/self/statm")
     if not statm.is_file():
         return None
@@ -733,8 +793,9 @@ def run(
             "warm_queries_per_session": warm_queries,
             "exact_packed_result_parity_required": True,
             "rss_observation": (
-                "Linux current RSS plus process-lifetime ru_maxrss high-water growth; raw values "
-                "are retained and order is alternated between paired paths"
+                "Linux /proc or macOS libproc current RSS plus process-lifetime ru_maxrss "
+                "high-water growth; raw values are retained and order is alternated between "
+                "paired paths"
             ),
             "thresholds": {
                 "geometric_mean_speedup_min": 2.0,
