@@ -217,6 +217,32 @@ def test_metadata_rejects_jvm_bridge_dependency(tmp_path: Path) -> None:
         AUDITOR.inspect_artifact(_wheel(tmp_path, native=False, metadata=metadata))
 
 
+def test_metadata_rejects_optional_marker_with_runtime_escape(tmp_path: Path) -> None:
+    metadata = METADATA.replace(
+        b"\n\nfixture",
+        b'\nRequires-Dist: requests; extra == "dev" or python_version >= "3.10"\n\nfixture',
+    )
+    with pytest.raises(AuditError, match="unexpected runtime dependency"):
+        AUDITOR.inspect_artifact(_wheel(tmp_path, native=False, metadata=metadata))
+
+
+def test_metadata_accepts_dependency_only_when_every_branch_requires_an_extra(
+    tmp_path: Path,
+) -> None:
+    metadata = METADATA.replace(
+        b"\n\nfixture",
+        (
+            b'\nRequires-Dist: tomli>=2; python_version < "3.11" and extra == "dev"\n'
+            b'Requires-Dist: pytest>=8; (extra == "test" and python_version >= "3.10") '
+            b'or extra == "dev"\n\nfixture'
+        ),
+    )
+    assert (
+        AUDITOR.inspect_artifact(_wheel(tmp_path, native=False, metadata=metadata)).kind
+        == "pure-wheel"
+    )
+
+
 def test_compare_rejects_changed_python_source(tmp_path: Path) -> None:
     pure = _wheel(tmp_path, native=False)
     native = _wheel(tmp_path, native=True, source=b"VALUE = 2\n")
