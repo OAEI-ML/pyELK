@@ -56,6 +56,16 @@ class ArtifactReport:
     archive_sha256: str
 
 
+@dataclass(frozen=True)
+class _ArtifactIdentity:
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+    sha256: str
+
+
 def _normalise_name(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).lower()
 
@@ -127,6 +137,31 @@ def _read_archive(path: Path) -> dict[str, bytes]:
     else:
         raise AuditError(f"unsupported artifact type: {path.name}")
     return members
+
+
+def _artifact_identity(path: Path) -> _ArtifactIdentity:
+    before = path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode):
+        raise AuditError(f"artifact is not a regular file: {path}")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    after = path.stat(follow_symlinks=False)
+    before_fields = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+    after_fields = (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    )
+    if before_fields != after_fields:
+        raise AuditError(f"artifact changed while hashing: {path}")
+    return _ArtifactIdentity(*after_fields, digest)
 
 
 def _one_member(members: dict[str, bytes], suffix: str) -> tuple[str, bytes]:
@@ -436,13 +471,21 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
 def inspect_artifact(path: Path, expected: str = "auto") -> ArtifactReport:
     """Inspect one artifact and return its deterministic audit report."""
 
+    if path.is_symlink():
+        raise AuditError(f"artifact must not be a symbolic link: {path}")
     path = path.resolve()
-    if not path.is_file():
+    if not path.exists():
         raise AuditError(f"artifact does not exist: {path}")
+    initial_identity = _artifact_identity(path)
     members = _read_archive(path)
     if path.suffix == ".whl":
-        return _audit_wheel(path, members, expected)
-    return _audit_sdist(path, members, expected)
+        report = _audit_wheel(path, members, expected)
+    else:
+        report = _audit_sdist(path, members, expected)
+    final_identity = _artifact_identity(path)
+    if initial_identity != final_identity or report.archive_sha256 != final_identity.sha256:
+        raise AuditError(f"artifact changed during inspection: {path}")
+    return report
 
 
 def compare_wheels(pure: Path, native: Path) -> tuple[ArtifactReport, ArtifactReport]:

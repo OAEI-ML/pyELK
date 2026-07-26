@@ -268,3 +268,28 @@ def test_zip_path_traversal_is_rejected(tmp_path: Path) -> None:
         archive.writestr("../escape", b"x")
     with pytest.raises(AuditError, match="unsafe archive"):
         AUDITOR.inspect_artifact(wheel)
+
+
+def test_artifact_path_must_be_a_regular_file_not_a_symlink(tmp_path: Path) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    link = tmp_path / "candidate.whl"
+    link.symlink_to(wheel)
+    with pytest.raises(AuditError, match="symbolic link"):
+        AUDITOR.inspect_artifact(link)
+
+
+def test_artifact_cannot_change_during_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    original = AUDITOR._read_archive
+
+    def mutate_after_read(path: Path) -> dict[str, bytes]:
+        members = original(path)
+        path.write_bytes(path.read_bytes() + b"changed-after-archive-read")
+        return members
+
+    monkeypatch.setattr(AUDITOR, "_read_archive", mutate_after_read)
+    with pytest.raises(AuditError, match="changed during inspection"):
+        AUDITOR.inspect_artifact(wheel)
