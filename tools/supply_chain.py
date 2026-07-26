@@ -770,6 +770,14 @@ def _workflow_pin(text: str, pattern: str, label: str) -> str:
     return values.pop()
 
 
+def _shell_assignment(script: str, name: str) -> str:
+    return _workflow_pin(
+        script,
+        rf"(?m)^{re.escape(name)}=([A-Za-z0-9_.-]+)$",
+        f"Linux bootstrap {name}",
+    )
+
+
 def _read_file_identity(path: Path) -> tuple[bytes, dict[str, Any]]:
     before = path.stat(follow_symlinks=False)
     if stat.S_ISLNK(before.st_mode):
@@ -842,15 +850,34 @@ def build_provenance(root: Path) -> dict[str, Any]:
         "Rust release toolchain",
     )
     pyproject = bound_text("pyproject.toml")
-    project = tomllib.loads(pyproject).get("project")
+    pyproject_document = tomllib.loads(pyproject)
+    project = pyproject_document.get("project")
     if not isinstance(project, dict) or type(project.get("version")) is not str:
         raise ValueError("build provenance: pyproject.toml has no literal project version")
     project_version = project["version"]
-    container_toolchain = _workflow_pin(
-        pyproject,
-        r"--default-toolchain ([0-9]+\.[0-9]+\.[0-9]+)",
-        "container Rust toolchain",
+    tool = pyproject_document.get("tool")
+    cibuildwheel = tool.get("cibuildwheel") if isinstance(tool, dict) else None
+    linux = cibuildwheel.get("linux") if isinstance(cibuildwheel, dict) else None
+    bootstrap = linux.get("before-all") if isinstance(linux, dict) else None
+    if not isinstance(bootstrap, str):
+        raise ValueError("build provenance: Linux Rust bootstrap must be a literal string")
+    rustup_version = _shell_assignment(bootstrap, "rustup_version")
+    container_toolchain = _shell_assignment(bootstrap, "rust_toolchain")
+    rustup_installer_sha256 = sorted(
+        set(re.findall(r"(?m)^\s*rustup_sha256=([0-9a-f]{64})$", bootstrap))
     )
+    if len(rustup_installer_sha256) != 2:
+        raise ValueError("build provenance: Linux Rust bootstrap must bind two installer checksums")
+    if (
+        "https://static.rust-lang.org/rustup/archive/$rustup_version/$rustup_host/rustup-init"
+        not in bootstrap
+        or "sha256sum --check --strict" not in bootstrap
+        or "https://sh.rustup.rs" in bootstrap
+        or re.search(r"\|\s*(?:sh|bash)(?:\s|$)", bootstrap) is not None
+    ):
+        raise ValueError(
+            "build provenance: Linux Rust bootstrap is not archive- and checksum-bound"
+        )
     if {selector_channel, workflow_toolchain, container_toolchain} != {selector_channel}:
         raise ValueError(
             "build provenance: Rust toolchain pins differ: "
@@ -914,6 +941,8 @@ def build_provenance(root: Path) -> dict[str, Any]:
         "tools": {
             "rust_toolchain": selector_channel,
             "cargo_manifest_rust_version": rust_msrv,
+            "rustup": rustup_version,
+            "rustup_installer_sha256": rustup_installer_sha256,
             **versions,
         },
         "inputs": inputs,

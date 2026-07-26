@@ -112,6 +112,11 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     assert provenance["tools"] == {
         "rust_toolchain": "1.97.1",
         "cargo_manifest_rust_version": "1.85",
+        "rustup": "1.28.2",
+        "rustup_installer_sha256": [
+            "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
+            "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c",
+        ],
         "python_build_frontend": "build==1.5.0",
         "python_build_backend": "setuptools==83.0.0",
         "setuptools_rust": "setuptools-rust==1.13.0",
@@ -148,6 +153,27 @@ def test_build_provenance_rejects_divergent_rust_toolchain_pins(tmp_path: Path) 
     )
 
     with pytest.raises(ValueError, match="Rust toolchain pins differ"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_mutable_rustup_bootstrap(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    start = text.index('before-all = """')
+    end = text.index('"""', start + len('before-all = """')) + len('"""')
+    pyproject.write_text(
+        text[:start]
+        + 'before-all = "curl -sSf https://sh.rustup.rs | sh -s -- '
+        + '-y --default-toolchain 1.97.1 --profile minimal"'
+        + text[end:],
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"Linux bootstrap rustup_version|archive- and checksum-bound",
+    ):
         build_provenance(tmp_path)
 
 

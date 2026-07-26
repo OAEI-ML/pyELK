@@ -26,8 +26,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 4293,
-      "sha256": "498e983599e790d11e8273b5f51838ec318ae617f45f587478c7a6124988b5e9"
+      "bytes": 5148,
+      "sha256": "ab200e36c68f113554f3754205c59eb32219e9ff624f260f26879b246542ce2f"
     },
     "rust-toolchain.toml": {
       "bytes": 86,
@@ -58,8 +58,8 @@
       "sha256": "006ed87dbf23cd8c6477cf26a5152e5f201c158be249e776c1d6da19c4ffc9ac"
     },
     "tools/supply_chain.py": {
-      "bytes": 39392,
-      "sha256": "8b809b11d44bfb8fcfbae921cea8b26ee84e366d733afc23bdb1d604f8bff28b"
+      "bytes": 40827,
+      "sha256": "599b26c1732d1b608da633086359f870c7a6a8437774d0f37e030d4dafcd4b52"
     }
   },
   "schema": "pyelk.build-provenance/1",
@@ -77,6 +77,11 @@
     "python_build_backend": "setuptools==83.0.0",
     "python_build_frontend": "build==1.5.0",
     "rust_toolchain": "1.97.1",
+    "rustup": "1.28.2",
+    "rustup_installer_sha256": [
+      "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
+      "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c"
+    ],
     "setuptools_rust": "setuptools-rust==1.13.0",
     "wheel_builder": "wheel==0.46.3"
   },

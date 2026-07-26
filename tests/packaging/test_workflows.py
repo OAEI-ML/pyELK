@@ -21,6 +21,7 @@ def test_foundation_uses_compiler_free_auto_fallback_without_masking_backend_tes
 
 def test_distribution_workflow_enforces_reproducibility_and_external_audits() -> None:
     workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert "cmp dist/*.tar.gz rebuilt/*.tar.gz" in workflow
     assert "cmp dist/*-py3-none-any.whl rebuilt/*-py3-none-any.whl" in workflow
@@ -29,6 +30,11 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert "delocate==0.13.0" in workflow
     assert "delvewheel==1.13.0" in workflow
     assert 'check "$wheel" --expect native-wheel --external' in workflow
+    assert "rustup_version=1.28.2" in pyproject
+    assert pyproject.count("rustup_sha256=") == 2
+    assert "sha256sum --check --strict" in pyproject
+    assert "https://sh.rustup.rs" not in pyproject
+    assert re.search(r"\|\s*(?:sh|bash)(?:\s|$)", pyproject) is None
 
 
 def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> None:
