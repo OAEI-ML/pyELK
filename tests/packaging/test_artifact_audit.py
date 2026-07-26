@@ -319,3 +319,18 @@ def test_artifact_cannot_change_during_inspection(
     monkeypatch.setattr(AUDITOR, "_read_archive", mutate_after_read)
     with pytest.raises(AuditError, match="changed during inspection"):
         AUDITOR.inspect_artifact(wheel)
+
+
+def test_member_size_limit_is_checked_before_zip_decompression(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    monkeypatch.setattr(AUDITOR, "MAX_MEMBER_SIZE", 1)
+
+    def unexpected_read(*args: object, **kwargs: object) -> bytes:
+        raise AssertionError("oversized member was decompressed")
+
+    monkeypatch.setattr(AUDITOR.zipfile.ZipFile, "read", unexpected_read)
+    with pytest.raises(AuditError, match="member is too large"):
+        AUDITOR.inspect_artifact(wheel)

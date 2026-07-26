@@ -16,16 +16,18 @@ import subprocess
 import sys
 import tarfile
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from email.message import Message
 from email.parser import BytesParser
+from functools import partial
 from pathlib import Path, PurePosixPath
 
 PROJECT_NAME = "pyelk-reasoner"
 CORE_REQUIREMENT = frozenset({">=0.1", "<0.2"})
 MAX_MEMBER_SIZE = 256 * 1024 * 1024
 MAX_ARCHIVE_SIZE = 1024 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 100_000
 NATIVE_SUFFIXES = (".so", ".pyd", ".dll", ".dylib")
 PYTHON_SUFFIXES = (".py", ".pyi")
 FORBIDDEN_ARCHIVE_SUFFIXES = (".class", ".ear", ".jar", ".war")
@@ -89,40 +91,55 @@ def _read_archive(path: Path) -> dict[str, bytes]:
     members: dict[str, bytes] = {}
     total = 0
 
-    def add(name: str, size: int, data: bytes, *, mode: int = 0) -> None:
+    def add(
+        name: str,
+        size: int,
+        read: Callable[[], bytes],
+        *,
+        mode: int = 0,
+    ) -> None:
         nonlocal total
         safe_name = _safe_member(name)
         if safe_name.endswith("/"):
             return
         if stat.S_ISLNK(mode):
             raise AuditError(f"archive member is a symbolic link: {safe_name}")
-        if size > MAX_MEMBER_SIZE:
+        if size < 0 or size > MAX_MEMBER_SIZE:
             raise AuditError(f"archive member is too large: {safe_name}")
         total += size
         if total > MAX_ARCHIVE_SIZE:
             raise AuditError("archive expands beyond the audit size limit")
         if safe_name in members:
             raise AuditError(f"duplicate archive member: {safe_name}")
+        data = read()
+        if len(data) != size:
+            raise AuditError(f"archive member size differs from its header: {safe_name}")
         members[safe_name] = data
 
     if path.suffix == ".whl":
         if not zipfile.is_zipfile(path):
             raise AuditError(f"wheel is not a valid ZIP archive: {path}")
         with zipfile.ZipFile(path) as zip_archive:
-            for zip_info in zip_archive.infolist():
+            zip_infos = zip_archive.infolist()
+            if len(zip_infos) > MAX_ARCHIVE_MEMBERS:
+                raise AuditError("archive contains too many members")
+            for zip_info in zip_infos:
                 mode = (zip_info.external_attr >> 16) & 0xFFFF
                 if zip_info.is_dir():
                     continue
                 add(
                     zip_info.filename,
                     zip_info.file_size,
-                    zip_archive.read(zip_info),
+                    partial(zip_archive.read, zip_info),
                     mode=mode,
                 )
     elif path.name.endswith((".tar.gz", ".tar.bz2", ".tar.xz")):
         try:
             with tarfile.open(path, mode="r:*") as tar_archive:
-                for tar_info in tar_archive.getmembers():
+                tar_infos = tar_archive.getmembers()
+                if len(tar_infos) > MAX_ARCHIVE_MEMBERS:
+                    raise AuditError("archive contains too many members")
+                for tar_info in tar_infos:
                     if tar_info.isdir():
                         continue
                     if not tar_info.isfile():
@@ -135,7 +152,7 @@ def _read_archive(path: Path) -> dict[str, bytes]:
                     add(
                         tar_info.name,
                         tar_info.size,
-                        extracted.read(),
+                        extracted.read,
                         mode=tar_info.mode,
                     )
         except tarfile.TarError as error:
