@@ -490,7 +490,7 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
     assert payload["fixture"]["hierarchy_component_classes"] == 8
     assert payload["gate_eligible"] is False
     assert payload["capabilities"]["producer_modes"] == ["experimental-scalar-fallback"]
-    assert set(payload["workloads"]) == {"direct", "overlay", "composite"}
+    assert set(payload["workloads"]) == {"direct", "mmap", "overlay", "composite"}
     for name, row in payload["workloads"].items():
         assert row["parity"] == {
             "compiler_digest": True,
@@ -503,11 +503,13 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
         assert counters["wire_encoder_calls"] == 0
         assert counters["wire_decoder_calls"] == 0
         assert counters["scalar_axiom_materializations"] > 0
-        assert row["encoded_native"]["diagnostics"]["encoded_compiler_gil_released"] is True
+        assert row["encoded_native"]["diagnostics"]["encoded_compiler_gil_released"] is (
+            name != "mmap"
+        )
         assert row["encoded_native"]["phases"]["native_validation"]["samples"]
         assert row["encoded_native"]["phases"]["boundary_and_validation"]["samples"]
         assert row["encoded_native"]["phases"]["view_to_first_result"]["samples"]
-        if name == "direct":
+        if name in {"direct", "mmap"}:
             assert counters["base_flattening_bytes"] == 0
         else:
             assert counters["base_flattening_bytes"] > 0
@@ -556,9 +558,14 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
         assert counters["wire_encoder_calls"] == 0
         assert counters["wire_decoder_calls"] == 0
     direct = payload["workloads"]["direct"]["encoded_native"]
+    mapped = payload["workloads"]["mmap"]["encoded_native"]
     overlay = payload["workloads"]["overlay"]["encoded_native"]
     composite = payload["workloads"]["composite"]["encoded_native"]
     assert direct["counters"]["staging_copy_bytes"] == 0
+    assert mapped["counters"]["staging_copy_bytes"] == 0
+    assert mapped["diagnostics"]["encoded_detached_buffer_count"] == 0
+    assert mapped["diagnostics"]["encoded_indexed_buffer_count"] == 11
+    assert mapped["diagnostics"]["encoded_compiler_gil_released"] is False
     assert overlay["counters"]["staging_copy_bytes"] == 0
     assert composite["counters"]["staging_copy_bytes"] == 4
     assert composite["diagnostics"]["encoded_posting_bytes"] == 4

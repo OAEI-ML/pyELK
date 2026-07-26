@@ -316,7 +316,11 @@ def _hierarchy_snapshot(namespace: str, class_count: int) -> owl.OntologySnapsho
     )
 
 
-def _workloads(class_count: int) -> dict[str, owl.OntologyView]:
+def _workloads(
+    class_count: int,
+    *,
+    mapped_path: Path | None = None,
+) -> dict[str, owl.OntologyView]:
     direct = _hierarchy_snapshot("urn:pyelk:encoded:direct", class_count)
     extra = owl.Class(owl.IRI("urn:pyelk:encoded:direct#Extra"))
     first = owl.Class(owl.IRI("urn:pyelk:encoded:direct#C0"))
@@ -347,7 +351,13 @@ def _workloads(class_count: int) -> dict[str, owl.OntologyView]:
         delta=owl.OntologyDelta(add_axioms=owl.CanonicalSet((bridge,))),
         roles=("source", "target"),
     )
-    return {"direct": direct, "overlay": overlay, "composite": composite}
+    workloads: dict[str, owl.OntologyView] = {"direct": direct}
+    if mapped_path is not None:
+        mapped_seed = _hierarchy_snapshot("urn:pyelk:encoded:mmap", class_count)
+        mapped_path.write_bytes(owl.encode_snapshot(mapped_seed))
+        workloads["mmap"] = owl.open_snapshot(mapped_path, mmap=True, verify=True)
+    workloads.update({"overlay": overlay, "composite": composite})
+    return workloads
 
 
 def _diagnostics(session: Any) -> dict[str, int | float | str | bool]:
@@ -630,7 +640,13 @@ def run(
     native_schemas = native.encoded_view_schemas()
     if not isinstance(native_schemas, Mapping):
         raise AssertionError("native encoded-view capability is not a mapping")
-    workloads, setup_phase = _observe(lambda: _workloads(class_count))
+    workspace = tempfile.TemporaryDirectory(prefix="pyelk-encoded-workloads-")
+    workloads, setup_phase = _observe(
+        lambda: _workloads(
+            class_count,
+            mapped_path=Path(workspace.name) / "mapped.pyocore",
+        )
+    )
     for view in workloads.values():
         _ = (view.structural_fingerprint, view.logical_fingerprint, view.signature_fingerprint)
 
@@ -714,12 +730,12 @@ def run(
         if any(sample.counters["base_flattening_bytes"] != 0 for sample in encoded_samples):
             blockers.append(f"{name}: encoded producer flattened base structures")
         encoded_diagnostics = encoded_samples[0].diagnostics
-        if name == "direct":
+        if name in {"direct", "mmap"}:
             if (
                 encoded_diagnostics["encoded_segment_count"] != 1
                 or encoded_diagnostics["encoded_referenced_view_count"] != 0
             ):
-                blockers.append("direct: encoded segment manifest is not direct")
+                blockers.append(f"{name}: encoded segment manifest is not direct")
         elif (
             int(encoded_diagnostics["encoded_segment_count"]) <= 1
             or int(encoded_diagnostics["encoded_referenced_view_count"]) < 1
@@ -792,7 +808,7 @@ def run(
     if enforce and not gate_eligible:
         raise AssertionError("encoded-ingestion release gate failed: " + "; ".join(blockers))
 
-    return {
+    payload = {
         "schema": "pyelk.encoded-ingestion-benchmark/2",
         "environment": {
             "platform": platform.platform(),
@@ -842,6 +858,14 @@ def run(
         "gate_eligible": gate_eligible,
         "gate_blockers": blockers,
     }
+    mapped_view = workloads.pop("mmap")
+    gc.collect()
+    close_mapped = getattr(mapped_view, "close", None)
+    if not callable(close_mapped):
+        raise AssertionError("mmap workload does not expose a close operation")
+    close_mapped()
+    workspace.cleanup()
+    return payload
 
 
 def _arguments() -> argparse.Namespace:
