@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import stat
 import sys
@@ -778,31 +779,51 @@ def _shell_assignment(script: str, name: str) -> str:
     )
 
 
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        value.st_mode,
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
 def _read_file_identity(path: Path) -> tuple[bytes, dict[str, Any]]:
     before = path.stat(follow_symlinks=False)
     if stat.S_ISLNK(before.st_mode):
         raise ValueError(f"build provenance: input must not be a symlink: {path}")
     if not stat.S_ISREG(before.st_mode):
         raise ValueError(f"build provenance: input must be a regular file: {path}")
-    payload = path.read_bytes()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or _stat_identity(before) != _stat_identity(opened):
+            raise ValueError(f"build provenance: input changed while opening: {path}")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 64 * 1024):
+            chunks.append(chunk)
+        completed = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
     after = path.stat(follow_symlinks=False)
-    before_identity = (
-        before.st_mode,
-        before.st_dev,
-        before.st_ino,
-        before.st_size,
-        before.st_mtime_ns,
-        before.st_ctime_ns,
-    )
-    after_identity = (
-        after.st_mode,
-        after.st_dev,
-        after.st_ino,
-        after.st_size,
-        after.st_mtime_ns,
-        after.st_ctime_ns,
-    )
-    if before_identity != after_identity or len(payload) != after.st_size:
+    payload = b"".join(chunks)
+    if (
+        len(
+            {
+                _stat_identity(before),
+                _stat_identity(opened),
+                _stat_identity(completed),
+                _stat_identity(after),
+            }
+        )
+        != 1
+        or not stat.S_ISREG(after.st_mode)
+        or len(payload) != completed.st_size
+    ):
         raise ValueError(f"build provenance: input changed while hashing: {path}")
     return (
         payload,

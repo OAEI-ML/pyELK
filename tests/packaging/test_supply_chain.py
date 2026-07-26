@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from copy import deepcopy
 from pathlib import Path
@@ -214,6 +215,29 @@ def test_build_provenance_parses_the_exact_hashed_payload(
         "bytes": len(original),
         "sha256": hashlib.sha256(original).hexdigest(),
     }
+
+
+def test_build_provenance_rejects_path_replacement_during_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "input.toml"
+    moved = tmp_path / "original.toml"
+    path.write_bytes(b"original input")
+    original_read = os.read
+    replaced = False
+
+    def replacing_read(descriptor: int, size: int) -> bytes:
+        nonlocal replaced
+        if not replaced:
+            path.replace(moved)
+            path.write_bytes(b"replacement input")
+            replaced = True
+        return original_read(descriptor, size)
+
+    monkeypatch.setattr(SUPPLY_CHAIN.os, "read", replacing_read)
+    with pytest.raises(ValueError, match="changed while hashing"):
+        SUPPLY_CHAIN._read_file_identity(path)
 
 
 def test_generated_evidence_check_detects_drift(tmp_path: Path) -> None:
