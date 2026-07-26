@@ -447,7 +447,9 @@ def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
     }
 
 
-def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
+def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     candidates = (
         ROOT / "target" / "release" / "lib_native.dylib",
         ROOT / "target" / "release" / "lib_native.so",
@@ -457,6 +459,11 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
     native_path = next((path for path in candidates if path.is_file()), None)
     if native_path is None:
         pytest.skip("workspace native extension is not built")
+    monkeypatch.setattr(
+        bench_encoded_ingestion,
+        "ENCODED_SCHEMA_NAME",
+        "pyowl-core/test-unadvertised-structural-columns",
+    )
 
     payload = bench_encoded_ingestion.run(
         class_count=20,
@@ -494,6 +501,50 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating() -> None:
             assert counters["base_flattening_bytes"] == 0
         else:
             assert counters["base_flattening_bytes"] > 0
+
+
+def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
+    candidates = (
+        ROOT / "target" / "release" / "lib_native.dylib",
+        ROOT / "target" / "release" / "lib_native.so",
+        ROOT / "target" / "debug" / "lib_native.dylib",
+        ROOT / "target" / "debug" / "lib_native.so",
+    )
+    native_path = next((path for path in candidates if path.is_file()), None)
+    if native_path is None:
+        pytest.skip("workspace native extension is not built")
+    probe = bench_encoded_ingestion._workloads(4)["direct"]
+    if (
+        probe.capabilities.encoded_view_schemas.get(bench_encoded_ingestion.ENCODED_SCHEMA_NAME)
+        != bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
+    ):
+        pytest.skip("installed pyowl-core does not advertise structural-columns v1")
+
+    payload = bench_encoded_ingestion.run(
+        class_count=20,
+        repeats=1,
+        warmups=0,
+        warm_queries=2,
+        workers=1,
+        native_path=native_path,
+        experimental_producer=False,
+        enforce=False,
+    )
+
+    assert payload["gate_eligible"] is False
+    capabilities = payload["capabilities"]
+    assert capabilities["producer_modes"] == ["public-negotiated"]
+    assert set(capabilities["core_advertised_schemas"].values()) == {
+        bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
+    }
+    assert capabilities["native_advertised_schema"] is None
+    assert "native extension does not advertise structural-columns v1" in payload["gate_blockers"]
+    for row in payload["workloads"].values():
+        counters = row["encoded_native"]["counters"]
+        assert counters["scalar_axiom_materializations"] == 0
+        assert counters["base_flattening_bytes"] == 0
+        assert counters["wire_encoder_calls"] == 0
+        assert counters["wire_decoder_calls"] == 0
 
 
 def test_encoded_ingestion_enforcement_rejects_the_fallback_before_loading_native() -> None:
