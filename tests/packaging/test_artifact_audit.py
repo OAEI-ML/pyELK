@@ -58,15 +58,20 @@ def _wheel(
     extra: dict[str, bytes] | None = None,
     dist_info: str = "pyelk_reasoner-0.1.0.dev0.dist-info",
     extra_tags: tuple[str, ...] = (),
+    wheel_version: str = "1.0",
+    root_is_pure: str | None = None,
+    extra_wheel_headers: tuple[tuple[str, str], ...] = (),
     record_suffix: bytes = b"",
     tamper_after_record: dict[str, bytes] | None = None,
 ) -> Path:
     tag = "cp310-abi3-test_platform" if native else "py3-none-any"
     path = tmp_path / f"pyelk_reasoner-0.1.0.dev0-{tag}.whl"
+    pure_value = root_is_pure or ("false" if native else "true")
     wheel = (
-        b"Wheel-Version: 1.0\n"
-        b"Generator: packaging-test\n"
-        + f"Root-Is-Purelib: {'false' if native else 'true'}\n".encode()
+        f"Wheel-Version: {wheel_version}\n".encode()
+        + b"Generator: packaging-test\n"
+        + f"Root-Is-Purelib: {pure_value}\n".encode()
+        + b"".join(f"{name}: {value}\n".encode() for name, value in extra_wheel_headers)
         + f"Tag: {tag}\n".encode()
         + b"".join(f"Tag: {extra_tag}\n".encode() for extra_tag in extra_tags)
         + b"\n"
@@ -193,6 +198,34 @@ def test_wheel_metadata_cannot_claim_tags_absent_from_filename(tmp_path: Path) -
     )
     with pytest.raises(AuditError, match="filename and WHEEL metadata tags differ"):
         AUDITOR.inspect_artifact(wheel)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "match"),
+    [
+        ({"wheel_version": "2.0"}, "exactly Wheel-Version: 1.0"),
+        ({"native": True, "root_is_pure": "true"}, "native wheel must set Root-Is-Purelib"),
+        (
+            {"extra_wheel_headers": (("Root-Is-Purelib", "false"),)},
+            "exactly one Root-Is-Purelib",
+        ),
+    ],
+)
+def test_wheel_install_headers_are_exact(
+    tmp_path: Path,
+    arguments: dict[str, object],
+    match: str,
+) -> None:
+    options = dict(arguments)
+    native = bool(options.pop("native", False))
+    with pytest.raises(AuditError, match=match):
+        AUDITOR.inspect_artifact(
+            _wheel(
+                tmp_path,
+                native=native,
+                **options,
+            )
+        )
 
 
 @pytest.mark.parametrize(

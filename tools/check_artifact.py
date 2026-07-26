@@ -382,6 +382,11 @@ def _wheel_tags(path: Path, members: dict[str, bytes]) -> tuple[str, ...]:
     }
     _, wheel_raw = _one_member(members, ".dist-info/WHEEL")
     wheel_message = BytesParser().parsebytes(wheel_raw)
+    wheel_versions = wheel_message.get_all("Wheel-Version", [])
+    if wheel_versions != ["1.0"]:
+        raise AuditError(
+            f"WHEEL metadata must contain exactly Wheel-Version: 1.0; found {wheel_versions}"
+        )
     tags = tuple(wheel_message.get_all("Tag", []))
     if not tags:
         raise AuditError("WHEEL metadata has no Tag")
@@ -510,7 +515,13 @@ def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> Artifa
     _one_member(members, ".dist-info/licenses/LICENSE")
     _one_member(members, ".dist-info/licenses/NOTICE.pyelk")
     wheel_message = BytesParser().parsebytes(wheel_raw)
-    root_is_pure = wheel_message.get("Root-Is-Purelib", "").lower()
+    root_is_pure_values = wheel_message.get_all("Root-Is-Purelib", [])
+    if len(root_is_pure_values) != 1:
+        raise AuditError(
+            "WHEEL metadata must contain exactly one Root-Is-Purelib header; "
+            f"found {root_is_pure_values}"
+        )
+    root_is_pure = root_is_pure_values[0].lower()
     if inferred == "pure-wheel":
         if set(tags) != {"py3-none-any"} or not path.name.endswith("-py3-none-any.whl"):
             raise AuditError(f"fallback wheel is not exactly py3-none-any: {tags}")
