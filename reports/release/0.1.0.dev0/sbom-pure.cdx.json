@@ -1,0 +1,57 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:pypi/pyowl-core?requirement=%3E%3D0.1%2C%3C0.2",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "name": "pyowl-core",
+      "properties": [
+        {
+          "name": "pyelk:requirement",
+          "value": ">=0.1,<0.2"
+        }
+      ],
+      "purl": "pkg:pypi/pyowl-core",
+      "type": "library"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "pkg:pypi/pyowl-core?requirement=%3E%3D0.1%2C%3C0.2"
+      ],
+      "ref": "pkg:pypi/pyelk-reasoner@0.1.0.dev0?variant=pure"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/pyowl-core?requirement=%3E%3D0.1%2C%3C0.2"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:pypi/pyelk-reasoner@0.1.0.dev0?variant=pure",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "name": "pyelk-reasoner",
+      "properties": [
+        {
+          "name": "pyelk:artifact-variant",
+          "value": "pure"
+        }
+      ],
+      "purl": "pkg:pypi/pyelk-reasoner@0.1.0.dev0",
+      "type": "library",
+      "version": "0.1.0.dev0"
+    }
+  },
+  "serialNumber": "urn:uuid:3b04edaa-b617-5393-ae82-01c0698d1ae1",
+  "specVersion": "1.5",
+  "version": 1
+}

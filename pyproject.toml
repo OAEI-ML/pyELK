@@ -12,7 +12,7 @@ description = "ELK-compatible OWL 2 EL reasoning in pure Python with optional Ru
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE.pyelk"]
+license-files = ["LICENSE", "NOTICE.pyelk", "THIRD_PARTY_LICENSES/*"]
 authors = [
   { name = "pyELK contributors" },
 ]

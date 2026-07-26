@@ -31,6 +31,16 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert 'check "$wheel" --expect native-wheel --external' in workflow
 
 
+def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> None:
+    workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
+
+    assert workflow.count("python -m tools.supply_chain --check") == 2
+    assert "reports/release/0.1.0.dev0" in workflow
+    assert "name: supply-chain-evidence" in workflow
+    assert "path: supply-chain" in workflow
+    assert "supply-chain/*.json" in workflow
+
+
 def test_every_supported_later_cpython_exercises_glibc_musl_macos_and_windows() -> None:
     workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
 

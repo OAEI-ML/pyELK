@@ -20,5 +20,46 @@ and pyELK-generated additions. Those test resources are excluded from release sd
 wheels. Development-only Java oracle dependencies and generated Java classes/JARs are also
 excluded from every pyELK distribution.
 
+The optional extension's production dependency closure is recorded in
+THIRD_PARTY_LICENSES/inventory.toml. Apache-2.0 is selected where available;
+the required MIT, BSD-3-Clause, LLVM-exception, and Unicode terms are reproduced
+under THIRD_PARTY_LICENSES/.
+
+The following machine-checked block is the exact native dependency notice
+inventory for this source revision:
+<!-- pyelk-native-inventory:start -->
+- blake2 0.10.6: Apache-2.0 [native-runtime]
+- block-buffer 0.10.4: Apache-2.0 [native-runtime]
+- cfg-if 1.0.4: Apache-2.0 [native-runtime]
+- cpufeatures 0.2.17: Apache-2.0 [native-runtime]
+- crossbeam-deque 0.8.7: Apache-2.0 [native-runtime]
+- crossbeam-epoch 0.9.20: Apache-2.0 [native-runtime]
+- crossbeam-utils 0.8.22: Apache-2.0 [native-runtime]
+- crypto-common 0.1.7: Apache-2.0 [native-runtime]
+- digest 0.10.7: Apache-2.0 [native-runtime]
+- either 1.16.0: Apache-2.0 [native-runtime]
+- generic-array 0.14.7: MIT [native-runtime]; additional terms: THIRD_PARTY_LICENSES/MIT-generic-array.txt
+- heck 0.5.0: Apache-2.0 [native-build]
+- libc 0.2.186: Apache-2.0 [native-runtime]
+- once_cell 1.21.4: Apache-2.0 [native-runtime]
+- portable-atomic 1.14.0: Apache-2.0 [native-runtime]
+- proc-macro2 1.0.106: Apache-2.0 [native-build]
+- pyo3 0.29.0: Apache-2.0 [native-runtime]
+- pyo3-build-config 0.29.0: Apache-2.0 [native-build]
+- pyo3-ffi 0.29.0: Apache-2.0 [native-runtime]
+- pyo3-macros 0.29.0: Apache-2.0 [native-build]
+- pyo3-macros-backend 0.29.0: Apache-2.0 [native-build]
+- quote 1.0.46: Apache-2.0 [native-build]
+- rayon 1.12.0: Apache-2.0 [native-runtime]
+- rayon-core 1.13.0: Apache-2.0 [native-runtime]
+- sha2 0.10.9: Apache-2.0 [native-runtime]
+- subtle 2.6.1: BSD-3-Clause [native-runtime]; additional terms: THIRD_PARTY_LICENSES/BSD-3-Clause-subtle.txt
+- syn 2.0.119: Apache-2.0 [native-build]
+- target-lexicon 0.13.5: Apache-2.0 WITH LLVM-exception [native-build]; additional terms: THIRD_PARTY_LICENSES/LLVM-exception.txt
+- typenum 1.20.1: Apache-2.0 [native-runtime]
+- unicode-ident 1.0.24: Apache-2.0 AND Unicode-3.0 [native-build]; additional terms: THIRD_PARTY_LICENSES/Unicode-3.0.txt
+- version_check 0.9.5: Apache-2.0 [native-build]
+<!-- pyelk-native-inventory:end -->
+
 This notice is informational and does not modify the Apache License, Version 2.0, included
 as LICENSE.

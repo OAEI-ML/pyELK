@@ -27,7 +27,16 @@ PROJECT_NAME = "pyelk-reasoner"
 CORE_REQUIREMENT = frozenset({">=0.1", "<0.2"})
 ROOT = Path(__file__).resolve().parents[1]
 LICENSE_EXPRESSION = "Apache-2.0"
-LICENSE_PAYLOADS = {name: (ROOT / name).read_bytes() for name in ("LICENSE", "NOTICE.pyelk")}
+_LICENSE_PATHS = (
+    "LICENSE",
+    "NOTICE.pyelk",
+    *(
+        f"THIRD_PARTY_LICENSES/{path.name}"
+        for path in sorted((ROOT / "THIRD_PARTY_LICENSES").iterdir())
+        if path.is_file()
+    ),
+)
+LICENSE_PAYLOADS = {name: (ROOT / name).read_bytes() for name in _LICENSE_PATHS}
 MAX_MEMBER_SIZE = 256 * 1024 * 1024
 MAX_ARCHIVE_SIZE = 1024 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 100_000
@@ -64,6 +73,7 @@ class ArtifactReport:
     native_members: tuple[str, ...]
     python_hashes: dict[str, str]
     metadata_sha256: str
+    legal_payload_sha256: str
     archive_sha256: str
 
 
@@ -377,7 +387,7 @@ def _audit_metadata(message: Message) -> tuple[str, str, str]:
     license_files = message.get_all("License-File", [])
     if len(license_files) != len(set(license_files)) or set(license_files) != set(LICENSE_PAYLOADS):
         raise AuditError(
-            "metadata License-File headers must identify exactly LICENSE and NOTICE.pyelk; "
+            "metadata License-File headers must identify the exact legal payload inventory; "
             f"found {license_files}"
         )
 
@@ -408,6 +418,19 @@ def _audit_license_payloads(members: dict[str, bytes], *, wheel: bool) -> None:
         member_name, actual = _one_member(members, suffix)
         if actual != expected:
             raise AuditError(f"license payload differs from the repository source: {member_name}")
+
+
+def _legal_payload_sha256(members: dict[str, bytes], *, wheel: bool) -> str:
+    digest = hashlib.sha256(b"pyelk:legal-payload:v1\0")
+    for name in sorted(LICENSE_PAYLOADS):
+        suffix = f".dist-info/licenses/{name}" if wheel else f"/{name}"
+        _, payload = _one_member(members, suffix)
+        encoded_name = name.encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
 
 
 def _wheel_tags(path: Path, members: dict[str, bytes]) -> tuple[str, ...]:
@@ -499,8 +522,7 @@ def _audit_wheel_identity(path: Path, members: dict[str, bytes], version: str) -
         f"{expected_root}/METADATA",
         f"{expected_root}/WHEEL",
         f"{expected_root}/RECORD",
-        f"{expected_root}/licenses/LICENSE",
-        f"{expected_root}/licenses/NOTICE.pyelk",
+        *(f"{expected_root}/licenses/{name}" for name in LICENSE_PAYLOADS),
     }
     missing = required - set(members)
     if missing:
@@ -594,6 +616,7 @@ def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         native_members=native_members,
         python_hashes=hashes,
         metadata_sha256=hashlib.sha256(metadata_raw).hexdigest(),
+        legal_payload_sha256=_legal_payload_sha256(members, wheel=True),
         archive_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
     )
 
@@ -621,8 +644,7 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
     required = {
         "Cargo.lock",
         "Cargo.toml",
-        "LICENSE",
-        "NOTICE.pyelk",
+        *LICENSE_PAYLOADS,
         "pyelk_build.py",
         "pyproject.toml",
         "rust-toolchain.toml",
@@ -650,6 +672,7 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         native_members=(),
         python_hashes=_python_hashes(members, sdist=True),
         metadata_sha256=hashlib.sha256(metadata_raw).hexdigest(),
+        legal_payload_sha256=_legal_payload_sha256(members, wheel=False),
         archive_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
     )
 
@@ -687,6 +710,8 @@ def compare_wheels(pure: Path, native: Path) -> tuple[ArtifactReport, ArtifactRe
         )
     if pure_report.metadata_sha256 != native_report.metadata_sha256:
         raise AuditError("pure/native METADATA bytes differ")
+    if pure_report.legal_payload_sha256 != native_report.legal_payload_sha256:
+        raise AuditError("pure/native legal payload differs")
     if pure_report.python_hashes != native_report.python_hashes:
         pure_keys = set(pure_report.python_hashes)
         native_keys = set(native_report.python_hashes)

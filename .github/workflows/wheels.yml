@@ -40,6 +40,11 @@ jobs:
       - name: Set reproducible archive timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
+      - name: Validate dependency inventory, legal selections, and SBOMs
+        run: >-
+          python -m tools.supply_chain --check
+          --output-dir reports/release/0.1.0.dev0
+
       - name: Build the reproducible sdist and explicit zero-extension wheel twice
         env:
           PYELK_BUILD_PURE: "1"
@@ -61,6 +66,13 @@ jobs:
         with:
           name: source-artifacts
           path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supply-chain-evidence
+          path: reports/release/0.1.0.dev0/*.json
           if-no-files-found: error
           retention-days: 7
 
@@ -333,6 +345,11 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: supply-chain-evidence
+          path: supply-chain
+
       - name: Require the exact tier-one set and compare every native wheel
         run: |
           python - <<'PY'
@@ -350,6 +367,11 @@ jobs:
             python tools/check_artifact.py compare artifacts/*-py3-none-any.whl "$wheel"
           done
 
+      - name: Revalidate the staged dependency and SBOM evidence
+        run: >-
+          python -m tools.supply_chain --check --require-approval
+          --output-dir supply-chain
+
       - name: Verify local-index wheel preference
         run: python tests/packaging/check_index_preference.py --index artifacts
 
@@ -359,5 +381,6 @@ jobs:
           path: |
             artifacts/*.whl
             artifacts/*.tar.gz
+            supply-chain/*.json
           if-no-files-found: error
           retention-days: 7

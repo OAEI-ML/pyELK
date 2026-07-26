@@ -32,17 +32,16 @@ pytestmark = pytest.mark.packaging
 
 LICENSE = (ROOT / "LICENSE").read_bytes()
 NOTICE = (ROOT / "NOTICE.pyelk").read_bytes()
-METADATA = b"""Metadata-Version: 2.4
-Name: pyelk-reasoner
-Version: 0.1.0.dev0
-Requires-Python: >=3.10
-License-Expression: Apache-2.0
-License-File: LICENSE
-License-File: NOTICE.pyelk
-Requires-Dist: pyowl-core<0.2,>=0.1
-
-fixture
-"""
+LICENSE_PAYLOADS = AUDITOR.LICENSE_PAYLOADS
+METADATA = (
+    b"Metadata-Version: 2.4\n"
+    b"Name: pyelk-reasoner\n"
+    b"Version: 0.1.0.dev0\n"
+    b"Requires-Python: >=3.10\n"
+    b"License-Expression: Apache-2.0\n"
+    + b"".join(f"License-File: {name}\n".encode() for name in LICENSE_PAYLOADS)
+    + b"Requires-Dist: pyowl-core<0.2,>=0.1\n\nfixture\n"
+)
 
 
 def _record(files: dict[str, bytes], record_name: str) -> bytes:
@@ -87,9 +86,9 @@ def _wheel(
         "pyelk/py.typed": b"",
         f"{dist_info}/METADATA": metadata,
         f"{dist_info}/WHEEL": wheel,
-        f"{dist_info}/licenses/LICENSE": LICENSE,
-        f"{dist_info}/licenses/NOTICE.pyelk": NOTICE,
     }
+    for name, payload in LICENSE_PAYLOADS.items():
+        files[f"{dist_info}/licenses/{name}"] = payload
     if native:
         files["pyelk/_native.abi3.so"] = b"native"
     files.update(extra or {})
@@ -113,8 +112,6 @@ def _sdist(
         "PKG-INFO": METADATA,
         "Cargo.lock": b"version = 4\n",
         "Cargo.toml": b"[workspace]\n",
-        "LICENSE": LICENSE,
-        "NOTICE.pyelk": NOTICE,
         "pyelk_build.py": b"def build_reproducible_sdist(): ...\n",
         "pyproject.toml": b"[build-system]\n",
         "rust-toolchain.toml": b"[toolchain]\n",
@@ -125,6 +122,7 @@ def _sdist(
         "src/pyelk/_native.pyi": b"",
         "src/pyelk/py.typed": b"",
     }
+    files.update(LICENSE_PAYLOADS)
     files.update(extra or {})
     with tarfile.open(path, "w:gz") as archive:
         for name, value in files.items():
@@ -280,6 +278,27 @@ def test_license_payloads_must_match_repository_sources(tmp_path: Path, kind: st
         artifact = _sdist(tmp_path, extra={"NOTICE.pyelk": b"changed\n"})
     with pytest.raises(AuditError, match="license payload differs"):
         AUDITOR.inspect_artifact(artifact)
+
+
+def test_legal_payload_digest_matches_wheel_and_sdist_and_detects_tampering(
+    tmp_path: Path,
+) -> None:
+    wheel = AUDITOR.inspect_artifact(_wheel(tmp_path, native=False))
+    sdist_root = tmp_path / "sdist"
+    sdist_root.mkdir()
+    sdist = AUDITOR.inspect_artifact(_sdist(sdist_root))
+    tampered_root = tmp_path / "tampered"
+    tampered_root.mkdir()
+    dist_info = "pyelk_reasoner-0.1.0.dev0.dist-info"
+    tampered = _wheel(
+        tampered_root,
+        native=False,
+        extra={f"{dist_info}/licenses/THIRD_PARTY_LICENSES/LLVM-exception.txt": b"changed\n"},
+    )
+
+    assert wheel.legal_payload_sha256 == sdist.legal_payload_sha256
+    with pytest.raises(AuditError, match="license payload differs"):
+        AUDITOR.inspect_artifact(tampered)
 
 
 def test_metadata_rejects_optional_marker_with_runtime_escape(tmp_path: Path) -> None:

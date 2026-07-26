@@ -8,6 +8,7 @@ include pyelk_build.py
 include rust-toolchain.toml
 include setup.py
 
+recursive-include THIRD_PARTY_LICENSES *
 recursive-include rust/pyelk-core *.rs Cargo.toml
 recursive-include rust/pyelk-pyo3 *.rs Cargo.toml
 recursive-include src/pyelk *.py *.pyi py.typed
