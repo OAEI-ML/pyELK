@@ -39,6 +39,34 @@ def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> Non
     assert "name: supply-chain-evidence" in workflow
     assert "path: supply-chain" in workflow
     assert "supply-chain/*.json" in workflow
+    assert "name: release-bundle" in workflow
+    assert "name: release-evidence" in workflow
+    release_bundle = workflow.split("name: release-bundle", maxsplit=1)[1].split(
+        "- uses:",
+        maxsplit=1,
+    )[0]
+    assert "artifacts/*.whl" in release_bundle
+    assert "artifacts/*.tar.gz" in release_bundle
+    assert "supply-chain" not in release_bundle
+
+
+def test_atomic_release_revalidates_evidence_and_keeps_publish_input_distribution_only() -> None:
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert workflow.count("name: release-bundle") == 2
+    assert "name: release-evidence" in workflow
+    assert "path: artifacts" in workflow
+    assert "path: supply-chain" in workflow
+    assert (
+        "python -m tools.supply_chain --check --require-approval --output-dir supply-chain"
+        in workflow
+    )
+    assert (
+        "python -m tools.release_manifest artifacts "
+        "--output supply-chain/artifact-manifest.json --check"
+    ) in workflow
+    assert "assert all(path.is_file() for path in artifacts), artifacts" in workflow
+    assert "packages-dir: artifacts" in workflow
 
 
 def test_every_supported_later_cpython_exercises_glibc_musl_macos_and_windows() -> None:

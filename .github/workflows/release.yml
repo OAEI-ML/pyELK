@@ -33,6 +33,16 @@ jobs:
           name: release-bundle
           path: artifacts
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-evidence
+          path: supply-chain
+
+      - name: Revalidate artifact-bound release evidence
+        run: |
+          python -m tools.supply_chain --check --require-approval --output-dir supply-chain
+          python -m tools.release_manifest artifacts --output supply-chain/artifact-manifest.json --check
+
       - name: Re-audit all staged files and tag/version agreement
         env:
           PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
@@ -47,6 +57,7 @@ jobs:
           from check_artifact import inspect_artifact
 
           artifacts = sorted(Path("artifacts").iterdir())
+          assert all(path.is_file() for path in artifacts), artifacts
           reports = [inspect_artifact(path) for path in artifacts]
           assert len(reports) == 9, reports
           versions = {report.version for report in reports}

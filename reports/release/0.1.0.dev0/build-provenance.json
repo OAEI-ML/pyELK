@@ -1,9 +1,13 @@
 {
   "distribution": "pyelk-reasoner",
   "inputs": {
+    ".github/workflows/release.yml": {
+      "bytes": 2984,
+      "sha256": "49f41751e0c7a481b9e30279d81b22b7095c3aae521e75b6029c7fdb4b7960d2"
+    },
     ".github/workflows/wheels.yml": {
-      "bytes": 14224,
-      "sha256": "7f11c51e60de3416bb8fd342bbb3ea714cf3af811503402c0c3dab9134f84de1"
+      "bytes": 14427,
+      "sha256": "f70127ac536b09ca8da7a7948edf111adb28ef8ce3da8851e68b6a16f3eb6dcc"
     },
     "Cargo.lock": {
       "bytes": 19844,
@@ -54,8 +58,8 @@
       "sha256": "006ed87dbf23cd8c6477cf26a5152e5f201c158be249e776c1d6da19c4ffc9ac"
     },
     "tools/supply_chain.py": {
-      "bytes": 39355,
-      "sha256": "6755d21b93667845cdb91787f17081115c2d5d108b7802cd3d3f0cd67aa0716b"
+      "bytes": 39392,
+      "sha256": "8b809b11d44bfb8fcfbae921cea8b26ee84e366d733afc23bdb1d604f8bff28b"
     }
   },
   "schema": "pyelk.build-provenance/1",

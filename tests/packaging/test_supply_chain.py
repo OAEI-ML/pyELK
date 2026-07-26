@@ -132,6 +132,11 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
         "bytes": len(release_manifest),
         "sha256": hashlib.sha256(release_manifest).hexdigest(),
     }
+    release_workflow = (ROOT / ".github/workflows/release.yml").read_bytes()
+    assert provenance["inputs"][".github/workflows/release.yml"] == {
+        "bytes": len(release_workflow),
+        "sha256": hashlib.sha256(release_workflow).hexdigest(),
+    }
 
 
 def test_build_provenance_rejects_divergent_rust_toolchain_pins(tmp_path: Path) -> None:

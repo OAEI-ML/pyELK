@@ -46,6 +46,7 @@ _ALLOWED_SELECTED_LICENSES = {
     "MIT",
 }
 _BUILD_INPUT_PATHS = (
+    ".github/workflows/release.yml",
     ".github/workflows/wheels.yml",
     "Cargo.lock",
     "Cargo.toml",
