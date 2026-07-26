@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from copy import deepcopy
@@ -9,6 +10,7 @@ import pytest
 from tools.supply_chain import (
     build_cyclonedx,
     build_dependency_inventory,
+    build_provenance,
     generate_evidence,
     load_locked_packages,
     main,
@@ -33,6 +35,14 @@ def _copy_manifests(target: Path) -> None:
         destination = target / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / relative, destination)
+
+
+def _copy_build_inputs(target: Path) -> None:
+    for relative in build_provenance(ROOT)["inputs"]:
+        source = ROOT / relative
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
 
 
 def test_reviewed_inventory_matches_the_production_lock_closure() -> None:
@@ -88,6 +98,59 @@ def test_sbom_validator_rejects_non_spdx_or_unbound_components() -> None:
         "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0.dev0?variant=native "
         "names unknown components ['pkg:cargo/unbound@9.9.9']",
     ]
+
+
+def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
+    provenance = build_provenance(ROOT)
+
+    assert provenance["schema"] == "pyelk.build-provenance/1"
+    assert provenance["source_date_epoch"] == {
+        "strategy": "git-commit-timestamp",
+        "command": "git show -s --format=%ct HEAD",
+    }
+    assert provenance["tools"] == {
+        "rust_toolchain": "1.97.1",
+        "cargo_manifest_rust_version": "1.85",
+        "python_build_frontend": "build==1.5.0",
+        "python_build_backend": "setuptools==83.0.0",
+        "setuptools_rust": "setuptools-rust==1.13.0",
+        "wheel_builder": "wheel==0.46.3",
+        "cibuildwheel_action": ("pypa/cibuildwheel@a0a973acdc9e7b7f8b04ac5c80e6883a5a102615"),
+        "abi3audit": "abi3audit==0.0.26",
+        "auditwheel": "auditwheel==6.7.0",
+        "delocate": "delocate==0.13.0",
+        "delvewheel": "delvewheel==1.13.0",
+    }
+    lock = (ROOT / "Cargo.lock").read_bytes()
+    assert provenance["inputs"]["Cargo.lock"] == {
+        "bytes": len(lock),
+        "sha256": hashlib.sha256(lock).hexdigest(),
+    }
+    release_manifest = (ROOT / "tools/release_manifest.py").read_bytes()
+    assert provenance["inputs"]["tools/release_manifest.py"] == {
+        "bytes": len(release_manifest),
+        "sha256": hashlib.sha256(release_manifest).hexdigest(),
+    }
+
+
+def test_build_provenance_rejects_divergent_rust_toolchain_pins(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    selector = tmp_path / "rust-toolchain.toml"
+    selector.write_text(
+        selector.read_text(encoding="utf-8").replace('channel = "1.97.1"', 'channel = "1.96.0"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Rust toolchain pins differ"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_an_absent_control_input(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    (tmp_path / "setup.py").unlink()
+
+    with pytest.raises(ValueError, match=r"cannot hash input setup\.py"):
+        build_provenance(tmp_path)
 
 
 def test_generated_evidence_check_detects_drift(tmp_path: Path) -> None:

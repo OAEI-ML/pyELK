@@ -1,0 +1,80 @@
+{
+  "distribution": "pyelk-reasoner",
+  "inputs": {
+    ".github/workflows/wheels.yml": {
+      "bytes": 14224,
+      "sha256": "7f11c51e60de3416bb8fd342bbb3ea714cf3af811503402c0c3dab9134f84de1"
+    },
+    "Cargo.lock": {
+      "bytes": 19844,
+      "sha256": "ce13f106f8393905cb2ca5859ae9e0c8caeada08c12843a73c702123e63fd180"
+    },
+    "Cargo.toml": {
+      "bytes": 465,
+      "sha256": "7fdb083af0e1541105aa8ecaa2368574df4edf77b6f4f1b1c4498cae3494a08c"
+    },
+    "MANIFEST.in": {
+      "bytes": 609,
+      "sha256": "14e2b6190b319088ff34e2240cc8bb4ed540afeba0ec931fd471d064b21b5e0c"
+    },
+    "pyelk_build.py": {
+      "bytes": 2257,
+      "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
+    },
+    "pyproject.toml": {
+      "bytes": 4293,
+      "sha256": "498e983599e790d11e8273b5f51838ec318ae617f45f587478c7a6124988b5e9"
+    },
+    "rust-toolchain.toml": {
+      "bytes": 86,
+      "sha256": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e"
+    },
+    "rust/pyelk-core/Cargo.toml": {
+      "bytes": 429,
+      "sha256": "b5a4f0106b07688480e716a5458b8ae7f2b08e3616d1c2a5b4b3c9a354287025"
+    },
+    "rust/pyelk-pyo3/Cargo.toml": {
+      "bytes": 488,
+      "sha256": "f283bcf061f9a19679207cfd8f54443dcd6ec90fa7d333e54a995c3f233fe3b7"
+    },
+    "rust/pyelk-pyo3/build.rs": {
+      "bytes": 339,
+      "sha256": "499ead2834b224317b20d9800794d3eb74d67413b4ec25ad961fca38c9b88a31"
+    },
+    "setup.py": {
+      "bytes": 4109,
+      "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
+    },
+    "tools/check_artifact.py": {
+      "bytes": 31585,
+      "sha256": "2d1289f9400de48fdaa8b00dd19a1fd19832cf70fb9b3be4243beec38a3591b5"
+    },
+    "tools/release_manifest.py": {
+      "bytes": 7769,
+      "sha256": "006ed87dbf23cd8c6477cf26a5152e5f201c158be249e776c1d6da19c4ffc9ac"
+    },
+    "tools/supply_chain.py": {
+      "bytes": 38695,
+      "sha256": "58992bed65d7d74a300eebab99867e85b6135c79e70146ac66d18b6cedc637f2"
+    }
+  },
+  "schema": "pyelk.build-provenance/1",
+  "source_date_epoch": {
+    "command": "git show -s --format=%ct HEAD",
+    "strategy": "git-commit-timestamp"
+  },
+  "tools": {
+    "abi3audit": "abi3audit==0.0.26",
+    "auditwheel": "auditwheel==6.7.0",
+    "cargo_manifest_rust_version": "1.85",
+    "cibuildwheel_action": "pypa/cibuildwheel@a0a973acdc9e7b7f8b04ac5c80e6883a5a102615",
+    "delocate": "delocate==0.13.0",
+    "delvewheel": "delvewheel==1.13.0",
+    "python_build_backend": "setuptools==83.0.0",
+    "python_build_frontend": "build==1.5.0",
+    "rust_toolchain": "1.97.1",
+    "setuptools_rust": "setuptools-rust==1.13.0",
+    "wheel_builder": "wheel==0.46.3"
+  },
+  "version": "0.1.0.dev0"
+}

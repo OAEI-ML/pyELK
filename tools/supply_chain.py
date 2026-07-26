@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import stat
 import sys
 import uuid
 from dataclasses import dataclass
@@ -43,6 +45,22 @@ _ALLOWED_SELECTED_LICENSES = {
     "BSD-3-Clause",
     "MIT",
 }
+_BUILD_INPUT_PATHS = (
+    ".github/workflows/wheels.yml",
+    "Cargo.lock",
+    "Cargo.toml",
+    "MANIFEST.in",
+    "pyelk_build.py",
+    "pyproject.toml",
+    "rust-toolchain.toml",
+    "rust/pyelk-core/Cargo.toml",
+    "rust/pyelk-pyo3/Cargo.toml",
+    "rust/pyelk-pyo3/build.rs",
+    "setup.py",
+    "tools/check_artifact.py",
+    "tools/release_manifest.py",
+    "tools/supply_chain.py",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -744,6 +762,146 @@ def build_dependency_inventory(root: Path) -> dict[str, Any]:
     }
 
 
+def _workflow_pin(text: str, pattern: str, label: str) -> str:
+    values: set[str] = set(re.findall(pattern, text))
+    if len(values) != 1:
+        raise ValueError(f"build provenance: expected one unique {label}, got {sorted(values)!r}")
+    return values.pop()
+
+
+def _file_identity(path: Path) -> dict[str, Any]:
+    before = path.stat(follow_symlinks=False)
+    if stat.S_ISLNK(before.st_mode):
+        raise ValueError(f"build provenance: input must not be a symlink: {path}")
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError(f"build provenance: input must be a regular file: {path}")
+    payload = path.read_bytes()
+    after = path.stat(follow_symlinks=False)
+    before_identity = (
+        before.st_mode,
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+    after_identity = (
+        after.st_mode,
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    )
+    if before_identity != after_identity or len(payload) != after.st_size:
+        raise ValueError(f"build provenance: input changed while hashing: {path}")
+    return {
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def build_provenance(root: Path) -> dict[str, Any]:
+    """Bind release tool pins to every deterministic build-control input."""
+
+    wheels = (root / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
+    selector = _load_toml(root / "rust-toolchain.toml").get("toolchain")
+    workspace = _load_toml(root / "Cargo.toml").get("workspace")
+    if not isinstance(selector, dict):
+        raise ValueError("build provenance: rust-toolchain.toml has no toolchain table")
+    if not isinstance(workspace, dict) or not isinstance(workspace.get("package"), dict):
+        raise ValueError("build provenance: Cargo.toml has no workspace.package table")
+    selector_channel = selector.get("channel")
+    rust_msrv = workspace["package"].get("rust-version")
+    if type(selector_channel) is not str or type(rust_msrv) is not str:
+        raise ValueError("build provenance: Rust selector and MSRV must be literal strings")
+    workflow_toolchain = _workflow_pin(
+        wheels,
+        r"rustup toolchain install ([0-9]+\.[0-9]+\.[0-9]+)",
+        "Rust release toolchain",
+    )
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    container_toolchain = _workflow_pin(
+        pyproject,
+        r"--default-toolchain ([0-9]+\.[0-9]+\.[0-9]+)",
+        "container Rust toolchain",
+    )
+    if {selector_channel, workflow_toolchain, container_toolchain} != {selector_channel}:
+        raise ValueError(
+            "build provenance: Rust toolchain pins differ: "
+            f"selector={selector_channel!r}, workflow={workflow_toolchain!r}, "
+            f"container={container_toolchain!r}"
+        )
+    epoch_command = _workflow_pin(
+        wheels,
+        r"SOURCE_DATE_EPOCH=\$\((git show -s --format=%ct HEAD)\)",
+        "SOURCE_DATE_EPOCH derivation",
+    )
+    versions = {
+        "python_build_frontend": (
+            "build==" + _workflow_pin(wheels, r"\bbuild==([0-9][^\s]+)", "build frontend")
+        ),
+        "python_build_backend": (
+            "setuptools=="
+            + _workflow_pin(wheels, r"\bsetuptools==([0-9][^\s]+)", "setuptools backend")
+        ),
+        "setuptools_rust": (
+            "setuptools-rust=="
+            + _workflow_pin(
+                wheels,
+                r"\bsetuptools-rust==([0-9][^\s]+)",
+                "setuptools-rust builder",
+            )
+        ),
+        "wheel_builder": (
+            "wheel==" + _workflow_pin(wheels, r"\bwheel==([0-9][^\s]+)", "wheel builder")
+        ),
+        "cibuildwheel_action": (
+            "pypa/cibuildwheel@"
+            + _workflow_pin(
+                wheels,
+                r"pypa/cibuildwheel@([0-9a-f]{40})",
+                "cibuildwheel action revision",
+            )
+        ),
+        "abi3audit": (
+            "abi3audit==" + _workflow_pin(wheels, r"\babi3audit==([0-9][^\s]+)", "ABI3 auditor")
+        ),
+        "auditwheel": (
+            "auditwheel==" + _workflow_pin(wheels, r"\bauditwheel==([0-9][^\s]+)", "Linux auditor")
+        ),
+        "delocate": (
+            "delocate==" + _workflow_pin(wheels, r"\bdelocate==([0-9][^\s]+)", "macOS auditor")
+        ),
+        "delvewheel": (
+            "delvewheel=="
+            + _workflow_pin(wheels, r"\bdelvewheel==([0-9][^\s]+)", "Windows auditor")
+        ),
+    }
+    inputs: dict[str, dict[str, Any]] = {}
+    for relative in _BUILD_INPUT_PATHS:
+        path = root / relative
+        try:
+            inputs[relative] = _file_identity(path)
+        except OSError as error:
+            raise ValueError(f"build provenance: cannot hash input {relative}: {error}") from error
+    return {
+        "schema": "pyelk.build-provenance/1",
+        "distribution": "pyelk-reasoner",
+        "version": _project_version(root),
+        "source_date_epoch": {
+            "strategy": "git-commit-timestamp",
+            "command": epoch_command,
+        },
+        "tools": {
+            "rust_toolchain": selector_channel,
+            "cargo_manifest_rust_version": rust_msrv,
+            **versions,
+        },
+        "inputs": inputs,
+    }
+
+
 def _canonical_json(value: dict[str, Any]) -> str:
     return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
@@ -752,6 +910,7 @@ def generate_evidence(root: Path, output_dir: Path, *, check: bool = False) -> l
     """Write or verify deterministic inventory and pure/native SBOM files."""
 
     documents = {
+        "build-provenance.json": build_provenance(root),
         "dependency-inventory.json": build_dependency_inventory(root),
         "sbom-native.cdx.json": build_cyclonedx(root, "native"),
         "sbom-pure.cdx.json": build_cyclonedx(root, "pure"),
