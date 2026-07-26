@@ -83,6 +83,40 @@ def _semantic_expectations(payload: dict[str, object]) -> dict[str, str]:
     }
 
 
+def _java_performance_report(
+    inputs: integrated_benchmark.BiomedicalInputs,
+    *,
+    seconds: float = 1.0,
+) -> dict[str, object]:
+    return {
+        "schema": "pyelk.java-performance/1",
+        "machine_label": "test-runner",
+        "workers": 1,
+        "protocol": {"warmups": 2, "measured_runs": 5},
+        "elk": {
+            "release": "0.6.0",
+            "commit": "b8ac5ce83db0704a7359d96aa382891e2f547863",
+        },
+        "environment": {"java": "OpenJDK test fixture"},
+        "inputs": {
+            "corpus_name": inputs.name,
+            "source_sha256": inputs.source_sha256,
+            "target_sha256": inputs.target_sha256,
+            "alignment_sha256": inputs.alignment_sha256,
+        },
+        "corpora": {
+            name: {
+                "semantic_completeness_sha256": getattr(
+                    inputs,
+                    f"expected_{name}_semantic_completeness_sha256",
+                ),
+                "warm_view_to_result_seconds": [seconds] * 5,
+            }
+            for name in ("source", "target", "composite")
+        },
+    }
+
+
 def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None:
     text = MANIFEST.read_text(encoding="utf-8")
     assert text.startswith('schema = "pyelk.performance-corpus/1"')
@@ -475,6 +509,23 @@ def test_integrated_enforcement_requires_digests_and_rejects_ineligible_evidence
         "--expected-composite-semantic-completeness-sha256",
     ):
         assert flag in command_arguments
+    with pytest.raises(ValueError, match="same-machine pinned Java performance report"):
+        integrated_benchmark.run(
+            suite="full",
+            native=True,
+            workers=1,
+            enforce=True,
+            java_report=None,
+            machine_label="test-runner",
+            native_path=None,
+            biomedical=pinned,
+        )
+
+    java_report = tmp_path / "java-performance.json"
+    java_report.write_text(
+        json.dumps(_java_performance_report(pinned)),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         integrated_benchmark,
         "_suite",
@@ -491,10 +542,113 @@ def test_integrated_enforcement_requires_digests_and_rejects_ineligible_evidence
             native=True,
             workers=1,
             enforce=True,
-            java_report=None,
+            java_report=java_report,
             machine_label="test-runner",
             native_path=None,
             biomedical=pinned,
+        )
+
+
+def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arguments = _biomedical_fixture(tmp_path)
+    inputs = integrated_benchmark.BiomedicalInputs(
+        source=arguments["source_path"],
+        source_sha256=arguments["source_sha256"],
+        source_axiom_count=arguments["source_axiom_count"],
+        source_entity_count=arguments["source_entity_count"],
+        target=arguments["target_path"],
+        target_sha256=arguments["target_sha256"],
+        target_axiom_count=arguments["target_axiom_count"],
+        target_entity_count=arguments["target_entity_count"],
+        alignment=arguments["alignment_path"],
+        alignment_sha256=arguments["alignment_sha256"],
+        name=arguments["corpus_name"],
+        origin=arguments["corpus_source"],
+        license=arguments["corpus_license"],
+        expected_source_semantic_completeness_sha256="1" * 64,
+        expected_target_semantic_completeness_sha256="2" * 64,
+        expected_composite_semantic_completeness_sha256="3" * 64,
+    )
+    report = _java_performance_report(inputs)
+    java_samples = integrated_benchmark._validate_java_performance_report(
+        report,
+        machine_label="test-runner",
+        workers=1,
+        biomedical=inputs,
+    )
+
+    def phase(seconds: float) -> dict[str, object]:
+        return {"samples": [{"wall_seconds": seconds} for _ in range(5)]}
+
+    native_views = {
+        name: {
+            "session_construction": phase(0.25),
+            "classification": phase(0.75),
+        }
+        for name in ("source", "target", "composite")
+    }
+    biomedical_result = {"backends": {"rust": {"views": native_views}}}
+    comparison = integrated_benchmark._java_relative_comparison(
+        biomedical_result,
+        java_samples,
+    )
+    assert comparison["gate_eligible"] is True
+    assert comparison["native_to_java_geometric_mean_ratio"] == pytest.approx(1.0)
+
+    java_path = tmp_path / "java-performance.json"
+    java_path.write_text(json.dumps(report), encoding="utf-8")
+    biomedical_result["gate_eligible"] = True
+    monkeypatch.setattr(
+        integrated_benchmark,
+        "_suite",
+        lambda *args, **kwargs: [
+            ("biomedical", ["biomedical"]),
+            ("encoded-ingestion", ["encoded-ingestion"]),
+        ],
+    )
+    monkeypatch.setattr(
+        integrated_benchmark,
+        "_run",
+        lambda command, environment: (
+            biomedical_result if command[0] == "biomedical" else {"gate_eligible": True}
+        ),
+    )
+    integrated = integrated_benchmark.run(
+        suite="full",
+        native=True,
+        workers=1,
+        enforce=True,
+        java_report=java_path,
+        machine_label="test-runner",
+        native_path=None,
+        biomedical=inputs,
+    )
+    java_comparison = integrated["java_comparison"]
+    assert java_comparison["validated_for_enforcement"] is True
+    assert java_comparison["comparison"]["gate_eligible"] is True
+
+    slow_views = biomedical_result["backends"]["rust"]["views"]
+    slow_views["source"]["classification"] = phase(2.25)
+    comparison = integrated_benchmark._java_relative_comparison(
+        biomedical_result,
+        java_samples,
+    )
+    assert comparison["gate_eligible"] is False
+    assert comparison["gate_blockers"] == [
+        "source: native/Java median ratio 2.5 exceeds 2",
+        "native/Java geometric-mean ratio 1.35721 exceeds 1.25",
+    ]
+
+    report["inputs"]["alignment_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match=r"inputs\.alignment_sha256"):
+        integrated_benchmark._validate_java_performance_report(
+            report,
+            machine_label="test-runner",
+            workers=1,
+            biomedical=inputs,
         )
 
 

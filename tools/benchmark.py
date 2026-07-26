@@ -6,20 +6,26 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "benchmarks" / "manifest.toml"
+BASELINE = ROOT / "specs" / "baseline.toml"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_BIOMEDICAL_VIEWS = ("source", "target", "composite")
+_JAVA_REPORT_SCHEMA = "pyelk.java-performance/1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,9 +172,230 @@ def _physical_memory_bytes() -> int | None:
         page_size = os.sysconf("SC_PAGE_SIZE")
     except (AttributeError, OSError, ValueError):
         return None
-    if not isinstance(pages, int) or not isinstance(page_size, int):
-        return None
     return pages * page_size
+
+
+def _toml_table(path: Path, name: str) -> str:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(
+        rf"(?ms)^\[{re.escape(name)}\]\s*$\n(.*?)(?=^\[|\Z)",
+        text,
+    )
+    if match is None:
+        raise RuntimeError(f"{path.relative_to(ROOT)} is missing [{name}]")
+    return match.group(1)
+
+
+def _toml_number(path: Path, table: str, name: str) -> float:
+    body = _toml_table(path, table)
+    matches = re.findall(
+        rf"(?m)^{re.escape(name)}\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*$",
+        body,
+    )
+    if len(matches) != 1:
+        raise RuntimeError(f"{path.relative_to(ROOT)} must define exactly one {table}.{name}")
+    value = float(matches[0])
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(f"{path.relative_to(ROOT)} has invalid {table}.{name}")
+    return value
+
+
+def _toml_string(path: Path, table: str, name: str) -> str:
+    body = _toml_table(path, table)
+    matches = re.findall(rf'(?m)^{re.escape(name)}\s*=\s*"([^"]+)"\s*$', body)
+    if len(matches) != 1:
+        raise RuntimeError(f"{path.relative_to(ROOT)} must define exactly one {table}.{name}")
+    value = matches[0]
+    if not isinstance(value, str):
+        raise RuntimeError(f"{path.relative_to(ROOT)} has invalid {table}.{name}")
+    return value
+
+
+def _mapping(value: object, label: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{label} must be a JSON object")
+    return value
+
+
+def _positive_samples(value: object, label: str) -> tuple[float, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a JSON array")
+    samples: list[float] = []
+    for index, raw in enumerate(value):
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"{label}[{index}] must be a number")
+        sample = float(raw)
+        if not math.isfinite(sample) or sample <= 0:
+            raise ValueError(f"{label}[{index}] must be finite and positive")
+        samples.append(sample)
+    return tuple(samples)
+
+
+def _validate_java_performance_report(
+    payload: Mapping[str, object],
+    *,
+    machine_label: str,
+    workers: int,
+    biomedical: BiomedicalInputs,
+) -> dict[str, tuple[float, ...]]:
+    if payload.get("schema") != _JAVA_REPORT_SCHEMA:
+        raise ValueError(f"Java report schema must be {_JAVA_REPORT_SCHEMA!r}")
+    if payload.get("machine_label") != machine_label:
+        raise ValueError("Java report machine_label does not match the integrated runner")
+    if payload.get("workers") != workers:
+        raise ValueError("Java report workers do not match the integrated runner")
+
+    protocol = _mapping(payload.get("protocol"), "Java report protocol")
+    warmups = protocol.get("warmups")
+    measured_runs = protocol.get("measured_runs")
+    if isinstance(warmups, bool) or not isinstance(warmups, int) or warmups < 2:
+        raise ValueError("Java report protocol requires at least two warm-ups")
+    if isinstance(measured_runs, bool) or not isinstance(measured_runs, int) or measured_runs < 5:
+        raise ValueError("Java report protocol requires at least five measured runs")
+
+    elk = _mapping(payload.get("elk"), "Java report elk")
+    expected_release = _toml_string(BASELINE, "elk", "release")
+    expected_commit = _toml_string(BASELINE, "elk", "commit")
+    if elk.get("release") != expected_release or elk.get("commit") != expected_commit:
+        raise ValueError("Java report does not identify the pinned ELK release and commit")
+
+    environment = _mapping(payload.get("environment"), "Java report environment")
+    java_version = environment.get("java")
+    if not isinstance(java_version, str) or not java_version.strip():
+        raise ValueError("Java report environment.java must be nonempty")
+
+    inputs = _mapping(payload.get("inputs"), "Java report inputs")
+    expected_inputs = {
+        "corpus_name": biomedical.name,
+        "source_sha256": biomedical.source_sha256,
+        "target_sha256": biomedical.target_sha256,
+        "alignment_sha256": biomedical.alignment_sha256,
+    }
+    for name, expected in expected_inputs.items():
+        if inputs.get(name) != expected:
+            raise ValueError(f"Java report inputs.{name} does not match the biomedical corpus")
+
+    expected_digests = {
+        "source": biomedical.expected_source_semantic_completeness_sha256,
+        "target": biomedical.expected_target_semantic_completeness_sha256,
+        "composite": biomedical.expected_composite_semantic_completeness_sha256,
+    }
+    corpora = _mapping(payload.get("corpora"), "Java report corpora")
+    result: dict[str, tuple[float, ...]] = {}
+    for name in _BIOMEDICAL_VIEWS:
+        row = _mapping(corpora.get(name), f"Java report corpora.{name}")
+        if row.get("semantic_completeness_sha256") != expected_digests[name]:
+            raise ValueError(
+                f"Java report corpora.{name} semantic/completeness digest does not match"
+            )
+        samples = _positive_samples(
+            row.get("warm_view_to_result_seconds"),
+            f"Java report corpora.{name}.warm_view_to_result_seconds",
+        )
+        if len(samples) != measured_runs:
+            raise ValueError(
+                f"Java report corpora.{name} sample count does not match protocol.measured_runs"
+            )
+        result[name] = samples
+    return result
+
+
+def _phase_wall_samples(row: Mapping[str, object], phase: str, label: str) -> tuple[float, ...]:
+    phase_row = _mapping(row.get(phase), f"{label}.{phase}")
+    raw_samples = phase_row.get("samples")
+    if not isinstance(raw_samples, list):
+        raise RuntimeError(f"{label}.{phase}.samples must be a JSON array")
+    samples: list[float] = []
+    for index, raw in enumerate(raw_samples):
+        sample = _mapping(raw, f"{label}.{phase}.samples[{index}]")
+        wall = sample.get("wall_seconds")
+        if isinstance(wall, bool) or not isinstance(wall, (int, float)):
+            raise RuntimeError(f"{label}.{phase}.samples[{index}].wall_seconds must be numeric")
+        value = float(wall)
+        if not math.isfinite(value) or value <= 0:
+            raise RuntimeError(
+                f"{label}.{phase}.samples[{index}].wall_seconds must be finite and positive"
+            )
+        samples.append(value)
+    return tuple(samples)
+
+
+def _native_view_to_result_samples(
+    biomedical_result: Mapping[str, object],
+) -> dict[str, tuple[float, ...]]:
+    backends = _mapping(biomedical_result.get("backends"), "biomedical backends")
+    rust = _mapping(backends.get("rust"), "biomedical Rust backend")
+    views = _mapping(rust.get("views"), "biomedical Rust views")
+    result: dict[str, tuple[float, ...]] = {}
+    for name in _BIOMEDICAL_VIEWS:
+        row = _mapping(views.get(name), f"biomedical Rust views.{name}")
+        construction = _phase_wall_samples(row, "session_construction", name)
+        classification = _phase_wall_samples(row, "classification", name)
+        if len(construction) < 5 or len(construction) != len(classification):
+            raise RuntimeError(
+                f"biomedical Rust {name} requires at least five paired construction/"
+                "classification samples"
+            )
+        result[name] = tuple(
+            construction_sample + classification_sample
+            for construction_sample, classification_sample in zip(
+                construction, classification, strict=True
+            )
+        )
+    return result
+
+
+def _java_relative_comparison(
+    biomedical_result: Mapping[str, object],
+    java_samples: Mapping[str, Sequence[float]],
+) -> dict[str, object]:
+    native_samples = _native_view_to_result_samples(biomedical_result)
+    per_corpus_max = _toml_number(
+        MANIFEST,
+        "thresholds",
+        "native_java_per_corpus_ratio_max",
+    )
+    geometric_mean_max = _toml_number(
+        MANIFEST,
+        "thresholds",
+        "native_java_geometric_mean_ratio_max",
+    )
+    rows: dict[str, dict[str, float]] = {}
+    ratios: list[float] = []
+    blockers: list[str] = []
+    for name in _BIOMEDICAL_VIEWS:
+        java = tuple(java_samples[name])
+        if len(java) < 5:
+            raise ValueError(f"Java report {name} requires at least five measured samples")
+        native_median = statistics.median(native_samples[name])
+        java_median = statistics.median(java)
+        ratio = native_median / java_median
+        ratios.append(ratio)
+        rows[name] = {
+            "native_median_seconds": native_median,
+            "java_median_seconds": java_median,
+            "native_to_java_ratio": ratio,
+        }
+        if ratio > per_corpus_max:
+            blockers.append(
+                f"{name}: native/Java median ratio {ratio:.6g} exceeds {per_corpus_max:.6g}"
+            )
+    geometric_mean_ratio = math.exp(statistics.fmean(math.log(ratio) for ratio in ratios))
+    if geometric_mean_ratio > geometric_mean_max:
+        blockers.append(
+            "native/Java geometric-mean ratio "
+            f"{geometric_mean_ratio:.6g} exceeds {geometric_mean_max:.6g}"
+        )
+    return {
+        "gate_eligible": not blockers,
+        "gate_blockers": blockers,
+        "thresholds": {
+            "per_corpus_ratio_max": per_corpus_max,
+            "geometric_mean_ratio_max": geometric_mean_max,
+        },
+        "corpora": rows,
+        "native_to_java_geometric_mean_ratio": geometric_mean_ratio,
+    }
 
 
 def _command(script: str, *arguments: str) -> list[str]:
@@ -405,6 +632,35 @@ def run(
         raise ValueError("enforce requires hash-pinned biomedical inputs")
     if enforce and biomedical is not None and not biomedical.has_semantic_expectations:
         raise ValueError("enforce requires caller-pinned biomedical semantic digests")
+    if enforce and java_report is None:
+        raise ValueError("enforce requires a same-machine pinned Java performance report")
+    if java_report is not None and not isinstance(java_report, Path):
+        raise TypeError("java_report must be pathlib.Path or None")
+
+    java: dict[str, object] | None = None
+    java_samples: dict[str, tuple[float, ...]] | None = None
+    if java_report is not None:
+        data = java_report.read_bytes()
+        payload = json.loads(data)
+        if not isinstance(payload, dict):
+            raise ValueError("Java report must contain a JSON object")
+        if enforce:
+            if machine_label is None or biomedical is None:  # pragma: no cover - guarded above
+                raise AssertionError("enforcement inputs unexpectedly missing")
+            java_samples = _validate_java_performance_report(
+                payload,
+                machine_label=machine_label,
+                workers=workers,
+                biomedical=biomedical,
+            )
+        java = {
+            "path": os.fspath(java_report),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "payload": payload,
+            "validated_for_enforcement": enforce,
+            "comparison": None,
+        }
+
     environment = os.environ.copy()
     source_paths = [str(ROOT / "src")]
     sibling_core = ROOT.parent / "pyOWLCore" / "src"
@@ -449,17 +705,15 @@ def run(
                 "encoded-ingestion benchmark evidence is not gate-eligible"
                 + (f": {blockers}" if blockers else "")
             )
-    java: dict[str, object] | None = None
-    if java_report is not None:
-        data = java_report.read_bytes()
-        payload = json.loads(data)
-        if not isinstance(payload, dict):
-            raise ValueError("Java report must contain a JSON object")
-        java = {
-            "path": os.fspath(java_report),
-            "sha256": hashlib.sha256(data).hexdigest(),
-            "payload": payload,
-        }
+        if java is None or java_samples is None:  # pragma: no cover - guarded above
+            raise AssertionError("validated Java evidence unexpectedly missing")
+        comparison = _java_relative_comparison(biomedical_result, java_samples)
+        java["comparison"] = comparison
+        if comparison["gate_eligible"] is not True:
+            raise RuntimeError(
+                "Java-relative performance evidence is not gate-eligible: "
+                f"{comparison['gate_blockers']}"
+            )
     return {
         "schema": "pyelk.integrated-benchmark/1",
         "suite": suite,
@@ -581,6 +835,8 @@ def main() -> int:
         raise SystemExit("--enforce requires the hash-pinned biomedical corpus options")
     if arguments.enforce and biomedical is not None and not biomedical.has_semantic_expectations:
         raise SystemExit("--enforce requires caller-pinned biomedical semantic digests")
+    if arguments.enforce and arguments.java_report is None:
+        raise SystemExit("--enforce requires --java-report from the same labelled machine")
     payload = run(
         suite=arguments.suite,
         native=arguments.native,

@@ -20,6 +20,7 @@ python tools/benchmark.py \
   --workers "$(getconf _NPROCESSORS_ONLN)" \
   --enforce \
   --machine-label linux-x86_64-release \
+  --java-report /absolute/path/java-performance.json \
   --biomedical-source /absolute/path/source.owl \
   --biomedical-source-sha256 SOURCE_SHA256 \
   --biomedical-source-axiom-count SOURCE_AXIOMS \
@@ -43,10 +44,11 @@ The full protocol uses two warm-ups and five measured samples. Reports include m
 absolute deviation, minimum, platform/CPU/RAM, Python, pyELK and pyowl-core revisions, worker
 count, semantic digests, context/conclusion counts where available, peak-memory observations,
 and the manifest hash. `--enforce` applies the native 5x throughput and 5% boundary thresholds
-and requires `--suite full`, `--native`, a machine label, the complete hash-pinned
-biomedical metadata above, and caller-approved semantic/completeness digests. It rejects an
-otherwise successful run when the biomedical report remains gate-ineligible; an integrated
-report can therefore never claim `enforced: true` while carrying blocked evidence.
+and requires `--suite full`, `--native`, a machine label, a same-machine pinned Java report,
+the complete hash-pinned biomedical metadata above, and caller-approved semantic/completeness
+digests. It rejects an otherwise successful run when the biomedical or Java-relative report
+remains gate-ineligible; an integrated report can therefore never claim `enforced: true` while
+carrying blocked evidence.
 
 Native suites also run `bench_encoded_ingestion.py` from already-resident direct, overlay, and
 composite views. It records raw phase samples and RSS observations for encoded-view acquisition,
@@ -64,11 +66,16 @@ forbids that fallback and requires public capability negotiation, zero parser/re
 scalar-materialization/base-flattening deltas, a 2x geometric-mean view-to-result speedup, the 5%
 boundary ceiling, and the 10% time/RSS guardrails from `manifest.toml`.
 
-A pinned Java/ELK timing JSON can be attached with `--java-report`. Generate it on the same
-machine, with the same ontology bytes and operations, after Java warm-up; the integrated
-report records its payload and SHA-256. Java is never discovered or launched by the Python
-benchmark tool. Java-relative and prior-release comparisons must use the ratios in
-`manifest.toml` on the labelled runner; results from unrelated hardware are not compared.
+A pinned Java/ELK timing JSON can be attached with `--java-report` and is mandatory for
+enforcement. The `pyelk.java-performance/1` object names the same machine label and worker
+count, at least two warm-ups and five measured runs, the pinned ELK release/commit, the Java
+version, the corpus name and three input hashes, and source/target/composite rows containing
+the pinned semantic/completeness digest plus `warm_view_to_result_seconds`. Generate it on the
+same machine, with the same ontology bytes and operations, after Java warm-up; the integrated
+report records its payload, SHA-256, per-corpus native/Java median ratios, and geometric-mean
+ratio. Java is never discovered or launched by the Python benchmark tool. Java-relative and
+prior-release comparisons use the thresholds in `manifest.toml` on the labelled runner;
+results from unrelated hardware are not compared.
 
 External biomedical corpora are not committed unless their licence permits redistribution.
 `bench_biomedical.py` verifies all source, target, and alignment hashes before parsing, then
