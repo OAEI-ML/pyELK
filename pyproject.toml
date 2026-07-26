@@ -69,7 +69,7 @@ test-requires = [
   "import-linter>=2.1,<3",
   "pytest>=8.2,<10",
 ]
-test-command = "python {project}/tests/packaging/run_installed_suite.py --backend rust && python {project}/tests/packaging/run_installed_suite.py --backend python"
+test-command = "python {project}/tests/packaging/run_installed_suite.py --backend rust --core-backend python --expected-ingestion scalar-wire && python {project}/tests/packaging/run_installed_suite.py --backend python --core-backend python --expected-ingestion scalar-python"
 
 [tool.cibuildwheel.linux]
 manylinux-x86_64-image = "manylinux2014"

@@ -98,12 +98,14 @@ jobs:
           python tests/packaging/install_artifact.py
           artifacts/*-py3-none-any.whl --python "$(command -v python)"
           --wheelhouse wheelhouse --expected-backend python
+          --expected-core-backend python --expected-ingestion scalar-python
 
       - name: Install sdist with no Cargo, C/C++ compiler, or Java
         run: >-
           python tests/packaging/install_artifact.py
           artifacts/*.tar.gz --python "$(command -v python)"
           --wheelhouse wheelhouse --expected-backend python
+          --expected-core-backend python --expected-ingestion scalar-python
 
   native-wheels:
     name: Native / ${{ matrix.id }}
@@ -249,8 +251,8 @@ jobs:
         run: |
           wheel="$(find native -name "$WHEEL_PATTERN" -print -quit)"
           test -n "$wheel"
-          python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend rust
-          python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend python --force-python
+          python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend rust --expected-core-backend python --expected-ingestion scalar-wire
+          python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend python --expected-core-backend python --expected-ingestion scalar-python --force-python
 
   musllinux-supported-cpython:
     name: ABI3 Python ${{ matrix.python }} / musllinux ${{ matrix.arch }}
@@ -296,8 +298,8 @@ jobs:
           docker run --rm -v "$PWD:/project" -w /tmp "$PYTHON_IMAGE" sh -ec '
             python -m venv /tmp/venv
             /tmp/venv/bin/python -m pip install --no-index --find-links /project/wheelhouse /project/native/*musllinux*'"$ARCH"'.whl
-            /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend rust
-            /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend python --force-python
+            /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend rust --expected-core-backend python --expected-ingestion scalar-wire
+            /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend python --expected-core-backend python --expected-ingestion scalar-python --force-python
           '
 
   artifact-consistency:

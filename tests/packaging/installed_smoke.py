@@ -13,12 +13,42 @@ from pathlib import Path
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-backend", choices=("python", "rust"), required=True)
+    parser.add_argument(
+        "--expected-core-backend",
+        choices=("python", "native"),
+        required=True,
+    )
+    parser.add_argument(
+        "--expected-ingestion",
+        choices=("scalar-python", "scalar-wire", "encoded-native"),
+        required=True,
+    )
     parser.add_argument("--force-python", action="store_true")
     return parser
 
 
+def _validate_expectations(
+    *,
+    backend: str,
+    ingestion: str,
+    force_python: bool,
+) -> None:
+    expected_ingestion = (
+        {"scalar-python"} if backend == "python" else {"scalar-wire", "encoded-native"}
+    )
+    if ingestion not in expected_ingestion:
+        raise ValueError(f"{backend} backend cannot report {ingestion} ingestion")
+    if force_python != (backend == "python"):
+        raise ValueError("--force-python must be set exactly for the Python backend")
+
+
 def main() -> int:
     args = _parser().parse_args()
+    _validate_expectations(
+        backend=args.expected_backend,
+        ingestion=args.expected_ingestion,
+        force_python=args.force_python,
+    )
     if args.force_python:
         os.environ["PYELK_PURE_PYTHON"] = "1"
         os.environ.pop("PYELK_BACKEND", None)
@@ -68,12 +98,17 @@ def main() -> int:
     options = owl.LoadOptions(
         format=owl.DocumentFormat.FUNCTIONAL,
         imports=owl.ImportPolicy.IGNORE,
-        backend=owl.BackendPreference.PYTHON,
+        backend={
+            "python": owl.BackendPreference.PYTHON,
+            "native": owl.BackendPreference.NATIVE,
+        }[args.expected_core_backend],
     )
     snapshot = owl.load_snapshot(payload, options=options)
+    assert snapshot.capabilities.backend == args.expected_core_backend
 
     with pyelk.Reasoner(payload, load_options=options) as standalone:
         assert standalone.backend.name == args.expected_backend
+        assert standalone.ontology.capabilities.backend == args.expected_core_backend
         standalone_ingestion = standalone.diagnostics()["ingestion_path"]
         standalone_result = standalone.classify()
     with pyelk.Reasoner(snapshot) as shared:
@@ -82,15 +117,11 @@ def main() -> int:
         shared_ingestion = shared.diagnostics()["ingestion_path"]
         shared_result = shared.classify()
     assert standalone_result == shared_result
-    expected_ingestion = (
-        {"scalar-python"}
-        if args.expected_backend == "python"
-        else {"scalar-wire", "encoded-native"}
-    )
-    assert {standalone_ingestion, shared_ingestion} <= expected_ingestion
+    assert {standalone_ingestion, shared_ingestion} == {args.expected_ingestion}
     print(
         f"installed smoke passed: backend={args.expected_backend} "
-        f"ingestion={shared_ingestion} python={sys.version_info.major}.{sys.version_info.minor}"
+        f"core_backend={args.expected_core_backend} ingestion={shared_ingestion} "
+        f"python={sys.version_info.major}.{sys.version_info.minor}"
     )
     return 0
 

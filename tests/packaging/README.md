@@ -78,7 +78,8 @@ python -m pip download --dest wheelhouse --only-binary=:all: \
   setuptools-rust==1.13.0 'wheel>=0.45,<0.47'
 python tests/packaging/install_artifact.py dist/*.tar.gz \
   --python "$(command -v python)" --wheelhouse wheelhouse \
-  --expected-backend python
+  --expected-backend python --expected-core-backend python \
+  --expected-ingestion scalar-python
 ```
 
 The helper creates a new environment, disables network access for installation, removes

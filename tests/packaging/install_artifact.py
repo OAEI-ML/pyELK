@@ -23,6 +23,16 @@ def main() -> int:
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--wheelhouse", type=Path, required=True)
     parser.add_argument("--expected-backend", choices=("python", "rust"), required=True)
+    parser.add_argument(
+        "--expected-core-backend",
+        choices=("python", "native"),
+        required=True,
+    )
+    parser.add_argument(
+        "--expected-ingestion",
+        choices=("scalar-python", "scalar-wire", "encoded-native"),
+        required=True,
+    )
     parser.add_argument("--force-python", action="store_true")
     args = parser.parse_args()
 
@@ -55,7 +65,16 @@ def main() -> int:
             cwd=temporary,
             env=env,
         )
-        command = [str(python), str(smoke), "--expected-backend", args.expected_backend]
+        command = [
+            str(python),
+            str(smoke),
+            "--expected-backend",
+            args.expected_backend,
+            "--expected-core-backend",
+            args.expected_core_backend,
+            "--expected-ingestion",
+            args.expected_ingestion,
+        ]
         if args.force_python:
             command.append("--force-python")
         subprocess.run(command, check=True, cwd=temporary, env=env)

@@ -15,6 +15,16 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=("python", "rust"), required=True)
+    parser.add_argument(
+        "--core-backend",
+        choices=("python", "native"),
+        required=True,
+    )
+    parser.add_argument(
+        "--expected-ingestion",
+        choices=("scalar-python", "scalar-wire", "encoded-native"),
+        required=True,
+    )
     args = parser.parse_args()
     if args.backend == "python":
         os.environ["PYELK_PURE_PYTHON"] = "1"
@@ -47,6 +57,10 @@ def main() -> int:
             str(Path(__file__).with_name("installed_smoke.py")),
             "--expected-backend",
             args.backend,
+            "--expected-core-backend",
+            args.core_backend,
+            "--expected-ingestion",
+            args.expected_ingestion,
             *(["--force-python"] if args.backend == "python" else []),
         ],
         check=False,
