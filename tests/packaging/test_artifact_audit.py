@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.util
 import io
 import sys
@@ -38,6 +40,15 @@ fixture
 """
 
 
+def _record(files: dict[str, bytes], record_name: str) -> bytes:
+    rows = []
+    for name, value in sorted(files.items()):
+        digest = base64.urlsafe_b64encode(hashlib.sha256(value).digest()).rstrip(b"=").decode()
+        rows.append(f"{name},sha256={digest},{len(value)}\n")
+    rows.append(f"{record_name},,\n")
+    return "".join(rows).encode()
+
+
 def _wheel(
     tmp_path: Path,
     *,
@@ -45,6 +56,8 @@ def _wheel(
     metadata: bytes = METADATA,
     source: bytes = b"VALUE = 1\n",
     extra: dict[str, bytes] | None = None,
+    record_suffix: bytes = b"",
+    tamper_after_record: dict[str, bytes] | None = None,
 ) -> Path:
     tag = "cp310-abi3-test_platform" if native else "py3-none-any"
     path = tmp_path / f"pyelk_reasoner-0.1.0.dev0-{tag}.whl"
@@ -60,13 +73,15 @@ def _wheel(
         "pyelk/py.typed": b"",
         "pyelk_reasoner-0.1.0.dev0.dist-info/METADATA": metadata,
         "pyelk_reasoner-0.1.0.dev0.dist-info/WHEEL": wheel,
-        "pyelk_reasoner-0.1.0.dev0.dist-info/RECORD": b"",
         "pyelk_reasoner-0.1.0.dev0.dist-info/licenses/LICENSE": b"license\n",
         "pyelk_reasoner-0.1.0.dev0.dist-info/licenses/NOTICE.pyelk": b"notice\n",
     }
     if native:
         files["pyelk/_native.abi3.so"] = b"native"
     files.update(extra or {})
+    record_name = "pyelk_reasoner-0.1.0.dev0.dist-info/RECORD"
+    files[record_name] = _record(files, record_name) + record_suffix
+    files.update(tamper_after_record or {})
     with zipfile.ZipFile(path, "w") as archive:
         for name, value in files.items():
             archive.writestr(name, value)
@@ -115,7 +130,8 @@ def test_compressed_repaired_platform_tags_are_expanded(tmp_path: Path) -> None:
     repaired = tmp_path / (
         "pyelk_reasoner-0.1.0.dev0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
     )
-    with zipfile.ZipFile(original) as source, zipfile.ZipFile(repaired, "w") as target:
+    files: dict[str, bytes] = {}
+    with zipfile.ZipFile(original) as source:
         for info in source.infolist():
             value = source.read(info)
             if info.filename.endswith(".dist-info/WHEEL"):
@@ -124,7 +140,13 @@ def test_compressed_repaired_platform_tags_are_expanded(tmp_path: Path) -> None:
                     b"Tag: cp310-abi3-manylinux_2_17_x86_64\n"
                     b"Tag: cp310-abi3-manylinux2014_x86_64\n",
                 )
-            target.writestr(info, value)
+            files[info.filename] = value
+    record_name = "pyelk_reasoner-0.1.0.dev0.dist-info/RECORD"
+    files.pop(record_name)
+    files[record_name] = _record(files, record_name)
+    with zipfile.ZipFile(repaired, "w") as target:
+        for name, value in files.items():
+            target.writestr(name, value)
     assert AUDITOR.inspect_artifact(repaired).kind == "native-wheel"
 
 
@@ -155,6 +177,38 @@ def test_compare_rejects_changed_python_source(tmp_path: Path) -> None:
     native = _wheel(tmp_path, native=True, source=b"VALUE = 2\n")
     with pytest.raises(AuditError, match="Python payload differs"):
         AUDITOR.compare_wheels(pure, native)
+
+
+def test_wheel_record_rejects_payload_changed_after_hashing(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        native=False,
+        tamper_after_record={"pyelk/__init__.py": b"VALUE = 2\n"},
+    )
+    with pytest.raises(AuditError, match="RECORD hash mismatch"):
+        AUDITOR.inspect_artifact(wheel)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "match"),
+    [
+        (b"pyelk/__init__.py,,\n", "duplicate member"),
+        (b"malformed,row\n", "row .* malformed"),
+    ],
+)
+def test_wheel_record_rejects_ambiguous_rows(
+    tmp_path: Path,
+    suffix: bytes,
+    match: str,
+) -> None:
+    with pytest.raises(AuditError, match=match):
+        AUDITOR.inspect_artifact(
+            _wheel(
+                tmp_path,
+                native=False,
+                record_suffix=suffix,
+            )
+        )
 
 
 def test_sdist_rejects_release_excluded_tree(tmp_path: Path) -> None:

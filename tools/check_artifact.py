@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
 import hashlib
+import io
 import json
 import re
 import shutil
@@ -219,6 +222,43 @@ def _wheel_tags(path: Path, members: dict[str, bytes]) -> tuple[str, ...]:
     return tags
 
 
+def _audit_record(members: dict[str, bytes]) -> None:
+    record_name, raw = _one_member(members, ".dist-info/RECORD")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise AuditError("wheel RECORD is not valid UTF-8") from error
+    rows: dict[str, tuple[str, str]] = {}
+    try:
+        parsed = csv.reader(io.StringIO(text, newline=""))
+        for index, row in enumerate(parsed, start=1):
+            if len(row) != 3 or not row[0]:
+                raise AuditError(f"wheel RECORD row {index} is malformed")
+            name = _safe_member(row[0])
+            if name in rows:
+                raise AuditError(f"wheel RECORD contains duplicate member: {name}")
+            if name not in members:
+                raise AuditError(f"wheel RECORD names an absent member: {name}")
+            rows[name] = (row[1], row[2])
+    except csv.Error as error:
+        raise AuditError(f"wheel RECORD CSV is malformed: {error}") from error
+
+    missing = set(members) - set(rows)
+    if missing:
+        raise AuditError(f"wheel RECORD omits archive members: {sorted(missing)}")
+    for name, data in members.items():
+        digest, size = rows[name]
+        if name == record_name:
+            if digest or size:
+                raise AuditError("wheel RECORD must leave its own hash and size empty")
+            continue
+        expected_digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
+        if digest != f"sha256={expected_digest.decode('ascii')}":
+            raise AuditError(f"wheel RECORD hash mismatch: {name}")
+        if size != str(len(data)):
+            raise AuditError(f"wheel RECORD size mismatch: {name}")
+
+
 def _audit_names_and_payloads(members: dict[str, bytes]) -> tuple[str, ...]:
     native_members = []
     current_root = str(Path.cwd().resolve()).encode()
@@ -254,6 +294,7 @@ def _python_hashes(members: dict[str, bytes], *, sdist: bool) -> dict[str, str]:
 
 
 def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> ArtifactReport:
+    _audit_record(members)
     message, metadata_raw = _metadata(members, wheel=True)
     name, version, requires_python = _audit_metadata(message)
     tags = _wheel_tags(path, members)
