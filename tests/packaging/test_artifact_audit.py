@@ -30,10 +30,15 @@ AUDITOR = _load_auditor()
 AuditError = AUDITOR.AuditError
 pytestmark = pytest.mark.packaging
 
+LICENSE = (ROOT / "LICENSE").read_bytes()
+NOTICE = (ROOT / "NOTICE.pyelk").read_bytes()
 METADATA = b"""Metadata-Version: 2.4
 Name: pyelk-reasoner
 Version: 0.1.0.dev0
 Requires-Python: >=3.10
+License-Expression: Apache-2.0
+License-File: LICENSE
+License-File: NOTICE.pyelk
 Requires-Dist: pyowl-core<0.2,>=0.1
 
 fixture
@@ -82,8 +87,8 @@ def _wheel(
         "pyelk/py.typed": b"",
         f"{dist_info}/METADATA": metadata,
         f"{dist_info}/WHEEL": wheel,
-        f"{dist_info}/licenses/LICENSE": b"license\n",
-        f"{dist_info}/licenses/NOTICE.pyelk": b"notice\n",
+        f"{dist_info}/licenses/LICENSE": LICENSE,
+        f"{dist_info}/licenses/NOTICE.pyelk": NOTICE,
     }
     if native:
         files["pyelk/_native.abi3.so"] = b"native"
@@ -108,8 +113,8 @@ def _sdist(
         "PKG-INFO": METADATA,
         "Cargo.lock": b"version = 4\n",
         "Cargo.toml": b"[workspace]\n",
-        "LICENSE": b"license\n",
-        "NOTICE.pyelk": b"notice\n",
+        "LICENSE": LICENSE,
+        "NOTICE.pyelk": NOTICE,
         "pyelk_build.py": b"def build_reproducible_sdist(): ...\n",
         "pyproject.toml": b"[build-system]\n",
         "rust-toolchain.toml": b"[toolchain]\n",
@@ -248,6 +253,33 @@ def test_metadata_rejects_jvm_bridge_dependency(tmp_path: Path) -> None:
     metadata = METADATA.replace(b"\n\nfixture", b"\nRequires-Dist: JPype1>=1\n\nfixture")
     with pytest.raises(AuditError, match="JVM dependency"):
         AUDITOR.inspect_artifact(_wheel(tmp_path, native=False, metadata=metadata))
+
+
+def test_metadata_requires_exact_license_expression_and_files(tmp_path: Path) -> None:
+    wrong_expression = METADATA.replace(b"License-Expression: Apache-2.0", b"License: Apache-2.0")
+    with pytest.raises(AuditError, match="License-Expression"):
+        AUDITOR.inspect_artifact(_wheel(tmp_path, native=False, metadata=wrong_expression))
+
+    duplicate_file = METADATA.replace(
+        b"License-File: NOTICE.pyelk",
+        b"License-File: LICENSE\nLicense-File: NOTICE.pyelk",
+    )
+    with pytest.raises(AuditError, match="License-File headers"):
+        AUDITOR.inspect_artifact(_wheel(tmp_path, native=False, metadata=duplicate_file))
+
+
+@pytest.mark.parametrize("kind", ["wheel", "sdist"])
+def test_license_payloads_must_match_repository_sources(tmp_path: Path, kind: str) -> None:
+    if kind == "wheel":
+        artifact = _wheel(
+            tmp_path,
+            native=False,
+            extra={"pyelk_reasoner-0.1.0.dev0.dist-info/licenses/NOTICE.pyelk": b"changed\n"},
+        )
+    else:
+        artifact = _sdist(tmp_path, extra={"NOTICE.pyelk": b"changed\n"})
+    with pytest.raises(AuditError, match="license payload differs"):
+        AUDITOR.inspect_artifact(artifact)
 
 
 def test_metadata_rejects_optional_marker_with_runtime_escape(tmp_path: Path) -> None:

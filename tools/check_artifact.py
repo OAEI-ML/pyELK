@@ -25,6 +25,9 @@ from pathlib import Path, PurePosixPath
 
 PROJECT_NAME = "pyelk-reasoner"
 CORE_REQUIREMENT = frozenset({">=0.1", "<0.2"})
+ROOT = Path(__file__).resolve().parents[1]
+LICENSE_EXPRESSION = "Apache-2.0"
+LICENSE_PAYLOADS = {name: (ROOT / name).read_bytes() for name in ("LICENSE", "NOTICE.pyelk")}
 MAX_MEMBER_SIZE = 256 * 1024 * 1024
 MAX_ARCHIVE_SIZE = 1024 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 100_000
@@ -347,6 +350,18 @@ def _audit_metadata(message: Message) -> tuple[str, str, str]:
         raise AuditError("artifact metadata has no Version")
     if requires_python.replace(" ", "") != ">=3.10":
         raise AuditError(f"unexpected Requires-Python: {requires_python!r}")
+    license_expressions = message.get_all("License-Expression", [])
+    if license_expressions != [LICENSE_EXPRESSION]:
+        raise AuditError(
+            f"metadata must contain exactly License-Expression: {LICENSE_EXPRESSION}; "
+            f"found {license_expressions}"
+        )
+    license_files = message.get_all("License-File", [])
+    if len(license_files) != len(set(license_files)) or set(license_files) != set(LICENSE_PAYLOADS):
+        raise AuditError(
+            "metadata License-File headers must identify exactly LICENSE and NOTICE.pyelk; "
+            f"found {license_files}"
+        )
 
     core_requirements = []
     for requirement in message.get_all("Requires-Dist", []):
@@ -367,6 +382,14 @@ def _audit_metadata(message: Message) -> tuple[str, str, str]:
             f"found {core_requirements[0]!r}"
         )
     return name, version, requires_python
+
+
+def _audit_license_payloads(members: dict[str, bytes], *, wheel: bool) -> None:
+    for name, expected in LICENSE_PAYLOADS.items():
+        suffix = f".dist-info/licenses/{name}" if wheel else f"/{name}"
+        member_name, actual = _one_member(members, suffix)
+        if actual != expected:
+            raise AuditError(f"license payload differs from the repository source: {member_name}")
 
 
 def _wheel_tags(path: Path, members: dict[str, bytes]) -> tuple[str, ...]:
@@ -512,8 +535,7 @@ def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         raise AuditError(f"expected {expected}, found {inferred}")
 
     _, wheel_raw = _one_member(members, ".dist-info/WHEEL")
-    _one_member(members, ".dist-info/licenses/LICENSE")
-    _one_member(members, ".dist-info/licenses/NOTICE.pyelk")
+    _audit_license_payloads(members, wheel=True)
     wheel_message = BytesParser().parsebytes(wheel_raw)
     root_is_pure_values = wheel_message.get_all("Root-Is-Purelib", [])
     if len(root_is_pure_values) != 1:
@@ -563,6 +585,7 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         raise AuditError(f"expected {expected}, found sdist")
     message, metadata_raw = _metadata(members, wheel=False)
     name, version, requires_python = _audit_metadata(message)
+    _audit_license_payloads(members, wheel=False)
     native_members = _audit_names_and_payloads(members)
     if native_members:
         raise AuditError(f"sdist contains compiled shared libraries: {native_members}")
