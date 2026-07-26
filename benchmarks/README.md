@@ -21,6 +21,7 @@ python tools/benchmark.py \
   --enforce \
   --machine-label linux-x86_64-release \
   --java-report /absolute/path/java-performance.json \
+  --prior-release-report /absolute/path/prior-release.json \
   --biomedical-source /absolute/path/source.owl \
   --biomedical-source-sha256 SOURCE_SHA256 \
   --biomedical-source-axiom-count SOURCE_AXIOMS \
@@ -44,12 +45,12 @@ The full protocol uses two warm-ups and five measured samples. Reports include m
 absolute deviation, minimum, platform/CPU/RAM, Python, pyELK and pyowl-core revisions, worker
 count, semantic digests, context/conclusion counts where available, peak-memory observations,
 and the manifest hash. `--enforce` applies the native 5x throughput and 5% boundary thresholds
-and requires `--suite full`, `--native`, a machine label, a same-machine pinned Java report,
-the complete hash-pinned biomedical metadata above, and caller-approved semantic/completeness
-digests. It rejects an otherwise successful run when the biomedical or Java-relative report
-remains gate-ineligible; an integrated report can therefore never claim `enforced: true` while
-carrying blocked evidence. Both the pyELK and sibling pyowl-core revisions must resolve to exact
-commits with clean worktrees.
+and requires `--suite full`, `--native`, a machine label, same-machine pinned Java and prior
+enforced-release reports, the complete hash-pinned biomedical metadata above, and caller-approved
+semantic/completeness digests. It rejects an otherwise successful run when the biomedical,
+Java-relative, or release-regression report remains gate-ineligible; an integrated report can
+therefore never claim `enforced: true` while carrying blocked evidence. Both the pyELK and sibling
+pyowl-core revisions must resolve to exact commits with clean worktrees.
 
 Native suites also run `bench_encoded_ingestion.py` from already-resident direct, overlay, and
 composite views. It records raw phase samples and RSS observations for encoded-view acquisition,
@@ -77,6 +78,13 @@ report records its payload, SHA-256, per-corpus native/Java median ratios, and g
 ratio. Java is never discovered or launched by the Python benchmark tool. Java-relative and
 prior-release comparisons use the thresholds in `manifest.toml` on the labelled runner;
 results from unrelated hardware are not compared.
+
+`--prior-release-report` consumes an earlier enforced `pyelk.integrated-benchmark/1` record from
+the same machine label, worker count, and performance-manifest hash. The earlier report must name a
+different clean pyELK commit. The gate compares end-to-end, native-boundary, and all three
+biomedical median times, plus encoded direct/mmap/overlay/composite median time and current-RSS
+growth, while requiring identical fixture/compiler/result/semantic identities. Any time or RSS
+regression above the manifest's 10% limit fails enforcement.
 
 External biomedical corpora are not committed unless their licence permits redistribution.
 `bench_biomedical.py` verifies all source, target, and alignment hashes before parsing, then

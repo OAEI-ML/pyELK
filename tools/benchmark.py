@@ -142,6 +142,13 @@ class BiomedicalInputs:
         return arguments
 
 
+@dataclass(frozen=True, slots=True)
+class _ReleaseMetric:
+    median_seconds: float
+    identity: tuple[object, ...]
+    current_rss_growth_bytes: int | None = None
+
+
 def _git_state(path: Path) -> dict[str, object]:
     git = shutil.which("git")
     if git is None or not (path / ".git").exists():
@@ -418,6 +425,232 @@ def _release_revision_blockers(
     return blockers
 
 
+def _positive_number(value: object, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be numeric")
+    result = float(value)
+    if not math.isfinite(result) or result <= 0:
+        raise ValueError(f"{label} must be finite and positive")
+    return result
+
+
+def _identity_text(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} must be nonempty text")
+    return value
+
+
+def _current_rss_growth(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a nonnegative integer")
+    return value
+
+
+def _release_metrics(results: Mapping[str, object]) -> dict[str, _ReleaseMetric]:
+    metrics: dict[str, _ReleaseMetric] = {}
+
+    end_to_end = _mapping(results.get("end-to-end"), "release results.end-to-end")
+    standalone = _mapping(end_to_end.get("standalone"), "release end-to-end.standalone")
+    fixture = _mapping(end_to_end.get("fixture"), "release end-to-end.fixture")
+    metrics["end-to-end"] = _ReleaseMetric(
+        median_seconds=_positive_number(
+            standalone.get("median_seconds"),
+            "release end-to-end standalone median_seconds",
+        ),
+        identity=(
+            _identity_text(end_to_end.get("result_sha256"), "release end-to-end result_sha256"),
+            _identity_text(fixture.get("source_sha256"), "release end-to-end source_sha256"),
+        ),
+    )
+
+    boundary = _mapping(results.get("native-boundary"), "release results.native-boundary")
+    native = _mapping(boundary.get("native"), "release native-boundary.native")
+    parallel = _mapping(
+        native.get("workers_parallel"),
+        "release native-boundary.native.workers_parallel",
+    )
+    class_count = boundary.get("class_count")
+    compiled_bytes = boundary.get("compiled_bytes")
+    if (
+        isinstance(class_count, bool)
+        or not isinstance(class_count, int)
+        or class_count < 2
+        or isinstance(compiled_bytes, bool)
+        or not isinstance(compiled_bytes, int)
+        or compiled_bytes < 1
+    ):
+        raise ValueError("release native-boundary fixture identity is invalid")
+    metrics["native-boundary"] = _ReleaseMetric(
+        median_seconds=_positive_number(
+            parallel.get("median_seconds"),
+            "release native-boundary parallel median_seconds",
+        ),
+        identity=(class_count, compiled_bytes),
+    )
+
+    biomedical = _mapping(results.get("biomedical"), "release results.biomedical")
+    biomedical_samples = _native_view_to_result_samples(biomedical)
+    biomedical_backends = _mapping(biomedical.get("backends"), "release biomedical.backends")
+    biomedical_rust = _mapping(
+        biomedical_backends.get("rust"),
+        "release biomedical.backends.rust",
+    )
+    biomedical_views = _mapping(
+        biomedical_rust.get("views"),
+        "release biomedical.backends.rust.views",
+    )
+    for name in _BIOMEDICAL_VIEWS:
+        row = _mapping(biomedical_views.get(name), f"release biomedical Rust views.{name}")
+        metrics[f"biomedical/{name}"] = _ReleaseMetric(
+            median_seconds=statistics.median(biomedical_samples[name]),
+            identity=(
+                _identity_text(
+                    row.get("semantic_completeness_sha256"),
+                    f"release biomedical {name} semantic_completeness_sha256",
+                ),
+            ),
+        )
+
+    encoded = _mapping(
+        results.get("encoded-ingestion"),
+        "release results.encoded-ingestion",
+    )
+    workloads = _mapping(
+        encoded.get("workloads"),
+        "release encoded-ingestion.workloads",
+    )
+    for name in ("direct", "mmap", "overlay", "composite"):
+        workload = _mapping(workloads.get(name), f"release encoded workload {name}")
+        native_row = _mapping(
+            workload.get("encoded_native"),
+            f"release encoded workload {name}.encoded_native",
+        )
+        phases = _mapping(
+            native_row.get("phases"),
+            f"release encoded workload {name}.phases",
+        )
+        total = _mapping(
+            phases.get("view_to_first_result"),
+            f"release encoded workload {name}.view_to_first_result",
+        )
+        summary = _mapping(
+            total.get("summary"),
+            f"release encoded workload {name}.view_to_first_result.summary",
+        )
+        metrics[f"encoded/{name}"] = _ReleaseMetric(
+            median_seconds=_positive_number(
+                summary.get("median_seconds"),
+                f"release encoded workload {name} median_seconds",
+            ),
+            identity=(
+                _identity_text(
+                    native_row.get("compiler_digest"),
+                    f"release encoded workload {name} compiler_digest",
+                ),
+                _identity_text(
+                    native_row.get("result_sha256"),
+                    f"release encoded workload {name} result_sha256",
+                ),
+            ),
+            current_rss_growth_bytes=_current_rss_growth(
+                summary.get("maximum_current_rss_growth_bytes"),
+                f"release encoded workload {name} maximum_current_rss_growth_bytes",
+            ),
+        )
+    return metrics
+
+
+def _validate_prior_release_report(
+    payload: Mapping[str, object],
+    *,
+    machine_label: str,
+    workers: int,
+) -> dict[str, _ReleaseMetric]:
+    if payload.get("schema") != "pyelk.integrated-benchmark/1":
+        raise ValueError("prior-release report must use pyelk.integrated-benchmark/1")
+    if (
+        payload.get("suite") != "full"
+        or payload.get("native") is not True
+        or payload.get("enforced") is not True
+    ):
+        raise ValueError("prior-release report must be an enforced full native run")
+    if payload.get("workers") != workers:
+        raise ValueError("prior-release report workers do not match the current run")
+    environment = _mapping(payload.get("environment"), "prior-release environment")
+    if environment.get("machine_label") != machine_label:
+        raise ValueError("prior-release report machine_label does not match the current run")
+    manifest = _mapping(payload.get("manifest"), "prior-release manifest")
+    current_manifest_sha256 = hashlib.sha256(MANIFEST.read_bytes()).hexdigest()
+    if (
+        manifest.get("path") != MANIFEST.relative_to(ROOT).as_posix()
+        or manifest.get("sha256") != current_manifest_sha256
+    ):
+        raise ValueError("prior-release report does not use the current performance manifest")
+    revisions = _mapping(payload.get("revisions"), "prior-release revisions")
+    revision_rows = {
+        name: _mapping(revisions.get(name), f"prior-release revisions.{name}")
+        for name in ("pyelk", "pyowl_core")
+    }
+    revision_blockers = _release_revision_blockers(revision_rows)
+    if revision_blockers:
+        raise ValueError(f"prior-release revision evidence is invalid: {revision_blockers}")
+    results = _mapping(payload.get("results"), "prior-release results")
+    return _release_metrics(results)
+
+
+def _release_regression_comparison(
+    current: Mapping[str, _ReleaseMetric],
+    baseline: Mapping[str, _ReleaseMetric],
+) -> dict[str, object]:
+    if set(current) != set(baseline):
+        raise ValueError("current and prior-release metric inventories differ")
+    regression_max = _toml_number(
+        MANIFEST,
+        "thresholds",
+        "release_regression_fraction_max",
+    )
+    ratio_max = 1.0 + regression_max
+    rows: dict[str, dict[str, object]] = {}
+    blockers: list[str] = []
+    for name in sorted(current):
+        current_row = current[name]
+        baseline_row = baseline[name]
+        if current_row.identity != baseline_row.identity:
+            blockers.append(f"{name}: fixture or semantic identity differs from prior release")
+        time_ratio = current_row.median_seconds / baseline_row.median_seconds
+        if time_ratio > ratio_max:
+            blockers.append(f"{name}: median time ratio {time_ratio:.6g} exceeds {ratio_max:.6g}")
+        rss_ratio: float | None = None
+        if current_row.current_rss_growth_bytes is not None:
+            baseline_rss = baseline_row.current_rss_growth_bytes
+            if baseline_rss is None:
+                blockers.append(f"{name}: prior-release current-RSS evidence is missing")
+            elif baseline_rss == 0:
+                rss_ratio = 1.0 if current_row.current_rss_growth_bytes == 0 else math.inf
+            else:
+                rss_ratio = current_row.current_rss_growth_bytes / baseline_rss
+            if rss_ratio is not None and rss_ratio > ratio_max:
+                blockers.append(
+                    f"{name}: current-RSS ratio {rss_ratio:.6g} exceeds {ratio_max:.6g}"
+                )
+        rows[name] = {
+            "current_median_seconds": current_row.median_seconds,
+            "prior_median_seconds": baseline_row.median_seconds,
+            "time_ratio": time_ratio,
+            "current_rss_growth_bytes": current_row.current_rss_growth_bytes,
+            "prior_rss_growth_bytes": baseline_row.current_rss_growth_bytes,
+            "rss_ratio": rss_ratio,
+            "identity_matched": current_row.identity == baseline_row.identity,
+        }
+    return {
+        "gate_eligible": not blockers,
+        "gate_blockers": blockers,
+        "regression_fraction_max": regression_max,
+        "ratio_max": ratio_max,
+        "metrics": rows,
+    }
+
+
 def _command(script: str, *arguments: str) -> list[str]:
     return [sys.executable, str(ROOT / "benchmarks" / script), *arguments]
 
@@ -633,6 +866,7 @@ def run(
     machine_label: str | None,
     native_path: Path | None,
     biomedical: BiomedicalInputs | None = None,
+    prior_release_report: Path | None = None,
 ) -> dict[str, object]:
     if suite not in {"quick", "full"}:
         raise ValueError("suite must be 'quick' or 'full'")
@@ -656,8 +890,12 @@ def run(
         raise ValueError("enforce requires caller-pinned biomedical semantic digests")
     if enforce and java_report is None:
         raise ValueError("enforce requires a same-machine pinned Java performance report")
+    if enforce and prior_release_report is None:
+        raise ValueError("enforce requires a same-machine prior-release performance report")
     if java_report is not None and not isinstance(java_report, Path):
         raise TypeError("java_report must be pathlib.Path or None")
+    if prior_release_report is not None and not isinstance(prior_release_report, Path):
+        raise TypeError("prior_release_report must be pathlib.Path or None")
 
     java: dict[str, object] | None = None
     java_samples: dict[str, tuple[float, ...]] | None = None
@@ -683,6 +921,37 @@ def run(
             "comparison": None,
         }
 
+    prior_release: dict[str, object] | None = None
+    prior_release_metrics: dict[str, _ReleaseMetric] | None = None
+    prior_payload: dict[str, object] | None = None
+    if prior_release_report is not None:
+        prior_data = prior_release_report.read_bytes()
+        decoded_prior = json.loads(prior_data)
+        if not isinstance(decoded_prior, dict):
+            raise ValueError("prior-release report must contain a JSON object")
+        prior_payload = decoded_prior
+        if enforce:
+            if machine_label is None:  # pragma: no cover - guarded above
+                raise AssertionError("enforcement machine label unexpectedly missing")
+            prior_release_metrics = _validate_prior_release_report(
+                prior_payload,
+                machine_label=machine_label,
+                workers=workers,
+            )
+        prior_release = {
+            "path": os.fspath(prior_release_report),
+            "sha256": hashlib.sha256(prior_data).hexdigest(),
+            "source": {
+                "schema": prior_payload.get("schema"),
+                "workers": prior_payload.get("workers"),
+                "environment": prior_payload.get("environment"),
+                "revisions": prior_payload.get("revisions"),
+                "manifest": prior_payload.get("manifest"),
+            },
+            "validated_for_enforcement": enforce,
+            "comparison": None,
+        }
+
     initial_revisions: dict[str, dict[str, object]] | None = None
     if enforce:
         initial_revisions = {
@@ -694,6 +963,15 @@ def run(
             raise RuntimeError(
                 f"release revision evidence is not gate-eligible: {revision_blockers}"
             )
+        if prior_release is None or prior_payload is None:
+            raise AssertionError("validated prior-release evidence unexpectedly missing")
+        prior_revisions = _mapping(prior_payload.get("revisions"), "prior-release revisions")
+        prior_pyelk = _mapping(
+            prior_revisions.get("pyelk"),
+            "prior-release revisions.pyelk",
+        )
+        if prior_pyelk.get("commit") == initial_revisions["pyelk"].get("commit"):
+            raise ValueError("prior-release report must identify an earlier pyELK commit")
 
     environment = os.environ.copy()
     source_paths = [str(ROOT / "src")]
@@ -748,6 +1026,19 @@ def run(
                 "Java-relative performance evidence is not gate-eligible: "
                 f"{comparison['gate_blockers']}"
             )
+        if prior_release is None or prior_release_metrics is None:  # pragma: no cover
+            raise AssertionError("validated prior-release evidence unexpectedly missing")
+        current_release_metrics = _release_metrics(results)
+        release_comparison = _release_regression_comparison(
+            current_release_metrics,
+            prior_release_metrics,
+        )
+        prior_release["comparison"] = release_comparison
+        if release_comparison["gate_eligible"] is not True:
+            raise RuntimeError(
+                "prior-release performance evidence is not gate-eligible: "
+                f"{release_comparison['gate_blockers']}"
+            )
     revisions = {
         "pyelk": _git_state(ROOT),
         "pyowl_core": _git_state(ROOT.parent / "pyOWLCore"),
@@ -782,6 +1073,7 @@ def run(
             "sha256": hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),
         },
         "java_comparison": java,
+        "prior_release_comparison": prior_release,
         "results": results,
     }
 
@@ -797,6 +1089,11 @@ def _arguments() -> argparse.Namespace:
         help="enforce native performance thresholds (requires --native)",
     )
     parser.add_argument("--java-report", type=Path, help="attach a pinned external Java report")
+    parser.add_argument(
+        "--prior-release-report",
+        type=Path,
+        help="compare against an enforced report from the prior release",
+    )
     parser.add_argument("--machine-label", help="stable label for a dedicated performance runner")
     parser.add_argument("--native-path", type=Path, help="workspace native library to benchmark")
     parser.add_argument("--biomedical-source", type=Path)
@@ -880,6 +1177,8 @@ def main() -> int:
         raise SystemExit("--enforce requires caller-pinned biomedical semantic digests")
     if arguments.enforce and arguments.java_report is None:
         raise SystemExit("--enforce requires --java-report from the same labelled machine")
+    if arguments.enforce and arguments.prior_release_report is None:
+        raise SystemExit("--enforce requires --prior-release-report from the same labelled machine")
     payload = run(
         suite=arguments.suite,
         native=arguments.native,
@@ -889,6 +1188,7 @@ def main() -> int:
         machine_label=arguments.machine_label,
         native_path=arguments.native_path,
         biomedical=biomedical,
+        prior_release_report=arguments.prior_release_report,
     )
     encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if arguments.output is not None:

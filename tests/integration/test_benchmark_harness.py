@@ -117,6 +117,85 @@ def _java_performance_report(
     }
 
 
+def _release_fixture_results(
+    inputs: integrated_benchmark.BiomedicalInputs,
+    *,
+    seconds: float = 1.0,
+    rss_bytes: int = 100,
+) -> dict[str, object]:
+    def phase(value: float) -> dict[str, object]:
+        return {"samples": [{"wall_seconds": value} for _ in range(5)]}
+
+    biomedical_views = {
+        name: {
+            "semantic_completeness_sha256": getattr(
+                inputs,
+                f"expected_{name}_semantic_completeness_sha256",
+            ),
+            "session_construction": phase(seconds * 0.25),
+            "classification": phase(seconds * 0.75),
+        }
+        for name in ("source", "target", "composite")
+    }
+    encoded_workloads = {
+        name: {
+            "encoded_native": {
+                "phases": {
+                    "view_to_first_result": {
+                        "summary": {
+                            "median_seconds": seconds,
+                            "maximum_current_rss_growth_bytes": rss_bytes,
+                        }
+                    }
+                },
+                "compiler_digest": f"compiler-{name}",
+                "result_sha256": f"result-{name}",
+            }
+        }
+        for name in ("direct", "mmap", "overlay", "composite")
+    }
+    return {
+        "end-to-end": {
+            "standalone": {"median_seconds": seconds},
+            "fixture": {"source_sha256": "end-to-end-source"},
+            "result_sha256": "end-to-end-result",
+        },
+        "native-boundary": {
+            "class_count": 10_000,
+            "compiled_bytes": 80_000,
+            "native": {"workers_parallel": {"median_seconds": seconds}},
+        },
+        "biomedical": {
+            "gate_eligible": True,
+            "backends": {"rust": {"views": biomedical_views}},
+        },
+        "encoded-ingestion": {
+            "gate_eligible": True,
+            "workloads": encoded_workloads,
+        },
+    }
+
+
+def _prior_release_performance_report(results: dict[str, object]) -> dict[str, object]:
+    return {
+        "schema": "pyelk.integrated-benchmark/1",
+        "suite": "full",
+        "native": True,
+        "workers": 1,
+        "enforced": True,
+        "environment": {"machine_label": "test-runner"},
+        "revisions": {
+            "pyelk": {"commit": "b" * 40, "dirty": False},
+            "pyowl_core": {"commit": "c" * 40, "dirty": False},
+        },
+        "manifest": {
+            "path": "benchmarks/manifest.toml",
+            "sha256": hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),
+        },
+        "results": results,
+    }
+
+
 def test_performance_manifest_pins_every_required_corpus_and_threshold() -> None:
     text = MANIFEST.read_text(encoding="utf-8")
     assert text.startswith('schema = "pyelk.performance-corpus/1"')
@@ -526,6 +605,26 @@ def test_integrated_enforcement_requires_digests_and_rejects_ineligible_evidence
         json.dumps(_java_performance_report(pinned)),
         encoding="utf-8",
     )
+    with pytest.raises(ValueError, match="same-machine prior-release performance report"):
+        integrated_benchmark.run(
+            suite="full",
+            native=True,
+            workers=1,
+            enforce=True,
+            java_report=java_report,
+            machine_label="test-runner",
+            native_path=None,
+            biomedical=pinned,
+        )
+    prior_release_report = tmp_path / "prior-release.json"
+    prior_release_report.write_text(
+        json.dumps(
+            _prior_release_performance_report(
+                _release_fixture_results(pinned),
+            )
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         integrated_benchmark,
         "_git_state",
@@ -551,6 +650,7 @@ def test_integrated_enforcement_requires_digests_and_rejects_ineligible_evidence
             machine_label="test-runner",
             native_path=None,
             biomedical=pinned,
+            prior_release_report=prior_release_report,
         )
 
 
@@ -588,14 +688,8 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
     def phase(seconds: float) -> dict[str, object]:
         return {"samples": [{"wall_seconds": seconds} for _ in range(5)]}
 
-    native_views = {
-        name: {
-            "session_construction": phase(0.25),
-            "classification": phase(0.75),
-        }
-        for name in ("source", "target", "composite")
-    }
-    biomedical_result = {"backends": {"rust": {"views": native_views}}}
+    release_results = _release_fixture_results(inputs)
+    biomedical_result = release_results["biomedical"]
     comparison = integrated_benchmark._java_relative_comparison(
         biomedical_result,
         java_samples,
@@ -605,21 +699,18 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
 
     java_path = tmp_path / "java-performance.json"
     java_path.write_text(json.dumps(report), encoding="utf-8")
-    biomedical_result["gate_eligible"] = True
+    prior_payload = _prior_release_performance_report(release_results)
+    prior_path = tmp_path / "prior-release.json"
+    prior_path.write_text(json.dumps(prior_payload), encoding="utf-8")
     monkeypatch.setattr(
         integrated_benchmark,
         "_suite",
-        lambda *args, **kwargs: [
-            ("biomedical", ["biomedical"]),
-            ("encoded-ingestion", ["encoded-ingestion"]),
-        ],
+        lambda *args, **kwargs: [(name, [name]) for name in release_results],
     )
     monkeypatch.setattr(
         integrated_benchmark,
         "_run",
-        lambda command, environment: (
-            biomedical_result if command[0] == "biomedical" else {"gate_eligible": True}
-        ),
+        lambda command, environment: release_results[command[0]],
     )
     clean_revision = {"commit": "a" * 40, "dirty": False}
     monkeypatch.setattr(
@@ -636,10 +727,36 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
         machine_label="test-runner",
         native_path=None,
         biomedical=inputs,
+        prior_release_report=prior_path,
     )
     java_comparison = integrated["java_comparison"]
     assert java_comparison["validated_for_enforcement"] is True
     assert java_comparison["comparison"]["gate_eligible"] is True
+    prior_comparison = integrated["prior_release_comparison"]
+    assert prior_comparison["validated_for_enforcement"] is True
+    assert prior_comparison["comparison"]["gate_eligible"] is True
+    assert "payload" not in prior_comparison
+    assert prior_comparison["source"]["revisions"]["pyelk"]["commit"] == "b" * 40
+
+    baseline_metrics = integrated_benchmark._validate_prior_release_report(
+        prior_payload,
+        machine_label="test-runner",
+        workers=1,
+    )
+    regressed_results = _release_fixture_results(inputs)
+    regressed_results["end-to-end"]["standalone"]["median_seconds"] = 1.2
+    regressed_results["encoded-ingestion"]["workloads"]["direct"]["encoded_native"]["phases"][
+        "view_to_first_result"
+    ]["summary"]["maximum_current_rss_growth_bytes"] = 120
+    regression = integrated_benchmark._release_regression_comparison(
+        integrated_benchmark._release_metrics(regressed_results),
+        baseline_metrics,
+    )
+    assert regression["gate_eligible"] is False
+    assert regression["gate_blockers"] == [
+        "encoded/direct: current-RSS ratio 1.2 exceeds 1.1",
+        "end-to-end: median time ratio 1.2 exceeds 1.1",
+    ]
 
     monkeypatch.setattr(
         integrated_benchmark,
@@ -659,6 +776,7 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
             machine_label="test-runner",
             native_path=None,
             biomedical=inputs,
+            prior_release_report=prior_path,
         )
 
     revision_calls = 0
@@ -682,6 +800,7 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
             machine_label="test-runner",
             native_path=None,
             biomedical=inputs,
+            prior_release_report=prior_path,
         )
 
     slow_views = biomedical_result["backends"]["rust"]["views"]
