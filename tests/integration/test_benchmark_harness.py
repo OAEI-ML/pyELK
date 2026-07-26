@@ -499,7 +499,7 @@ def test_encoded_ingestion_smoke_is_exact_and_explicitly_non_gating(
         }
         counters = row["encoded_native"]["counters"]
         assert counters["serialized_private_ir_bytes"] == 0
-        assert counters["staging_copy_bytes"] == 0
+        assert counters["staging_copy_bytes"] == (4 if name == "composite" else 0)
         assert counters["wire_encoder_calls"] == 0
         assert counters["wire_decoder_calls"] == 0
         assert counters["scalar_axiom_materializations"] > 0
@@ -555,6 +555,13 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
         assert counters["base_flattening_bytes"] == 0
         assert counters["wire_encoder_calls"] == 0
         assert counters["wire_decoder_calls"] == 0
+    direct = payload["workloads"]["direct"]["encoded_native"]
+    overlay = payload["workloads"]["overlay"]["encoded_native"]
+    composite = payload["workloads"]["composite"]["encoded_native"]
+    assert direct["counters"]["staging_copy_bytes"] == 0
+    assert overlay["counters"]["staging_copy_bytes"] == 0
+    assert composite["counters"]["staging_copy_bytes"] == 4
+    assert composite["diagnostics"]["encoded_posting_bytes"] == 4
 
 
 def test_encoded_ingestion_enforcement_rejects_the_fallback_before_loading_native() -> None:

@@ -327,7 +327,15 @@ def _workloads(class_count: int) -> dict[str, owl.OntologyView]:
         ),
     )
     member_count = max(2, class_count // 2)
-    source = _hierarchy_snapshot("urn:pyelk:encoded:source", member_count)
+    source_base = _hierarchy_snapshot("urn:pyelk:encoded:source", member_count)
+    removed_source_edge = owl.SubClassOf(
+        owl.Class(owl.IRI("urn:pyelk:encoded:source#C0")),
+        owl.Class(owl.IRI("urn:pyelk:encoded:source#C1")),
+    )
+    source = owl.apply_delta(
+        source_base,
+        owl.OntologyDelta(remove_axioms=owl.CanonicalSet((removed_source_edge,))),
+    )
     target = _hierarchy_snapshot("urn:pyelk:encoded:target", member_count)
     bridge = owl.SubClassOf(
         owl.Class(owl.IRI(f"urn:pyelk:encoded:source#C{member_count - 1}")),
@@ -689,11 +697,20 @@ def run(
             raise AssertionError(f"scalar/encoded parity failed for {name}")
         if any(
             sample.counters["serialized_private_ir_bytes"] != 0
-            or sample.counters["staging_copy_bytes"] != 0
             or sample.counters["per_axiom_ffi_calls"] != 0
             for sample in encoded_samples
         ):
             raise AssertionError(f"encoded boundary counters are nonzero for {name}")
+        for sample in encoded_samples:
+            staging_copy_bytes = sample.counters["staging_copy_bytes"]
+            posting_bytes = sample.diagnostics["encoded_posting_bytes"]
+            if name == "composite":
+                if staging_copy_bytes != posting_bytes or posting_bytes == 0:
+                    raise AssertionError(
+                        "composite staging must contain exactly the selected-root postings"
+                    )
+            elif staging_copy_bytes != 0:
+                raise AssertionError(f"{name} staged encoded metadata or columns")
         if any(sample.counters["base_flattening_bytes"] != 0 for sample in encoded_samples):
             blockers.append(f"{name}: encoded producer flattened base structures")
         encoded_diagnostics = encoded_samples[0].diagnostics
