@@ -398,6 +398,26 @@ def _java_relative_comparison(
     }
 
 
+def _release_revision_blockers(
+    revisions: Mapping[str, Mapping[str, object]],
+) -> list[str]:
+    blockers: list[str] = []
+    for name in ("pyelk", "pyowl_core"):
+        state = revisions.get(name)
+        if state is None:
+            blockers.append(f"{name}: revision state is missing")
+            continue
+        commit = state.get("commit")
+        if (
+            not isinstance(commit, str)
+            or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit) is None
+        ):
+            blockers.append(f"{name}: exact Git commit is unavailable")
+        if state.get("dirty") is not False:
+            blockers.append(f"{name}: release evidence requires a clean worktree")
+    return blockers
+
+
 def _command(script: str, *arguments: str) -> list[str]:
     return [sys.executable, str(ROOT / "benchmarks" / script), *arguments]
 
@@ -620,6 +640,8 @@ def run(
         raise TypeError("native and enforce must be bool")
     if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
         raise ValueError("workers must be a positive integer")
+    if machine_label is not None and not isinstance(machine_label, str):
+        raise TypeError("machine_label must be str or None")
     if biomedical is not None and not isinstance(biomedical, BiomedicalInputs):
         raise TypeError("biomedical must be BiomedicalInputs or None")
     if enforce and not native:
@@ -660,6 +682,18 @@ def run(
             "validated_for_enforcement": enforce,
             "comparison": None,
         }
+
+    initial_revisions: dict[str, dict[str, object]] | None = None
+    if enforce:
+        initial_revisions = {
+            "pyelk": _git_state(ROOT),
+            "pyowl_core": _git_state(ROOT.parent / "pyOWLCore"),
+        }
+        revision_blockers = _release_revision_blockers(initial_revisions)
+        if revision_blockers:
+            raise RuntimeError(
+                f"release revision evidence is not gate-eligible: {revision_blockers}"
+            )
 
     environment = os.environ.copy()
     source_paths = [str(ROOT / "src")]
@@ -714,6 +748,18 @@ def run(
                 "Java-relative performance evidence is not gate-eligible: "
                 f"{comparison['gate_blockers']}"
             )
+    revisions = {
+        "pyelk": _git_state(ROOT),
+        "pyowl_core": _git_state(ROOT.parent / "pyOWLCore"),
+    }
+    if enforce:
+        revision_blockers = _release_revision_blockers(revisions)
+        if initial_revisions != revisions:
+            revision_blockers.append("repository revisions changed during the benchmark run")
+        if revision_blockers:
+            raise RuntimeError(
+                f"release revision evidence is not gate-eligible: {revision_blockers}"
+            )
     return {
         "schema": "pyelk.integrated-benchmark/1",
         "suite": suite,
@@ -730,10 +776,7 @@ def run(
             "platform": platform.platform(),
             "python": platform.python_version(),
         },
-        "revisions": {
-            "pyelk": _git_state(ROOT),
-            "pyowl_core": _git_state(ROOT.parent / "pyOWLCore"),
-        },
+        "revisions": revisions,
         "manifest": {
             "path": MANIFEST.relative_to(ROOT).as_posix(),
             "sha256": hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),

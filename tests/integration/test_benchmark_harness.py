@@ -528,6 +528,11 @@ def test_integrated_enforcement_requires_digests_and_rejects_ineligible_evidence
     )
     monkeypatch.setattr(
         integrated_benchmark,
+        "_git_state",
+        lambda path: {"commit": "a" * 40, "dirty": False},
+    )
+    monkeypatch.setattr(
+        integrated_benchmark,
         "_suite",
         lambda *args, **kwargs: [("biomedical", ["biomedical"])],
     )
@@ -616,6 +621,12 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
             biomedical_result if command[0] == "biomedical" else {"gate_eligible": True}
         ),
     )
+    clean_revision = {"commit": "a" * 40, "dirty": False}
+    monkeypatch.setattr(
+        integrated_benchmark,
+        "_git_state",
+        lambda path: clean_revision,
+    )
     integrated = integrated_benchmark.run(
         suite="full",
         native=True,
@@ -629,6 +640,49 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
     java_comparison = integrated["java_comparison"]
     assert java_comparison["validated_for_enforcement"] is True
     assert java_comparison["comparison"]["gate_eligible"] is True
+
+    monkeypatch.setattr(
+        integrated_benchmark,
+        "_git_state",
+        lambda path: {
+            "commit": "a" * 40,
+            "dirty": path == ROOT,
+        },
+    )
+    with pytest.raises(RuntimeError, match="pyelk: release evidence requires a clean worktree"):
+        integrated_benchmark.run(
+            suite="full",
+            native=True,
+            workers=1,
+            enforce=True,
+            java_report=java_path,
+            machine_label="test-runner",
+            native_path=None,
+            biomedical=inputs,
+        )
+
+    revision_calls = 0
+
+    def changing_revision(path: Path) -> dict[str, object]:
+        nonlocal revision_calls
+        revision_calls += 1
+        return {
+            "commit": ("a" if revision_calls <= 2 else "b") * 40,
+            "dirty": False,
+        }
+
+    monkeypatch.setattr(integrated_benchmark, "_git_state", changing_revision)
+    with pytest.raises(RuntimeError, match="repository revisions changed during"):
+        integrated_benchmark.run(
+            suite="full",
+            native=True,
+            workers=1,
+            enforce=True,
+            java_report=java_path,
+            machine_label="test-runner",
+            native_path=None,
+            biomedical=inputs,
+        )
 
     slow_views = biomedical_result["backends"]["rust"]["views"]
     slow_views["source"]["classification"] = phase(2.25)

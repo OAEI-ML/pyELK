@@ -48,7 +48,8 @@ and requires `--suite full`, `--native`, a machine label, a same-machine pinned 
 the complete hash-pinned biomedical metadata above, and caller-approved semantic/completeness
 digests. It rejects an otherwise successful run when the biomedical or Java-relative report
 remains gate-ineligible; an integrated report can therefore never claim `enforced: true` while
-carrying blocked evidence.
+carrying blocked evidence. Both the pyELK and sibling pyowl-core revisions must resolve to exact
+commits with clean worktrees.
 
 Native suites also run `bench_encoded_ingestion.py` from already-resident direct, overlay, and
 composite views. It records raw phase samples and RSS observations for encoded-view acquisition,
