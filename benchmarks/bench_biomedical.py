@@ -378,7 +378,8 @@ def _run_backend(
                 current_ingestion = {
                     key: value
                     for key, value in reasoner.diagnostics().items()
-                    if key == "ingestion_path" or key.startswith("encoded_")
+                    if key in {"ingestion_path", "materialized_scalar_rows"}
+                    or key.startswith("encoded_")
                 }
                 previous_ingestion = ingestion_by_view.get(name)
                 if previous_ingestion is not None and current_ingestion != previous_ingestion:
@@ -586,7 +587,9 @@ def run(
 
     options = owl.LoadOptions(
         imports=owl.ImportPolicy.IGNORE,
-        backend=owl.BackendPreference.PYTHON,
+        backend=(
+            owl.BackendPreference.NATIVE if "rust" in selected else owl.BackendPreference.PYTHON
+        ),
         offline=True,
     )
     load_calls = {"source": 0, "target": 0}
@@ -797,6 +800,7 @@ def run(
             "source_retained_by_identity": True,
             "target_retained_by_identity": True,
             "composite_members_retained_by_identity": True,
+            "owner_backends": {name: view.capabilities.backend for name, view in views.items()},
             "serialized_intermediate_created": False,
             "fingerprints": {
                 name: {

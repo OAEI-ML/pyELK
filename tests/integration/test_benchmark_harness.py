@@ -472,6 +472,11 @@ def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
         "target": True,
         "composite": True,
     }
+    assert payload["load_and_compose"]["owner_backends"] == {
+        "source": "native",
+        "target": "native",
+        "composite": "native",
+    }
     assert payload["backends"]["rust"]["backend"]["name"] == "rust"
     transfer = payload["backends"]["rust"]["native_transfer"]
     assert transfer["observable"] is True
