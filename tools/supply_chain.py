@@ -769,7 +769,7 @@ def _workflow_pin(text: str, pattern: str, label: str) -> str:
     return values.pop()
 
 
-def _file_identity(path: Path) -> dict[str, Any]:
+def _read_file_identity(path: Path) -> tuple[bytes, dict[str, Any]]:
     before = path.stat(follow_symlinks=False)
     if stat.S_ISLNK(before.st_mode):
         raise ValueError(f"build provenance: input must not be a symlink: {path}")
@@ -795,18 +795,38 @@ def _file_identity(path: Path) -> dict[str, Any]:
     )
     if before_identity != after_identity or len(payload) != after.st_size:
         raise ValueError(f"build provenance: input changed while hashing: {path}")
-    return {
-        "bytes": len(payload),
-        "sha256": hashlib.sha256(payload).hexdigest(),
-    }
+    return (
+        payload,
+        {
+            "bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        },
+    )
 
 
 def build_provenance(root: Path) -> dict[str, Any]:
     """Bind release tool pins to every deterministic build-control input."""
 
-    wheels = (root / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
-    selector = _load_toml(root / "rust-toolchain.toml").get("toolchain")
-    workspace = _load_toml(root / "Cargo.toml").get("workspace")
+    payloads: dict[str, bytes] = {}
+    inputs: dict[str, dict[str, Any]] = {}
+    for relative in _BUILD_INPUT_PATHS:
+        path = root / relative
+        try:
+            payload, identity = _read_file_identity(path)
+        except OSError as error:
+            raise ValueError(f"build provenance: cannot hash input {relative}: {error}") from error
+        payloads[relative] = payload
+        inputs[relative] = identity
+
+    def bound_text(relative: str) -> str:
+        try:
+            return payloads[relative].decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError(f"build provenance: input {relative} is not valid UTF-8") from error
+
+    wheels = bound_text(".github/workflows/wheels.yml")
+    selector = tomllib.loads(bound_text("rust-toolchain.toml")).get("toolchain")
+    workspace = tomllib.loads(bound_text("Cargo.toml")).get("workspace")
     if not isinstance(selector, dict):
         raise ValueError("build provenance: rust-toolchain.toml has no toolchain table")
     if not isinstance(workspace, dict) or not isinstance(workspace.get("package"), dict):
@@ -820,7 +840,11 @@ def build_provenance(root: Path) -> dict[str, Any]:
         r"rustup toolchain install ([0-9]+\.[0-9]+\.[0-9]+)",
         "Rust release toolchain",
     )
-    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject = bound_text("pyproject.toml")
+    project = tomllib.loads(pyproject).get("project")
+    if not isinstance(project, dict) or type(project.get("version")) is not str:
+        raise ValueError("build provenance: pyproject.toml has no literal project version")
+    project_version = project["version"]
     container_toolchain = _workflow_pin(
         pyproject,
         r"--default-toolchain ([0-9]+\.[0-9]+\.[0-9]+)",
@@ -878,17 +902,10 @@ def build_provenance(root: Path) -> dict[str, Any]:
             + _workflow_pin(wheels, r"\bdelvewheel==([0-9][^\s]+)", "Windows auditor")
         ),
     }
-    inputs: dict[str, dict[str, Any]] = {}
-    for relative in _BUILD_INPUT_PATHS:
-        path = root / relative
-        try:
-            inputs[relative] = _file_identity(path)
-        except OSError as error:
-            raise ValueError(f"build provenance: cannot hash input {relative}: {error}") from error
     return {
         "schema": "pyelk.build-provenance/1",
         "distribution": "pyelk-reasoner",
-        "version": _project_version(root),
+        "version": project_version,
         "source_date_epoch": {
             "strategy": "git-commit-timestamp",
             "command": epoch_command,

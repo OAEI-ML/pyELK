@@ -54,8 +54,8 @@
       "sha256": "006ed87dbf23cd8c6477cf26a5152e5f201c158be249e776c1d6da19c4ffc9ac"
     },
     "tools/supply_chain.py": {
-      "bytes": 38695,
-      "sha256": "58992bed65d7d74a300eebab99867e85b6135c79e70146ac66d18b6cedc637f2"
+      "bytes": 39355,
+      "sha256": "6755d21b93667845cdb91787f17081115c2d5d108b7802cd3d3f0cd67aa0716b"
     }
   },
   "schema": "pyelk.build-provenance/1",

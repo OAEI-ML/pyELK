@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+import tools.supply_chain as SUPPLY_CHAIN
 from tools.supply_chain import (
     build_cyclonedx,
     build_dependency_inventory,
@@ -151,6 +152,37 @@ def test_build_provenance_rejects_an_absent_control_input(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match=r"cannot hash input setup\.py"):
         build_provenance(tmp_path)
+
+
+def test_build_provenance_parses_the_exact_hashed_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _copy_build_inputs(tmp_path)
+    workflow = tmp_path / ".github/workflows/wheels.yml"
+    original = workflow.read_bytes()
+    read_file_identity = SUPPLY_CHAIN._read_file_identity
+
+    def replace_after_capture(path: Path) -> tuple[bytes, dict[str, object]]:
+        payload, identity = read_file_identity(path)
+        if path == workflow:
+            workflow.write_text(
+                payload.decode("utf-8").replace(
+                    "rustup toolchain install 1.97.1",
+                    "rustup toolchain install 1.96.0",
+                ),
+                encoding="utf-8",
+            )
+        return payload, identity
+
+    monkeypatch.setattr(SUPPLY_CHAIN, "_read_file_identity", replace_after_capture)
+    provenance = build_provenance(tmp_path)
+
+    assert provenance["tools"]["rust_toolchain"] == "1.97.1"
+    assert provenance["inputs"][".github/workflows/wheels.yml"] == {
+        "bytes": len(original),
+        "sha256": hashlib.sha256(original).hexdigest(),
+    }
 
 
 def test_generated_evidence_check_detects_drift(tmp_path: Path) -> None:
