@@ -84,14 +84,25 @@ def _normalise_name(value: str) -> str:
 def _safe_member(name: str) -> str:
     if "\\" in name:
         raise AuditError(f"archive member uses a backslash: {name!r}")
+    if any(ord(character) < 32 or ord(character) == 127 for character in name):
+        raise AuditError(f"archive member uses a control character: {name!r}")
+    raw_parts = name.split("/")
+    if (
+        not name
+        or name.startswith("/")
+        or re.match(r"^[A-Za-z]:", name) is not None
+        or any(part in {"", ".", ".."} for part in raw_parts)
+    ):
+        raise AuditError(f"unsafe archive member path: {name!r}")
     path = PurePosixPath(name)
-    if path.is_absolute() or ".." in path.parts or not path.parts:
+    if path.is_absolute() or not path.parts or path.as_posix() != name:
         raise AuditError(f"unsafe archive member path: {name!r}")
     return path.as_posix()
 
 
 def _read_archive(path: Path) -> dict[str, bytes]:
     members: dict[str, bytes] = {}
+    casefold_names: dict[str, str] = {}
     total = 0
 
     def add(
@@ -114,6 +125,13 @@ def _read_archive(path: Path) -> dict[str, bytes]:
             raise AuditError("archive expands beyond the audit size limit")
         if safe_name in members:
             raise AuditError(f"duplicate archive member: {safe_name}")
+        folded = safe_name.casefold()
+        previous = casefold_names.get(folded)
+        if previous is not None:
+            raise AuditError(
+                f"archive members collide after case normalization: {previous!r}, {safe_name!r}"
+            )
+        casefold_names[folded] = safe_name
         data = read()
         if len(data) != size:
             raise AuditError(f"archive member size differs from its header: {safe_name}")

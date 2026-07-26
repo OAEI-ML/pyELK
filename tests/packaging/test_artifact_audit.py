@@ -361,6 +361,31 @@ def test_zip_path_traversal_is_rejected(tmp_path: Path) -> None:
         AUDITOR.inspect_artifact(wheel)
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "pyelk/./alias.py",
+        "pyelk//alias.py",
+        "C:/escape.py",
+        "pyelk/control\x01.py",
+    ],
+)
+def test_noncanonical_archive_paths_are_rejected(tmp_path: Path, name: str) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr(name, b"x")
+    with pytest.raises(AuditError, match="archive member"):
+        AUDITOR.inspect_artifact(wheel)
+
+
+def test_casefold_colliding_archive_paths_are_rejected(tmp_path: Path) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("PYELK/__init__.py", b"x")
+    with pytest.raises(AuditError, match="collide after case normalization"):
+        AUDITOR.inspect_artifact(wheel)
+
+
 def test_artifact_path_must_be_a_regular_file_not_a_symlink(tmp_path: Path) -> None:
     wheel = _wheel(tmp_path, native=False)
     link = tmp_path / "candidate.whl"
