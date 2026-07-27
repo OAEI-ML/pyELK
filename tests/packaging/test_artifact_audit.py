@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.util
 import io
+import os
 import sys
 import tarfile
 import zipfile
@@ -420,12 +421,58 @@ def test_artifact_cannot_change_during_inspection(
     wheel = _wheel(tmp_path, native=False)
     original = AUDITOR._read_archive
 
-    def mutate_after_read(path: Path) -> dict[str, bytes]:
-        members = original(path)
+    def mutate_after_read(path: Path, payload: bytes) -> dict[str, bytes]:
+        members = original(path, payload)
         path.write_bytes(path.read_bytes() + b"changed-after-archive-read")
         return members
 
     monkeypatch.setattr(AUDITOR, "_read_archive", mutate_after_read)
+    with pytest.raises(AuditError, match="changed during inspection"):
+        AUDITOR.inspect_artifact(wheel)
+
+
+def test_artifact_capture_rejects_path_replacement_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    moved = tmp_path / "original.whl"
+    original_read = os.read
+    replaced = False
+
+    def replacing_read(descriptor: int, size: int) -> bytes:
+        nonlocal replaced
+        if not replaced:
+            wheel.replace(moved)
+            wheel.write_bytes(b"replacement")
+            replaced = True
+        return original_read(descriptor, size)
+
+    monkeypatch.setattr(AUDITOR.os, "read", replacing_read)
+    with pytest.raises(AuditError, match="changed while hashing"):
+        AUDITOR.inspect_artifact(wheel)
+
+
+def test_artifact_semantics_and_digest_use_one_captured_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = _wheel(tmp_path, native=False)
+    original_payload = wheel.read_bytes()
+    moved = tmp_path / "original.whl"
+    read_archive = AUDITOR._read_archive
+
+    def swap_while_auditing(path: Path, payload: bytes) -> dict[str, bytes]:
+        assert payload == original_payload
+        path.replace(moved)
+        path.write_bytes(b"not the audited archive")
+        try:
+            return read_archive(path, payload)
+        finally:
+            path.unlink()
+            moved.replace(path)
+
+    monkeypatch.setattr(AUDITOR, "_read_archive", swap_while_auditing)
     with pytest.raises(AuditError, match="changed during inspection"):
         AUDITOR.inspect_artifact(wheel)
 

@@ -9,6 +9,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import stat
@@ -110,7 +111,7 @@ def _safe_member(name: str) -> str:
     return path.as_posix()
 
 
-def _read_archive(path: Path) -> dict[str, bytes]:
+def _read_archive(path: Path, payload: bytes) -> dict[str, bytes]:
     members: dict[str, bytes] = {}
     casefold_names: dict[str, str] = {}
     total = 0
@@ -148,9 +149,9 @@ def _read_archive(path: Path) -> dict[str, bytes]:
         members[safe_name] = data
 
     if path.suffix == ".whl":
-        if not zipfile.is_zipfile(path):
+        if not zipfile.is_zipfile(io.BytesIO(payload)):
             raise AuditError(f"wheel is not a valid ZIP archive: {path}")
-        with zipfile.ZipFile(path) as zip_archive:
+        with zipfile.ZipFile(io.BytesIO(payload)) as zip_archive:
             zip_infos = zip_archive.infolist()
             if len(zip_infos) > MAX_ARCHIVE_MEMBERS:
                 raise AuditError("archive contains too many members")
@@ -166,7 +167,7 @@ def _read_archive(path: Path) -> dict[str, bytes]:
                 )
     elif path.name.endswith((".tar.gz", ".tar.bz2", ".tar.xz")):
         try:
-            with tarfile.open(path, mode="r:*") as tar_archive:
+            with tarfile.open(fileobj=io.BytesIO(payload), mode="r:*") as tar_archive:
                 tar_infos = tar_archive.getmembers()
                 if len(tar_infos) > MAX_ARCHIVE_MEMBERS:
                     raise AuditError("archive contains too many members")
@@ -193,29 +194,63 @@ def _read_archive(path: Path) -> dict[str, bytes]:
     return members
 
 
-def _artifact_identity(path: Path) -> _ArtifactIdentity:
+def _stat_fields(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _read_artifact(path: Path) -> tuple[bytes, _ArtifactIdentity]:
     before = path.stat(follow_symlinks=False)
     if not stat.S_ISREG(before.st_mode):
         raise AuditError(f"artifact is not a regular file: {path}")
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if before.st_size > MAX_ARCHIVE_SIZE:
+        raise AuditError(f"artifact exceeds the audit size limit: {path}")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise AuditError(f"artifact cannot be opened safely: {path}") from error
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or _stat_fields(before) != _stat_fields(opened):
+            raise AuditError(f"artifact changed while opening: {path}")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        completed = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
     after = path.stat(follow_symlinks=False)
-    before_fields = (
-        before.st_dev,
-        before.st_ino,
-        before.st_size,
-        before.st_mtime_ns,
-        before.st_ctime_ns,
-    )
-    after_fields = (
-        after.st_dev,
-        after.st_ino,
-        after.st_size,
-        after.st_mtime_ns,
-        after.st_ctime_ns,
-    )
-    if before_fields != after_fields:
+    identities = {
+        _stat_fields(before),
+        _stat_fields(opened),
+        _stat_fields(completed),
+        _stat_fields(after),
+    }
+    payload = b"".join(chunks)
+    if len(identities) != 1 or not stat.S_ISREG(after.st_mode) or len(payload) != completed.st_size:
         raise AuditError(f"artifact changed while hashing: {path}")
-    return _ArtifactIdentity(*after_fields, digest)
+    return payload, _ArtifactIdentity(*_stat_fields(after), hashlib.sha256(payload).hexdigest())
+
+
+def _path_matches_identity(path: Path, identity: _ArtifactIdentity) -> bool:
+    try:
+        current = path.stat(follow_symlinks=False)
+    except OSError:
+        return False
+    return stat.S_ISREG(current.st_mode) and _stat_fields(current) == (
+        identity.device,
+        identity.inode,
+        identity.size,
+        identity.mtime_ns,
+        identity.ctime_ns,
+    )
 
 
 def _one_member(members: dict[str, bytes], suffix: str) -> tuple[str, bytes]:
@@ -563,7 +598,12 @@ def _python_hashes(members: dict[str, bytes], *, sdist: bool) -> dict[str, str]:
     return dict(sorted(result.items()))
 
 
-def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> ArtifactReport:
+def _audit_wheel(
+    path: Path,
+    members: dict[str, bytes],
+    expected: str,
+    archive_sha256: str,
+) -> ArtifactReport:
     message, metadata_raw = _metadata(members, wheel=True)
     name, version, requires_python = _audit_metadata(message)
     _audit_wheel_identity(path, members, version)
@@ -617,11 +657,16 @@ def _audit_wheel(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         python_hashes=hashes,
         metadata_sha256=hashlib.sha256(metadata_raw).hexdigest(),
         legal_payload_sha256=_legal_payload_sha256(members, wheel=True),
-        archive_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        archive_sha256=archive_sha256,
     )
 
 
-def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> ArtifactReport:
+def _audit_sdist(
+    path: Path,
+    members: dict[str, bytes],
+    expected: str,
+    archive_sha256: str,
+) -> ArtifactReport:
     if expected not in {"auto", "sdist"}:
         raise AuditError(f"expected {expected}, found sdist")
     message, metadata_raw = _metadata(members, wheel=False)
@@ -673,7 +718,7 @@ def _audit_sdist(path: Path, members: dict[str, bytes], expected: str) -> Artifa
         python_hashes=_python_hashes(members, sdist=True),
         metadata_sha256=hashlib.sha256(metadata_raw).hexdigest(),
         legal_payload_sha256=_legal_payload_sha256(members, wheel=False),
-        archive_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        archive_sha256=archive_sha256,
     )
 
 
@@ -682,17 +727,14 @@ def inspect_artifact(path: Path, expected: str = "auto") -> ArtifactReport:
 
     if path.is_symlink():
         raise AuditError(f"artifact must not be a symbolic link: {path}")
-    path = path.resolve()
-    if not path.exists():
-        raise AuditError(f"artifact does not exist: {path}")
-    initial_identity = _artifact_identity(path)
-    members = _read_archive(path)
+    path = path.absolute()
+    payload, identity = _read_artifact(path)
+    members = _read_archive(path, payload)
     if path.suffix == ".whl":
-        report = _audit_wheel(path, members, expected)
+        report = _audit_wheel(path, members, expected, identity.sha256)
     else:
-        report = _audit_sdist(path, members, expected)
-    final_identity = _artifact_identity(path)
-    if initial_identity != final_identity or report.archive_sha256 != final_identity.sha256:
+        report = _audit_sdist(path, members, expected, identity.sha256)
+    if not _path_matches_identity(path, identity) or report.archive_sha256 != identity.sha256:
         raise AuditError(f"artifact changed during inspection: {path}")
     return report
 
