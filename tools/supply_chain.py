@@ -951,6 +951,19 @@ def build_provenance(root: Path) -> dict[str, Any]:
             + _workflow_pin(wheels, r"\bdelvewheel==([0-9][^\s]+)", "Windows auditor")
         ),
     }
+    musllinux_smoke_images = sorted(
+        set(
+            re.findall(
+                r"\bimage:\s+(python:3\.(?:11|12|13|14)-alpine@sha256:[0-9a-f]{64})",
+                wheels,
+            )
+        )
+    )
+    if len(musllinux_smoke_images) != 4:
+        raise ValueError(
+            "build provenance: expected four digest-pinned musllinux smoke images, "
+            f"got {musllinux_smoke_images!r}"
+        )
     return {
         "schema": "pyelk.build-provenance/1",
         "distribution": "pyelk-reasoner",
@@ -964,6 +977,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
             "cargo_manifest_rust_version": rust_msrv,
             "rustup": rustup_version,
             "rustup_installer_sha256": rustup_installer_sha256,
+            "musllinux_smoke_images": musllinux_smoke_images,
             **versions,
         },
         "inputs": inputs,

@@ -88,7 +88,9 @@ def test_every_supported_later_cpython_exercises_glibc_musl_macos_and_windows() 
         "windows-amd64",
     ):
         assert lane in workflow
-    assert "PYTHON_IMAGE: python:${{ matrix.python }}-alpine" in workflow
+    assert "PYTHON_IMAGE: ${{ matrix.image }}" in workflow
+    assert workflow.count("-alpine@sha256:") == 4
+    assert "PYTHON_IMAGE: python:${{ matrix.python }}-alpine" not in workflow
 
 
 def test_rust_workflow_pins_toolchains_and_enforces_quality_gates() -> None:

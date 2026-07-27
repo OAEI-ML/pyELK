@@ -277,6 +277,14 @@ jobs:
         python: ["3.11", "3.12", "3.13", "3.14"]
         arch: [x86_64, aarch64]
         include:
+          - python: "3.11"
+            image: python:3.11-alpine@sha256:25976e9d34a0fab1f278cae931f34c8303d97bf0c0d7f85b6b4dcf641d7702a4
+          - python: "3.12"
+            image: python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
+          - python: "3.13"
+            image: python:3.13-alpine@sha256:399babc8b49529dabfd9c922f2b5eea81d611e4512e3ed250d75bd2e7683f4b0
+          - python: "3.14"
+            image: python:3.14-alpine@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92
           - arch: x86_64
             lane: linux-x86_64
             runner: ubuntu-24.04
@@ -305,7 +313,7 @@ jobs:
       - name: Exercise musllinux wheel on native hardware
         env:
           ARCH: ${{ matrix.arch }}
-          PYTHON_IMAGE: python:${{ matrix.python }}-alpine
+          PYTHON_IMAGE: ${{ matrix.image }}
         run: |
           docker run --rm -v "$PWD:/project" -w /tmp "$PYTHON_IMAGE" sh -ec '
             python -m venv /tmp/venv

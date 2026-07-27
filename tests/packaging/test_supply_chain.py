@@ -118,6 +118,16 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
             "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
             "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c",
         ],
+        "musllinux_smoke_images": [
+            "python:3.11-alpine@sha256:"
+            "25976e9d34a0fab1f278cae931f34c8303d97bf0c0d7f85b6b4dcf641d7702a4",
+            "python:3.12-alpine@sha256:"
+            "6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+            "python:3.13-alpine@sha256:"
+            "399babc8b49529dabfd9c922f2b5eea81d611e4512e3ed250d75bd2e7683f4b0",
+            "python:3.14-alpine@sha256:"
+            "26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92",
+        ],
         "python_build_frontend": "build==1.5.0",
         "python_build_backend": "setuptools==83.0.0",
         "setuptools_rust": "setuptools-rust==1.13.0",
@@ -175,6 +185,22 @@ def test_build_provenance_rejects_mutable_rustup_bootstrap(tmp_path: Path) -> No
         ValueError,
         match=r"Linux bootstrap rustup_version|archive- and checksum-bound",
     ):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_mutable_musllinux_smoke_images(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    workflow = tmp_path / ".github/workflows/wheels.yml"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8").replace(
+            "python:3.12-alpine@sha256:"
+            "6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+            "python:3.12-alpine",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="digest-pinned musllinux smoke images"):
         build_provenance(tmp_path)
 
 

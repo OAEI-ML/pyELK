@@ -6,8 +6,8 @@
       "sha256": "49c605c8d0390f6c17a8cda217b68dc67044a0fbc1482fc2773c487c5c6b3658"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 14495,
-      "sha256": "08829aed25eba047c082e199b9d163d0ddbcfa0929ad4691f2d1e58b4b9b9a1b"
+      "bytes": 15028,
+      "sha256": "b97b5fe3cb364b1cf43034f02dacef6376a8419a656be0b29d2b6c9abb946a68"
     },
     "Cargo.lock": {
       "bytes": 19844,
@@ -58,8 +58,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 41583,
-      "sha256": "773e0edf5223e1f4cc75aa645a7b15ece4f7a8650f375f6cbc21f66b001c6e43"
+      "bytes": 42067,
+      "sha256": "a47c297c9ed91aadf30cc0e62f3d61cda8bbb376c18a1fb0d98dc36b4ef60caf"
     }
   },
   "schema": "pyelk.build-provenance/1",
@@ -74,6 +74,12 @@
     "cibuildwheel_action": "pypa/cibuildwheel@a0a973acdc9e7b7f8b04ac5c80e6883a5a102615",
     "delocate": "delocate==0.13.0",
     "delvewheel": "delvewheel==1.13.0",
+    "musllinux_smoke_images": [
+      "python:3.11-alpine@sha256:25976e9d34a0fab1f278cae931f34c8303d97bf0c0d7f85b6b4dcf641d7702a4",
+      "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "python:3.13-alpine@sha256:399babc8b49529dabfd9c922f2b5eea81d611e4512e3ed250d75bd2e7683f4b0",
+      "python:3.14-alpine@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92"
+    ],
     "python_build_backend": "setuptools==83.0.0",
     "python_build_frontend": "build==1.5.0",
     "rust_toolchain": "1.97.1",
