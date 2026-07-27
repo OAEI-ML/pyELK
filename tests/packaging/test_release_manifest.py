@@ -183,6 +183,27 @@ def test_binding_rejects_an_artifact_changed_during_inspection(
         bind_artifact(wheel)
 
 
+def test_matrix_rejects_a_late_unbound_directory_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifacts = _artifacts(tmp_path)
+    final_name = sorted(_MATRIX)[-1]
+    added = False
+
+    def inspect_and_add(path: Path, expected: str = "auto") -> ArtifactReport:
+        nonlocal added
+        report = _report(path, expected)
+        if path.name == final_name and not added:
+            (artifacts / "late-unbound.txt").write_text("unbound", encoding="utf-8")
+            added = True
+        return report
+
+    monkeypatch.setattr(RELEASE_MANIFEST, "inspect_artifact", inspect_and_add)
+    with pytest.raises(ManifestError, match="directory changed"):
+        build_manifest(artifacts)
+
+
 def test_verification_rejects_artifact_tampering_and_self_sweeping(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

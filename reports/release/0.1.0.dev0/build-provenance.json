@@ -54,8 +54,8 @@
       "sha256": "8a6e96b9e58cffc5ebe8e120cdb9c920136b7bf6a8b16554a8038342d80baed6"
     },
     "tools/release_manifest.py": {
-      "bytes": 7769,
-      "sha256": "006ed87dbf23cd8c6477cf26a5152e5f201c158be249e776c1d6da19c4ffc9ac"
+      "bytes": 8543,
+      "sha256": "94b7644ac46ef24a68f047eb56250d6c20899e722833ed90eec403b2305d7c5b"
     },
     "tools/supply_chain.py": {
       "bytes": 41583,

@@ -63,6 +63,15 @@ class _FileIdentity:
     ctime_ns: int
 
 
+@dataclass(frozen=True, slots=True)
+class _DirectoryIdentity:
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+
+
 def _file_identity(path: Path, *, description: str) -> _FileIdentity:
     details = path.stat(follow_symlinks=False)
     if not stat.S_ISREG(details.st_mode):
@@ -74,6 +83,23 @@ def _file_identity(path: Path, *, description: str) -> _FileIdentity:
         mtime_ns=details.st_mtime_ns,
         ctime_ns=details.st_ctime_ns,
     )
+
+
+def _directory_identity(path: Path) -> _DirectoryIdentity:
+    details = path.stat(follow_symlinks=False)
+    if not stat.S_ISDIR(details.st_mode):
+        raise ManifestError(f"artifact input is not a directory: {path}")
+    return _DirectoryIdentity(
+        device=details.st_dev,
+        inode=details.st_ino,
+        size=details.st_size,
+        mtime_ns=details.st_mtime_ns,
+        ctime_ns=details.st_ctime_ns,
+    )
+
+
+def _direct_entries(path: Path) -> tuple[Path, ...]:
+    return tuple(sorted(path.iterdir(), key=lambda candidate: candidate.name))
 
 
 def _variant(report: ArtifactReport) -> str:
@@ -119,10 +145,8 @@ def bind_artifact(path: Path) -> ArtifactBinding:
 def build_manifest(artifacts_dir: Path) -> dict[str, object]:
     """Audit and bind the exact nine-slot tier-one artifact matrix."""
 
-    details = artifacts_dir.stat(follow_symlinks=False)
-    if not stat.S_ISDIR(details.st_mode):
-        raise ManifestError(f"artifact input is not a directory: {artifacts_dir}")
-    paths = tuple(sorted(artifacts_dir.iterdir(), key=lambda path: path.name))
+    directory_identity = _directory_identity(artifacts_dir)
+    paths = _direct_entries(artifacts_dir)
     if len(paths) != len(_EXPECTED_VARIANTS):
         raise ManifestError(
             f"release matrix must contain exactly nine direct artifact files; found {len(paths)}"
@@ -153,6 +177,11 @@ def build_manifest(artifacts_dir: Path) -> dict[str, object]:
             f"release artifacts do not share one distribution identity: {sorted(identities)}"
         )
     distribution, version = next(iter(identities))
+    if (
+        _directory_identity(artifacts_dir) != directory_identity
+        or _direct_entries(artifacts_dir) != paths
+    ):
+        raise ManifestError("artifact input directory changed while building the manifest")
     return {
         "schema": 1,
         "distribution": distribution,
