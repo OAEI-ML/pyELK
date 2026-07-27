@@ -950,8 +950,12 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
     assert set(capabilities["core_advertised_schemas"].values()) == {
         bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
     }
-    assert capabilities["native_advertised_schema"] is None
-    assert "native extension does not advertise structural-columns v1" in payload["gate_blockers"]
+    assert (
+        capabilities["native_advertised_schema"] == bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
+    )
+    assert (
+        "native extension does not advertise structural-columns v1" not in payload["gate_blockers"]
+    )
     for row in payload["workloads"].values():
         counters = row["encoded_native"]["counters"]
         assert counters["scalar_axiom_materializations"] == 0

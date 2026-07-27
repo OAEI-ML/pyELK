@@ -71,10 +71,18 @@ _INSTALLED_NATIVE_CONTRACT_COMMAND = (
 )
 _INSTALLED_NATIVE_CONTRACTS = (
     "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
-    "tests/backends/test_rust_core.py::test_hidden_direct_encoded_session_matches_scalar_wire",
+    "tests/backends/test_rust_core.py::test_advertised_direct_encoded_session_matches_scalar_wire",
     (
         "tests/backends/test_rust_core.py"
-        "::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+        "::test_public_facade_runs_entirely_from_advertised_encoded_native_session"
+    ),
+    (
+        "tests/backends/test_rust_core.py"
+        "::test_public_advertised_dispatch_covers_mmap_and_recursive_segments"
+    ),
+    (
+        "tests/backends/test_rust_core.py"
+        "::test_public_advertised_dispatch_fails_closed_before_scalar_compilation"
     ),
 )
 
@@ -1032,7 +1040,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
         },
         "installed_native_contracts": [
             {
-                "capability_state": "unadvertised",
+                "capability_state": "advertised",
                 "command": _INSTALLED_NATIVE_CONTRACT_COMMAND,
                 "id": "wp14-encoded-public-dispatch-short",
                 "scope": "bounded-correctness-only",

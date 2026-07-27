@@ -116,6 +116,32 @@ class ExtensionView:
         return tuple(sorted(values, key=owl.canonical_bytes))
 
     def view(self, view_type: type[V], /, **options: object) -> V:
+        encoded_type = getattr(owl, "EncodedStructuralView", None)
+        if isinstance(encoded_type, type) and view_type is encoded_type:
+            from pyowl_core.backends.native_views import produce_encoded_structural_view_v1
+
+            selected = dict(options)
+            schema_version = selected.pop("schema_version", 1)
+            if schema_version != 1:
+                raise owl.AdapterCompatibilityError(
+                    "test extension view only publishes structural-columns schema 1"
+                )
+            scope = selected.pop("scope", owl.AxiomScope.CLOSURE)
+            document_key = selected.pop("document_key", None)
+            limits = selected.pop("limits", None)
+            materialize_segments = selected.pop("materialize_segments", False)
+            if selected:
+                raise TypeError(f"unsupported encoded-view options: {sorted(selected)!r}")
+            return cast(
+                V,
+                produce_encoded_structural_view_v1(
+                    cast(owl.OntologyView, self),
+                    scope=cast(owl.AxiomScope, scope),
+                    document_key=cast(str | None, document_key),
+                    limits=cast(owl.ParseLimits | None, limits),
+                    materialize_segments=cast(bool, materialize_segments),
+                ),
+            )
         return self.base.view(view_type, **options)
 
     @property

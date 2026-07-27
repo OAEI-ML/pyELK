@@ -90,10 +90,18 @@ def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> No
     command = "python {project}/tests/packaging/run_installed_wp14_contract.py"
     nodes = (
         "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
-        "tests/backends/test_rust_core.py::test_hidden_direct_encoded_session_matches_scalar_wire",
+        "tests/backends/test_rust_core.py::test_advertised_direct_encoded_session_matches_scalar_wire",
         (
             "tests/backends/test_rust_core.py"
-            "::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+            "::test_public_facade_runs_entirely_from_advertised_encoded_native_session"
+        ),
+        (
+            "tests/backends/test_rust_core.py"
+            "::test_public_advertised_dispatch_covers_mmap_and_recursive_segments"
+        ),
+        (
+            "tests/backends/test_rust_core.py"
+            "::test_public_advertised_dispatch_fails_closed_before_scalar_compilation"
         ),
     )
     metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -109,7 +117,7 @@ def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> No
     )
     assert "source checkout imported" in runner_source
     assert "installed WP14 contract attempted network access" in runner_source
-    assert "assert native_module.encoded_view_schemas() == {}" in contract
+    assert '"pyowl-core/structural-columns": 1' in contract
     assert 'diagnostics["ingestion_path"] == "encoded-native"' in contract
     for relative in (
         '"tests/backends/test_rust_core.py"',

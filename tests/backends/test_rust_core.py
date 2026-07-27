@@ -11,6 +11,7 @@ import threading
 import weakref
 from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import Any
@@ -401,12 +402,16 @@ def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> No
     assert native_module.ir_version() == (1, 0)
     assert native_module.self_check() is True
     assert issubclass(native_module.NativeUnsupportedFeatureError, ValueError)
-    assert native_module.encoded_view_schemas() == {}
+    assert native_module.encoded_view_schemas() == {
+        "pyowl-core/structural-columns": 1,
+    }
     with pytest.raises(ValueError, match=r"IR|payload|header|magic"):
         native_module.create_session(b"not a compiled ontology", 1)
 
 
-def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: ModuleType) -> None:
+def test_advertised_direct_encoded_session_matches_scalar_wire(
+    native_module: ModuleType,
+) -> None:
     from pyelk.indexing.compiler import compile_ontology
     from pyelk.indexing.metadata import encode_compiler_metadata, metadata_from_compiled
     from pyelk.indexing.summary import compiler_digest, compiler_section_counts
@@ -481,10 +486,9 @@ def test_hidden_direct_encoded_session_matches_scalar_wire(native_module: Module
         scalar.close()
 
 
-def test_public_scalar_handoff_diagnostics_are_backend_independent(
+def test_public_scalar_fallback_diagnostics_are_backend_independent(
     native_module: ModuleType,
 ) -> None:
-    assert native_module.encoded_view_schemas() == {}
     snapshot, _encoded = _direct_encoded_snapshot(
         b"""Ontology(<urn:public-diagnostics>
         Declaration(Class(<urn:public-diagnostics:A>))
@@ -492,30 +496,68 @@ def test_public_scalar_handoff_diagnostics_are_backend_independent(
         SubClassOf(<urn:public-diagnostics:A> <urn:public-diagnostics:B>)
         )"""
     )
-    python, rust = _reasoners(snapshot)
+    with patch.object(native_module, "encoded_view_schemas", return_value={}):
+        python, rust = _reasoners(snapshot)
+        try:
+            python_diagnostics = python.diagnostics()
+            rust_diagnostics = rust.diagnostics()
+            assert python_diagnostics["ingestion_path"] == "scalar-python"
+            assert rust_diagnostics["ingestion_path"] == "scalar-wire"
+            assert rust_diagnostics["native_abi_version"] == "abi3-py310"
+            assert {
+                python_diagnostics["compiler_digest"],
+                rust_diagnostics["compiler_digest"],
+            } == {python_diagnostics["compiler_digest"]}
+            assert python_diagnostics["compiler_cache_schema_version"] == 1
+            assert rust_diagnostics["compiler_cache_schema_version"] == 1
+            assert python_diagnostics["ir_schema_version"] == 1
+            assert rust_diagnostics["ir_schema_version"] == 1
+            assert python_diagnostics["materialized_scalar_rows"] == 3
+            assert rust_diagnostics["materialized_scalar_rows"] == 3
+            for diagnostics in (python_diagnostics, rust_diagnostics):
+                assert diagnostics["consumer_compile_seconds"] >= 0.0
+                for name, expected in _SCALAR_ENCODED_COUNTERS.items():
+                    assert diagnostics[name] == expected
+        finally:
+            python.close()
+            rust.close()
+
+
+def test_public_scalar_fallback_does_not_request_unadvertised_core_columns(
+    native_module: ModuleType,
+) -> None:
+    snapshot, _encoded = _direct_encoded_snapshot(
+        b"""Ontology(<urn:public-core-fallback>
+        Declaration(Class(<urn:public-core-fallback:A>))
+        )"""
+    )
+    capabilities = replace(snapshot.capabilities, encoded_view_schemas={})
+    with (
+        patch.object(
+            type(snapshot),
+            "capabilities",
+            new_callable=PropertyMock,
+            return_value=capabilities,
+        ),
+        patch.object(
+            type(snapshot),
+            "view",
+            side_effect=AssertionError("unadvertised encoded view was requested"),
+        ) as request,
+    ):
+        reasoner = Reasoner(
+            snapshot,
+            ReasonerConfig(backend="rust", workers=1, unsupported="error"),
+        )
     try:
-        python_diagnostics = python.diagnostics()
-        rust_diagnostics = rust.diagnostics()
-        assert python_diagnostics["ingestion_path"] == "scalar-python"
-        assert rust_diagnostics["ingestion_path"] == "scalar-wire"
-        assert rust_diagnostics["native_abi_version"] == "abi3-py310"
-        assert {
-            python_diagnostics["compiler_digest"],
-            rust_diagnostics["compiler_digest"],
-        } == {python_diagnostics["compiler_digest"]}
-        assert python_diagnostics["compiler_cache_schema_version"] == 1
-        assert rust_diagnostics["compiler_cache_schema_version"] == 1
-        assert python_diagnostics["ir_schema_version"] == 1
-        assert rust_diagnostics["ir_schema_version"] == 1
-        assert python_diagnostics["materialized_scalar_rows"] == 3
-        assert rust_diagnostics["materialized_scalar_rows"] == 3
-        for diagnostics in (python_diagnostics, rust_diagnostics):
-            assert diagnostics["consumer_compile_seconds"] >= 0.0
-            for name, expected in _SCALAR_ENCODED_COUNTERS.items():
-                assert diagnostics[name] == expected
+        diagnostics = reasoner.diagnostics()
+        assert diagnostics["ingestion_path"] == "scalar-wire"
+        assert diagnostics["materialized_scalar_rows"] == 1
+        for name, expected in _SCALAR_ENCODED_COUNTERS.items():
+            assert diagnostics[name] == expected
+        assert request.call_count == 0
     finally:
-        python.close()
-        rust.close()
+        reasoner.close()
 
 
 def test_hidden_packed_bytes_exporter_detaches_only_in_frozen_column_order(
@@ -570,23 +612,16 @@ def test_hidden_packed_bytes_exporter_detaches_only_in_frozen_column_order(
         scalar.close()
 
 
-def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
+def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
     native_module: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import pyowl_core as owl
 
-    from pyelk.backends import EncodedBackendSelection
-    from pyelk.backends.python import IMPLEMENTATION_VERSION
-    from pyelk.backends.rust import RustBackendFactory
-    from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
-    from pyelk.indexing.encoded import (
-        ENCODED_SCHEMA_NAME,
-        ENCODED_SCHEMA_VERSION,
-        _validate_encoded_view,
-    )
-
-    snapshot, encoded = _direct_encoded_snapshot(
+    assert native_module.encoded_view_schemas() == {
+        "pyowl-core/structural-columns": 1,
+    }
+    snapshot, _encoded = _direct_encoded_snapshot(
         b"""Prefix(:=<urn:facade#>) Ontology(<urn:facade>
         Declaration(Class(:A)) Declaration(Class(:B)) SubClassOf(:A :B)
         Declaration(ObjectProperty(:p)) Declaration(ObjectProperty(:q))
@@ -596,20 +631,6 @@ def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
     )
     config = ReasonerConfig(backend="rust", workers=2, unsupported="error")
     expected = Reasoner(snapshot, ReasonerConfig(backend="python", unsupported="error"))
-    factory = RustBackendFactory(
-        native_module,
-        implementation_version=IMPLEMENTATION_VERSION,
-        ir_major=SCHEMA_MAJOR,
-        ir_minor=SCHEMA_MINOR,
-    )
-    factory._encoded_view_schemas = MappingProxyType({ENCODED_SCHEMA_NAME: ENCODED_SCHEMA_VERSION})
-    handoff = _validate_encoded_view(snapshot, encoded, owl.AxiomScope.CLOSURE)
-    session = factory.create_encoded_session(handoff, config)
-    selection = EncodedBackendSelection(session=session, metadata=session.compiler_metadata())
-    monkeypatch.setattr(
-        "pyelk.api.try_create_encoded_backend_session",
-        lambda ontology, supplied: selection,
-    )
 
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("public encoded path reached scalar compilation")
@@ -627,9 +648,14 @@ def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
         assert diagnostics["compiler_cache_schema_version"] == 1
         assert diagnostics["ir_schema_version"] == 1
         assert diagnostics["compiler_digest"] == expected.diagnostics()["compiler_digest"]
-        assert diagnostics["encoded_view_publication_seconds"] == 0.0
+        assert isinstance(diagnostics["encoded_view_publication_seconds"], float)
+        assert diagnostics["encoded_view_publication_seconds"] >= 0.0
         assert diagnostics["consumer_compile_seconds"] >= 0.0
         assert diagnostics["materialized_scalar_rows"] == 0
+        assert diagnostics["encoded_buffer_count"] == 11
+        assert diagnostics["encoded_zero_copy_buffers"] == 11
+        assert diagnostics["encoded_staging_copy_bytes"] == 0
+        assert diagnostics["encoded_private_ir_bytes"] == 0
         assert actual.is_consistent() == expected.is_consistent()
         assert actual.classify() == expected.classify()
         assert actual.classify_object_properties() == expected.classify_object_properties()
@@ -644,11 +670,199 @@ def test_hidden_public_facade_runs_entirely_from_encoded_native_session(
             owl.SubClassOf(class_a, class_b)
         )
     finally:
-        if actual is None:
-            session.close()
-        else:
+        if actual is not None:
             actual.close()
         expected.close()
+
+
+def test_public_advertised_dispatch_covers_mmap_and_recursive_segments(
+    native_module: ModuleType,
+    tmp_path: Path,
+) -> None:
+    import pyowl_core as owl
+
+    assert native_module.encoded_view_schemas() == {
+        "pyowl-core/structural-columns": 1,
+    }
+    options = owl.LoadOptions(
+        backend=owl.BackendPreference.PYTHON,
+        imports=owl.ImportPolicy.IGNORE,
+    )
+
+    def load(source: bytes) -> Any:
+        return owl.load_snapshot(source, options=options)
+
+    left = load(
+        b"""Prefix(:=<urn:public-segments#>) Ontology(<urn:public-segments>
+        Declaration(Class(:A))
+        Declaration(Class(:B))
+        SubClassOf(:A :B)
+        ClassAssertion(:A _:shared)
+        )"""
+    )
+    right = load(
+        b"""Prefix(:=<urn:public-segments#>) Ontology(<urn:public-segments>
+        Declaration(Class(:B))
+        Declaration(Class(:C))
+        SubClassOf(:B :C)
+        ClassAssertion(:B _:shared)
+        )"""
+    )
+    removed = owl.Declaration(owl.Class(owl.IRI("urn:public-segments#A")))
+    added = owl.Declaration(owl.Class(owl.IRI("urn:public-segments#D")))
+    overlay = owl.apply_delta(
+        left,
+        owl.OntologyDelta(
+            add_axioms=owl.CanonicalSet((added,)),
+            remove_axioms=owl.CanonicalSet((removed,)),
+        ),
+    )
+    composite = owl.compose_views(overlay, right, roles=("overlay", "right"))
+    nested = owl.apply_delta(
+        composite,
+        owl.OntologyDelta(
+            add_axioms=owl.CanonicalSet(
+                (owl.Declaration(owl.Class(owl.IRI("urn:public-segments#E"))),)
+            )
+        ),
+    )
+    third = load(
+        b"""Prefix(:=<urn:public-segments#>) Ontology(<urn:public-segments-third>
+        Declaration(Class(:F))
+        SubClassOf(:E :F)
+        )"""
+    )
+    recursive = owl.compose_views(nested, third, roles=("nested", "third"))
+    scoped_source = b"""Prefix(:=<urn:public-scope#>) Ontology(<urn:public-scope>
+    Declaration(Class(:A))
+    ClassAssertion(:A _:shared)
+    )"""
+    scoped = owl.compose_views(
+        load(scoped_source),
+        load(scoped_source),
+        roles=("scope-left", "scope-right"),
+    )
+
+    wire_path = tmp_path / "public-segments.pyocore"
+    wire_path.write_bytes(owl.encode_snapshot(left))
+    mapped = owl.open_snapshot(wire_path, mmap=True, verify=True)
+    candidates = (
+        ("direct", left),
+        ("mmap", mapped),
+        ("overlay", overlay),
+        ("composite", composite),
+        ("recursive", recursive),
+        ("scoped", scoped),
+    )
+    try:
+        for name, candidate in candidates:
+            encoded = candidate.view(
+                owl.EncodedStructuralView,
+                schema_version=1,
+                scope=owl.AxiomScope.CLOSURE,
+            )
+            if name == "scoped":
+                pending = [encoded]
+                visited: set[int] = set()
+                scope_map_bytes = 0
+                while pending:
+                    current = pending.pop()
+                    if id(current) in visited:
+                        continue
+                    visited.add(id(current))
+                    for segment in current.segments:
+                        scope_map_bytes += segment.anonymous_scope_map.nbytes
+                        if segment.source is not None:
+                            pending.append(segment.source)
+                assert scope_map_bytes >= 128
+            expected = Reasoner(
+                candidate,
+                ReasonerConfig(backend="python", workers=1, unsupported="ignore"),
+            )
+            actual = Reasoner(
+                candidate,
+                ReasonerConfig(backend="rust", workers=1, unsupported="ignore"),
+            )
+            try:
+                expected_diagnostics = expected.diagnostics()
+                diagnostics = actual.diagnostics()
+                assert diagnostics["ingestion_path"] == "encoded-native", name
+                assert diagnostics["compiler_digest"] == expected_diagnostics["compiler_digest"]
+                assert diagnostics["materialized_scalar_rows"] == 0
+                assert diagnostics["encoded_private_ir_bytes"] == 0
+                assert (
+                    diagnostics["encoded_zero_copy_buffers"] == diagnostics["encoded_buffer_count"]
+                )
+                assert diagnostics["encoded_segment_count"] >= len(encoded.segments)
+                assert actual.is_consistent() == expected.is_consistent()
+                assert actual.classify() == expected.classify()
+                assert actual.classify_object_properties() == expected.classify_object_properties()
+                assert actual.realize() == expected.realize()
+                if name == "mmap":
+                    assert diagnostics["encoded_staging_copy_bytes"] == 0
+                    assert diagnostics["encoded_detached_buffer_count"] == 0
+                    assert diagnostics["encoded_indexed_buffer_count"] == 11
+                if name == "recursive":
+                    assert diagnostics["encoded_referenced_view_count"] >= 4
+                    assert diagnostics["encoded_staging_copy_bytes"] >= 4
+            finally:
+                actual.close()
+                expected.close()
+                del encoded
+    finally:
+        gc.collect()
+        mapped.close()
+
+
+@pytest.mark.parametrize("failure_stage", ("adapter", "native"))
+def test_public_advertised_dispatch_fails_closed_before_scalar_compilation(
+    native_module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    import pyowl_core as owl
+
+    from pyelk.exceptions import BackendProtocolError
+
+    assert native_module.encoded_view_schemas() == {
+        "pyowl-core/structural-columns": 1,
+    }
+    snapshot, encoded = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:public-hostile:A>)))"
+    )
+    if failure_stage == "adapter":
+        hostile = replace(encoded, descriptor=encoded.descriptor + b" ")
+        expected_error: type[BaseException] = owl.BackendProtocolError
+        match = "descriptor"
+    else:
+        buffers = dict(encoded.buffers)
+        root_kinds = bytearray(buffers["root_kinds"])
+        root_kinds[0] ^= 0x7F
+        buffers["root_kinds"] = memoryview(bytes(root_kinds))
+        hostile = replace(encoded, buffers=MappingProxyType(buffers))
+        expected_error = BackendProtocolError
+        match = r"valid encoded structural|root|fingerprint"
+
+    scalar_calls = 0
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        nonlocal scalar_calls
+        scalar_calls += 1
+        raise AssertionError("advertised malformed input reached scalar compilation")
+
+    with (
+        patch.object(type(snapshot), "view", return_value=hostile) as request,
+        monkeypatch.context() as context,
+    ):
+        context.setattr("pyelk.api._compile_ontology_with_materialization_count", forbidden)
+        context.setattr("pyelk.api.create_backend_session", forbidden)
+        with pytest.raises(expected_error, match=match):
+            Reasoner(
+                snapshot,
+                ReasonerConfig(backend="rust", workers=1, unsupported="error"),
+            )
+    assert request.call_count == 1
+    assert scalar_calls == 0
 
 
 def test_hidden_noop_overlay_chain_reuses_direct_source_without_flattening(
@@ -1547,7 +1761,7 @@ def test_hidden_encoded_session_rolls_back_ignored_axioms(native_module: ModuleT
     "feature_name",
     tuple(path.stem for path in sorted(_ONTOLOGY_FIXTURES.glob("*.ofn"))),
 )
-def test_hidden_encoded_feature_corpus_matches_scalar_compiler(
+def test_advertised_encoded_feature_corpus_matches_scalar_compiler(
     native_module: ModuleType,
     feature_name: str,
 ) -> None:
@@ -1600,6 +1814,37 @@ def test_hidden_encoded_feature_corpus_matches_scalar_compiler(
         finally:
             strict_direct.close()
             strict_scalar.close()
+
+    expected = Reasoner(
+        view,
+        ReasonerConfig(backend="python", workers=1, unsupported="ignore"),
+    )
+    actual = Reasoner(
+        view,
+        ReasonerConfig(backend="rust", workers=1, unsupported="ignore"),
+    )
+    try:
+        expected_diagnostics = expected.diagnostics()
+        diagnostics = actual.diagnostics()
+        assert diagnostics["ingestion_path"] == "encoded-native"
+        assert diagnostics["compiler_digest"] == expected_diagnostics["compiler_digest"]
+        assert diagnostics["materialized_scalar_rows"] == 0
+        assert {
+            key: value
+            for key, value in diagnostics.items()
+            if key.startswith("compiler_") and key.endswith("_count")
+        } == {
+            key: value
+            for key, value in direct_diagnostics.items()
+            if key.startswith("compiler_") and key.endswith("_count")
+        }
+        assert actual.is_consistent() == expected.is_consistent()
+        assert actual.classify() == expected.classify()
+        assert actual.classify_object_properties() == expected.classify_object_properties()
+        assert actual.realize() == expected.realize()
+    finally:
+        actual.close()
+        expected.close()
 
 
 @pytest.mark.parametrize(

@@ -901,21 +901,18 @@ fn self_check() -> bool {
 }
 
 /// Encoded structural schemas compiled into this extension.
-///
-/// The registration seam intentionally advertises nothing until the generated pyowl-core
-/// schema ledger and the complete structural compiler are present.  Python therefore keeps
-/// using scalar-wire ingestion rather than inferring support from this function's existence.
 #[pyfunction]
-fn encoded_view_schemas(py: Python<'_>) -> Py<PyDict> {
-    PyDict::new(py).unbind()
+fn encoded_view_schemas(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    let schemas = PyDict::new(py);
+    schemas.set_item(ENCODED_SCHEMA_NAME, ENCODED_SCHEMA_VERSION)?;
+    Ok(schemas.unbind())
 }
 
-/// Coarse encoded-view compiler entry point retained behind absent capability advertising.
+/// Coarse encoded-view compiler entry point for the advertised public schema.
 ///
 /// This executable handoff accepts validated direct, recursively segmented overlay, and
-/// composite sources, including anonymous-scope remapping, without flattening them.
-/// Mmap-lifetime, exhaustive-constructor, and performance gates remain release blockers, so
-/// `encoded_view_schemas()` intentionally stays empty.
+/// composite sources, including mmap exporters and anonymous-scope remapping, without
+/// flattening them.
 #[pyfunction]
 fn create_session_from_encoded(
     py: Python<'_>,
