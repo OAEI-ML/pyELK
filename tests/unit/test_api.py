@@ -240,7 +240,7 @@ def test_provider_is_called_once_and_view_identity_is_retained() -> None:
     assert snapshot.signature()
 
 
-def test_public_facade_selects_encoded_metadata_before_scalar_capture(
+def test_public_facade_selects_encoded_metadata_before_scalar_axiom_capture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     snapshot = _snapshot(
@@ -276,7 +276,17 @@ def test_public_facade_selects_encoded_metadata_before_scalar_capture(
 
     with Reasoner(snapshot, config) as reasoner:
         assert reasoner.ontology is snapshot
-        assert reasoner._entity_by_record == {}
+        public_a = next(
+            entity for entity in snapshot.signature() if entity.iri.value == "urn:api#A"
+        )
+        public_i = next(
+            entity for entity in snapshot.signature() if entity.iri.value == "urn:api#i"
+        )
+        assert next(entity for entity in reasoner.all_classes() if entity == public_a) is public_a
+        assert (
+            next(entity for entity in reasoner.all_named_individuals() if entity == public_i)
+            is public_i
+        )
         assert reasoner.is_consistent().value is True
         assert reasoner.classify().value.supers(_class("A"), direct=True) == (
             reasoner.classify().value.node(_class("B")),
