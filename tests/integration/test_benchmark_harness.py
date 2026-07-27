@@ -828,6 +828,8 @@ def test_java_relative_gate_requires_exact_pins_and_enforces_both_thresholds(
 def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
     tmp_path: Path,
 ) -> None:
+    from pyowl_core.backends import native as core_native
+
     candidates = (
         ROOT / "target" / "release" / "lib_native.dylib",
         ROOT / "target" / "release" / "lib_native.so",
@@ -837,6 +839,8 @@ def test_biomedical_python_rust_semantic_parity_when_workspace_native_exists(
     native_path = next((path for path in candidates if path.is_file()), None)
     if native_path is None:
         pytest.skip("workspace native extension is not built")
+    if not core_native.probe(refresh=True).available:
+        pytest.skip("installed pyowl-core native extension is unavailable")
     arguments = _biomedical_fixture(tmp_path)
     arguments["backends"] = ("python", "rust")
     arguments["native_path"] = native_path

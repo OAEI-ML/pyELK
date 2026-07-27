@@ -37,7 +37,6 @@ from pyelk.indexing.metadata import (
 )
 from pyelk.indexing.summary import compiler_digest
 from pyelk.inputs import (
-    InputCapture,
     _acquire_input,
     _complete_input_capture,
     load_snapshot,
@@ -158,7 +157,7 @@ class Reasoner:
             )
             metadata = metadata_from_compiled(compiled)
             symbols = CompilerSymbolTable(metadata)
-            entity_by_record = self._capture_entities(capture, metadata.entities)
+            entity_by_record = self._capture_entities(capture.ontology.view, metadata.entities)
             session = create_backend_session(compiled, self._config)
             try:
                 info = session.info
@@ -173,7 +172,6 @@ class Reasoner:
         else:
             metadata = encoded.metadata
             session = encoded.session
-            entity_by_record = {}
             materialized_scalar_rows = 0
             consumer_compile_seconds = encoded.consumer_compile_seconds
             encoded_view_publication_seconds = encoded.encoded_view_publication_seconds
@@ -181,6 +179,7 @@ class Reasoner:
             facade_started = perf_counter()
             try:
                 symbols = CompilerSymbolTable(metadata)
+                entity_by_record = self._capture_entities(ontology, metadata.entities)
             except BaseException:
                 session.close()
                 raise
@@ -973,10 +972,10 @@ class Reasoner:
 
     @staticmethod
     def _capture_entities(
-        capture: InputCapture,
+        view: owl.OntologyView,
         entities: tuple[EntityRecord, ...],
     ) -> dict[EntityRecord, owl.Entity]:
-        candidates = capture.ontology.view.signature(include_builtins=True)
+        candidates = view.signature(include_builtins=True)
         by_record = {entity_record(entity): entity for entity in candidates}
         result: dict[EntityRecord, owl.Entity] = {}
         for record in entities:
