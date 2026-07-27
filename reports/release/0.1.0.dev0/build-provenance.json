@@ -26,8 +26,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5148,
-      "sha256": "ab200e36c68f113554f3754205c59eb32219e9ff624f260f26879b246542ce2f"
+      "bytes": 5215,
+      "sha256": "6002d37dbf391f4caedff3cc4af8c145c78cacaafb8928f13e2c40968ed6e553"
     },
     "rust-toolchain.toml": {
       "bytes": 86,
@@ -49,6 +49,14 @@
       "bytes": 4109,
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
+    "tests/backends/test_rust_core.py": {
+      "bytes": 84739,
+      "sha256": "36b909644104b5a20de9ab94d83e6bc3314c7ae2a5d82f763152cbf85ec3b484"
+    },
+    "tests/packaging/run_installed_wp14_contract.py": {
+      "bytes": 2010,
+      "sha256": "f399e94db0b62f6ae84cd8289945298de27df31d44cd08e9940d0eff02212480"
+    },
     "tools/check_artifact.py": {
       "bytes": 33898,
       "sha256": "b6f43eaf54c98ff0e47f707c53616e53c13ce1da9fd226bc06890aa74c952055"
@@ -58,10 +66,23 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 42067,
-      "sha256": "a47c297c9ed91aadf30cc0e62f3d61cda8bbb376c18a1fb0d98dc36b4ef60caf"
+      "bytes": 44963,
+      "sha256": "36cd97cc980a9b6d1ead7c83fdf88a5a5c79d76801d7daf0cbad5150d5510b32"
     }
   },
+  "installed_native_contracts": [
+    {
+      "capability_state": "unadvertised",
+      "command": "python {project}/tests/packaging/run_installed_wp14_contract.py",
+      "id": "wp14-encoded-public-dispatch-short",
+      "scope": "bounded-correctness-only",
+      "tests": [
+        "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
+        "tests/backends/test_rust_core.py::test_hidden_direct_encoded_session_matches_scalar_wire",
+        "tests/backends/test_rust_core.py::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+      ]
+    }
+  ],
   "schema": "pyelk.build-provenance/1",
   "source_date_epoch": {
     "command": "git show -s --format=%ct HEAD",

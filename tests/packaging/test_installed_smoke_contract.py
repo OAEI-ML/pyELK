@@ -84,3 +84,35 @@ def test_every_packaging_lane_names_the_expected_core_and_ingestion_paths() -> N
     assert pyproject.count("--core-backend python") == 2
     assert "--expected-ingestion scalar-wire" in pyproject
     assert "--expected-ingestion scalar-python" in pyproject
+
+
+def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> None:
+    command = "python {project}/tests/packaging/run_installed_wp14_contract.py"
+    nodes = (
+        "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
+        "tests/backends/test_rust_core.py::test_hidden_direct_encoded_session_matches_scalar_wire",
+        (
+            "tests/backends/test_rust_core.py"
+            "::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+        ),
+    )
+    metadata = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    runner = _load_script("run_installed_wp14_contract")
+    contract = (ROOT / "tests/backends/test_rust_core.py").read_text(encoding="utf-8")
+    provenance = (ROOT / "tools/supply_chain.py").read_text(encoding="utf-8")
+
+    assert metadata.count(command) == 1
+    assert metadata.index(command) < metadata.index("run_installed_suite.py --backend rust")
+    assert nodes == runner.CONTRACT_NODE_IDS
+    runner_source = (ROOT / "tests/packaging/run_installed_wp14_contract.py").read_text(
+        encoding="utf-8"
+    )
+    assert "source checkout imported" in runner_source
+    assert "installed WP14 contract attempted network access" in runner_source
+    assert "assert native_module.encoded_view_schemas() == {}" in contract
+    assert 'diagnostics["ingestion_path"] == "encoded-native"' in contract
+    for relative in (
+        '"tests/backends/test_rust_core.py"',
+        '"tests/packaging/run_installed_wp14_contract.py"',
+    ):
+        assert relative in provenance

@@ -110,6 +110,25 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
         "strategy": "git-commit-timestamp",
         "command": "git show -s --format=%ct HEAD",
     }
+    assert provenance["installed_native_contracts"] == [
+        {
+            "capability_state": "unadvertised",
+            "command": "python {project}/tests/packaging/run_installed_wp14_contract.py",
+            "id": "wp14-encoded-public-dispatch-short",
+            "scope": "bounded-correctness-only",
+            "tests": [
+                "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
+                (
+                    "tests/backends/test_rust_core.py"
+                    "::test_hidden_direct_encoded_session_matches_scalar_wire"
+                ),
+                (
+                    "tests/backends/test_rust_core.py"
+                    "::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+                ),
+            ],
+        }
+    ]
     assert provenance["tools"] == {
         "rust_toolchain": "1.97.1",
         "cargo_manifest_rust_version": "1.85",
@@ -164,6 +183,21 @@ def test_build_provenance_rejects_divergent_rust_toolchain_pins(tmp_path: Path) 
     )
 
     with pytest.raises(ValueError, match="Rust toolchain pins differ"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_missing_installed_wp14_contract(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            "python {project}/tests/packaging/run_installed_wp14_contract.py && ",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="bounded installed WP14 contract"):
         build_provenance(tmp_path)
 
 

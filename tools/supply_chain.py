@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -59,9 +60,22 @@ _BUILD_INPUT_PATHS = (
     "rust/pyelk-pyo3/Cargo.toml",
     "rust/pyelk-pyo3/build.rs",
     "setup.py",
+    "tests/backends/test_rust_core.py",
+    "tests/packaging/run_installed_wp14_contract.py",
     "tools/check_artifact.py",
     "tools/release_manifest.py",
     "tools/supply_chain.py",
+)
+_INSTALLED_NATIVE_CONTRACT_COMMAND = (
+    "python {project}/tests/packaging/run_installed_wp14_contract.py"
+)
+_INSTALLED_NATIVE_CONTRACTS = (
+    "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
+    "tests/backends/test_rust_core.py::test_hidden_direct_encoded_session_matches_scalar_wire",
+    (
+        "tests/backends/test_rust_core.py"
+        "::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+    ),
 )
 
 
@@ -779,6 +793,34 @@ def _shell_assignment(script: str, name: str) -> str:
     )
 
 
+def _literal_string_tuple(script: str, name: str) -> tuple[str, ...]:
+    try:
+        module = ast.parse(script)
+    except SyntaxError as error:
+        raise ValueError(f"build provenance: {name} source is not valid Python") from error
+    matches = [
+        statement.value
+        for statement in module.body
+        if isinstance(statement, ast.Assign)
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
+        and statement.targets[0].id == name
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"build provenance: expected one literal {name} assignment")
+    try:
+        value = ast.literal_eval(matches[0])
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"build provenance: {name} must be a literal string tuple") from error
+    if (
+        not isinstance(value, tuple)
+        or not value
+        or not all(isinstance(item, str) for item in value)
+    ):
+        raise ValueError(f"build provenance: {name} must be a nonempty literal string tuple")
+    return value
+
+
 def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int, int]:
     return (
         value.st_mode,
@@ -878,6 +920,22 @@ def build_provenance(root: Path) -> dict[str, Any]:
     project_version = project["version"]
     tool = pyproject_document.get("tool")
     cibuildwheel = tool.get("cibuildwheel") if isinstance(tool, dict) else None
+    test_command = cibuildwheel.get("test-command") if isinstance(cibuildwheel, dict) else None
+    if not isinstance(test_command, str):
+        raise ValueError("build provenance: cibuildwheel test-command must be a literal string")
+    commands = tuple(command.strip() for command in test_command.split("&&"))
+    if (
+        commands.count(_INSTALLED_NATIVE_CONTRACT_COMMAND) != 1
+        or commands[0] != _INSTALLED_NATIVE_CONTRACT_COMMAND
+    ):
+        raise ValueError(
+            "build provenance: native wheels must run the bounded installed WP14 contract first"
+        )
+    contract_script = bound_text("tests/packaging/run_installed_wp14_contract.py")
+    if _literal_string_tuple(contract_script, "CONTRACT_NODE_IDS") != _INSTALLED_NATIVE_CONTRACTS:
+        raise ValueError(
+            "build provenance: installed WP14 contract does not select the exact reviewed tests"
+        )
     linux = cibuildwheel.get("linux") if isinstance(cibuildwheel, dict) else None
     bootstrap = linux.get("before-all") if isinstance(linux, dict) else None
     if not isinstance(bootstrap, str):
@@ -972,6 +1030,15 @@ def build_provenance(root: Path) -> dict[str, Any]:
             "strategy": "git-commit-timestamp",
             "command": epoch_command,
         },
+        "installed_native_contracts": [
+            {
+                "capability_state": "unadvertised",
+                "command": _INSTALLED_NATIVE_CONTRACT_COMMAND,
+                "id": "wp14-encoded-public-dispatch-short",
+                "scope": "bounded-correctness-only",
+                "tests": list(_INSTALLED_NATIVE_CONTRACTS),
+            }
+        ],
         "tools": {
             "rust_toolchain": selector_channel,
             "cargo_manifest_rust_version": rust_msrv,
