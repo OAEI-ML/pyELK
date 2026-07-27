@@ -8,6 +8,7 @@ import os
 import sys
 import tarfile
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 
@@ -475,6 +476,35 @@ def test_artifact_semantics_and_digest_use_one_captured_payload(
     monkeypatch.setattr(AUDITOR, "_read_archive", swap_while_auditing)
     with pytest.raises(AuditError, match="changed during inspection"):
         AUDITOR.inspect_artifact(wheel)
+
+
+def test_external_audit_rejects_artifact_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = _wheel(tmp_path, native=True)
+    report = replace(
+        AUDITOR.inspect_artifact(wheel),
+        tags=("cp310-abi3-manylinux_2_17_x86_64",),
+    )
+    monkeypatch.setattr(AUDITOR, "inspect_artifact", lambda *_args, **_kwargs: report)
+    monkeypatch.setattr(AUDITOR.shutil, "which", lambda command: f"/bin/{command}")
+
+    def mutate_during_audit(
+        command: list[str],
+        *,
+        check: bool,
+    ) -> object:
+        assert check is True
+        wheel.write_bytes(b"replaced during external audit")
+        return object()
+
+    monkeypatch.setattr(AUDITOR.subprocess, "run", mutate_during_audit)
+    with pytest.raises(AuditError, match="changed during external audit"):
+        AUDITOR.external_audit(
+            wheel,
+            expected_archive_sha256=report.archive_sha256,
+        )
 
 
 def test_member_size_limit_is_checked_before_zip_decompression(

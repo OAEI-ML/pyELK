@@ -770,10 +770,21 @@ def compare_wheels(pure: Path, native: Path) -> tuple[ArtifactReport, ArtifactRe
     return pure_report, native_report
 
 
-def external_audit(path: Path) -> tuple[str, ...]:
-    """Run ABI3 plus the host platform's dependency-inspection command."""
+def external_audit(
+    path: Path,
+    *,
+    expected_archive_sha256: str | None = None,
+) -> tuple[str, ...]:
+    """Run external auditors against the exact internally inspected artifact."""
 
+    path = path.absolute()
     report = inspect_artifact(path, "native-wheel")
+    payload, identity = _read_artifact(path)
+    captured_sha256 = hashlib.sha256(payload).hexdigest()
+    if report.archive_sha256 != captured_sha256 or (
+        expected_archive_sha256 is not None and expected_archive_sha256 != captured_sha256
+    ):
+        raise AuditError("artifact changed between internal and external audit")
     commands: list[list[str]] = [["abi3audit", str(path)]]
     platform = report.tags[0].split("-", 2)[-1]
     if "manylinux" in platform or "musllinux" in platform:
@@ -786,9 +797,17 @@ def external_audit(path: Path) -> tuple[str, ...]:
         raise AuditError(f"no external dependency auditor for platform tag: {platform}")
     rendered = []
     for command in commands:
+        if not _path_matches_identity(path, identity):
+            raise AuditError("artifact changed before external audit")
         if shutil.which(command[0]) is None:
             raise AuditError(f"required audit command is unavailable: {command[0]}")
         subprocess.run(command, check=True)
+        completed_payload, completed_identity = _read_artifact(path)
+        if (
+            completed_identity != identity
+            or hashlib.sha256(completed_payload).hexdigest() != captured_sha256
+        ):
+            raise AuditError("artifact changed during external audit")
         rendered.append(" ".join(command))
     return tuple(rendered)
 
@@ -825,7 +844,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             report = inspect_artifact(args.artifact, args.expect)
             result: dict[str, object] = asdict(report)
             if args.external:
-                result["external_commands"] = external_audit(args.artifact)
+                result["external_commands"] = external_audit(
+                    args.artifact,
+                    expected_archive_sha256=report.archive_sha256,
+                )
             _write_json(result, args.output_json)
         else:
             pure, native = compare_wheels(args.pure_wheel, args.native_wheel)

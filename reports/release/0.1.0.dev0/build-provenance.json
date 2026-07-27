@@ -50,8 +50,8 @@
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
     "tools/check_artifact.py": {
-      "bytes": 32949,
-      "sha256": "8a6e96b9e58cffc5ebe8e120cdb9c920136b7bf6a8b16554a8038342d80baed6"
+      "bytes": 33898,
+      "sha256": "b6f43eaf54c98ff0e47f707c53616e53c13ce1da9fd226bc06890aa74c952055"
     },
     "tools/release_manifest.py": {
       "bytes": 8543,
