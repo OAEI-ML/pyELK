@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import stat
+import subprocess
 import sys
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -38,6 +40,7 @@ _EXPECTED_VARIANTS = frozenset(
         *_NATIVE_VARIANTS.values(),
     }
 )
+_HEX40 = re.compile(r"^[0-9a-f]{40}$")
 
 
 class ManifestError(RuntimeError):
@@ -102,6 +105,40 @@ def _direct_entries(path: Path) -> tuple[Path, ...]:
     return tuple(sorted(path.iterdir(), key=lambda candidate: candidate.name))
 
 
+def _git_output(root: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ("git", "-C", str(root), *arguments),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "unknown Git error"
+        raise ManifestError(f"cannot resolve release checkout context: {detail}")
+    return completed.stdout.strip()
+
+
+def _checkout_context(root: Path, source_revision: str) -> dict[str, object]:
+    if _HEX40.fullmatch(source_revision) is None:
+        raise ManifestError("source revision must be an exact lowercase 40-character Git SHA")
+    commit = _git_output(root, "rev-parse", "--verify", "HEAD")
+    tree = _git_output(root, "rev-parse", "--verify", "HEAD^{tree}")
+    status = _git_output(root, "status", "--porcelain=v1", "--untracked-files=no")
+    if commit != source_revision:
+        raise ManifestError(
+            f"source revision {source_revision} does not match release checkout HEAD {commit}"
+        )
+    if _HEX40.fullmatch(tree) is None:
+        raise ManifestError(f"release checkout tree is not an exact Git object ID: {tree!r}")
+    if status:
+        raise ManifestError("release checkout has tracked worktree or index changes")
+    return {
+        "commit": commit,
+        "tree": tree,
+        "tracked_worktree_clean": True,
+    }
+
+
 def _variant(report: ArtifactReport) -> str:
     if report.kind == "sdist":
         return "sdist"
@@ -142,9 +179,28 @@ def bind_artifact(path: Path) -> ArtifactBinding:
     return binding
 
 
-def build_manifest(artifacts_dir: Path) -> dict[str, object]:
+def build_manifest(
+    artifacts_dir: Path,
+    *,
+    checkout_context: dict[str, object],
+) -> dict[str, object]:
     """Audit and bind the exact nine-slot tier-one artifact matrix."""
 
+    if checkout_context != {
+        "commit": checkout_context.get("commit"),
+        "tree": checkout_context.get("tree"),
+        "tracked_worktree_clean": True,
+    }:
+        raise ManifestError("release checkout context is incomplete or not clean")
+    if any(
+        _HEX40.fullmatch(value) is None
+        for value in (
+            checkout_context.get("commit"),
+            checkout_context.get("tree"),
+        )
+        if isinstance(value, str)
+    ) or not all(isinstance(checkout_context.get(name), str) for name in ("commit", "tree")):
+        raise ManifestError("release checkout context has invalid Git object IDs")
     directory_identity = _directory_identity(artifacts_dir)
     paths = _direct_entries(artifacts_dir)
     if len(paths) != len(_EXPECTED_VARIANTS):
@@ -183,7 +239,8 @@ def build_manifest(artifacts_dir: Path) -> dict[str, object]:
     ):
         raise ManifestError("artifact input directory changed while building the manifest")
     return {
-        "schema": 1,
+        "schema": 2,
+        "checkout_context": checkout_context,
         "distribution": distribution,
         "version": version,
         "artifacts": [asdict(binding) for binding in bindings],
@@ -207,12 +264,18 @@ def generate_manifest(
     artifacts_dir: Path,
     manifest_path: Path,
     *,
+    checkout_context: dict[str, object],
     check: bool = False,
 ) -> None:
     """Write or verify the canonical manifest for an exact release matrix."""
 
     _assert_manifest_outside_artifacts(artifacts_dir, manifest_path)
-    rendered = _canonical_json(build_manifest(artifacts_dir))
+    rendered = _canonical_json(
+        build_manifest(
+            artifacts_dir,
+            checkout_context=checkout_context,
+        )
+    )
     if check:
         before = _file_identity(manifest_path, description="release manifest")
         actual = manifest_path.read_text(encoding="utf-8")
@@ -237,10 +300,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts_dir", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--source-revision", required=True)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     try:
-        generate_manifest(args.artifacts_dir, args.output, check=args.check)
+        generate_manifest(
+            args.artifacts_dir,
+            args.output,
+            checkout_context=_checkout_context(args.root.resolve(), args.source_revision),
+            check=args.check,
+        )
     except (AuditError, ManifestError, OSError, UnicodeError) as error:
         print(f"release manifest failed: {error}", file=sys.stderr)
         return 1

@@ -41,7 +41,7 @@ jobs:
       - name: Revalidate artifact-bound release evidence
         run: |
           python -m tools.supply_chain --check --require-approval --output-dir supply-chain
-          python -m tools.release_manifest artifacts --output supply-chain/artifact-manifest.json --check
+          python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" --output supply-chain/artifact-manifest.json --check
 
       - name: Re-audit all staged files and tag/version agreement
         env:

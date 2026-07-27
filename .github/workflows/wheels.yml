@@ -374,8 +374,8 @@ jobs:
 
       - name: Generate and verify the artifact-bound release manifest
         run: |
-          python -m tools.release_manifest artifacts --output supply-chain/artifact-manifest.json
-          python -m tools.release_manifest artifacts --output supply-chain/artifact-manifest.json --check
+          python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" --output supply-chain/artifact-manifest.json
+          python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" --output supply-chain/artifact-manifest.json --check
 
       - name: Verify local-index wheel preference
         run: python tests/packaging/check_index_preference.py --index artifacts

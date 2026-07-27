@@ -18,6 +18,11 @@ from tests.packaging.test_artifact_audit import _wheel
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.packaging
+_CHECKOUT_CONTEXT = {
+    "commit": "a" * 40,
+    "tree": "b" * 40,
+    "tracked_worktree_clean": True,
+}
 
 _MATRIX = {
     "pyelk_reasoner-0.1.0.dev0.tar.gz": ("sdist", ()),
@@ -114,17 +119,51 @@ def test_exact_matrix_manifest_is_canonical_and_verifiable(
     monkeypatch.setattr(RELEASE_MANIFEST, "inspect_artifact", _report)
     output = tmp_path / "evidence" / "artifact-manifest.json"
 
-    first = build_manifest(artifacts)
-    second = build_manifest(artifacts)
-    generate_manifest(artifacts, output)
+    first = build_manifest(artifacts, checkout_context=_CHECKOUT_CONTEXT)
+    second = build_manifest(artifacts, checkout_context=_CHECKOUT_CONTEXT)
+    generate_manifest(artifacts, output, checkout_context=_CHECKOUT_CONTEXT)
     generated = output.read_text(encoding="utf-8")
-    generate_manifest(artifacts, output, check=True)
+    generate_manifest(
+        artifacts,
+        output,
+        checkout_context=_CHECKOUT_CONTEXT,
+        check=True,
+    )
 
     assert first == second
+    assert first["schema"] == 2
+    assert first["checkout_context"] == _CHECKOUT_CONTEXT
     assert json.loads(generated) == first
     assert generated == json.dumps(first, indent=2, sort_keys=True) + "\n"
     assert [row["filename"] for row in first["artifacts"]] == sorted(_MATRIX)
     assert {row["variant"] for row in first["artifacts"]} == RELEASE_MANIFEST._EXPECTED_VARIANTS
+
+
+def test_checkout_context_binds_exact_clean_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    status = ""
+
+    def git_output(_root: Path, *arguments: str) -> str:
+        if arguments == ("rev-parse", "--verify", "HEAD"):
+            return head
+        if arguments == ("rev-parse", "--verify", "HEAD^{tree}"):
+            return tree
+        if arguments == ("status", "--porcelain=v1", "--untracked-files=no"):
+            return status
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(RELEASE_MANIFEST, "_git_output", git_output)
+    assert RELEASE_MANIFEST._checkout_context(tmp_path, head) == _CHECKOUT_CONTEXT
+    with pytest.raises(ManifestError, match="does not match"):
+        RELEASE_MANIFEST._checkout_context(tmp_path, "c" * 40)
+
+    status = " M tracked.py"
+    with pytest.raises(ManifestError, match="tracked worktree"):
+        RELEASE_MANIFEST._checkout_context(tmp_path, head)
 
 
 def test_matrix_rejects_missing_or_foreign_direct_entries(
@@ -135,11 +174,11 @@ def test_matrix_rejects_missing_or_foreign_direct_entries(
     monkeypatch.setattr(RELEASE_MANIFEST, "inspect_artifact", _report)
     (artifacts / next(iter(_MATRIX))).unlink()
     with pytest.raises(ManifestError, match="exactly nine"):
-        build_manifest(artifacts)
+        build_manifest(artifacts, checkout_context=_CHECKOUT_CONTEXT)
 
     (artifacts / "foreign.txt").write_text("foreign", encoding="utf-8")
     with pytest.raises(ManifestError, match="unsupported entry"):
-        build_manifest(artifacts)
+        build_manifest(artifacts, checkout_context=_CHECKOUT_CONTEXT)
 
 
 def test_matrix_rejects_a_non_tier_one_native_substitution(
@@ -163,7 +202,7 @@ def test_matrix_rejects_a_non_tier_one_native_substitution(
 
     monkeypatch.setattr(RELEASE_MANIFEST, "inspect_artifact", inspect_with_arm64)
     with pytest.raises(ManifestError, match="no tier-one matrix variant"):
-        build_manifest(artifacts)
+        build_manifest(artifacts, checkout_context=_CHECKOUT_CONTEXT)
 
 
 def test_binding_rejects_an_artifact_changed_during_inspection(
@@ -201,7 +240,7 @@ def test_matrix_rejects_a_late_unbound_directory_member(
 
     monkeypatch.setattr(RELEASE_MANIFEST, "inspect_artifact", inspect_and_add)
     with pytest.raises(ManifestError, match="directory changed"):
-        build_manifest(artifacts)
+        build_manifest(artifacts, checkout_context=_CHECKOUT_CONTEXT)
 
 
 def test_verification_rejects_artifact_tampering_and_self_sweeping(
@@ -211,21 +250,31 @@ def test_verification_rejects_artifact_tampering_and_self_sweeping(
     artifacts = _artifacts(tmp_path)
     monkeypatch.setattr(RELEASE_MANIFEST, "inspect_artifact", _report)
     output = tmp_path / "artifact-manifest.json"
-    generate_manifest(artifacts, output)
+    generate_manifest(artifacts, output, checkout_context=_CHECKOUT_CONTEXT)
 
     pure = artifacts / "pyelk_reasoner-0.1.0.dev0-py3-none-any.whl"
     pure.write_bytes(b"replaced")
     with pytest.raises(ManifestError, match="does not match staged artifacts"):
-        generate_manifest(artifacts, output, check=True)
+        generate_manifest(
+            artifacts,
+            output,
+            checkout_context=_CHECKOUT_CONTEXT,
+            check=True,
+        )
 
     with pytest.raises(ManifestError, match="outside the artifact input"):
-        generate_manifest(artifacts, artifacts / "artifact-manifest.json")
+        generate_manifest(
+            artifacts,
+            artifacts / "artifact-manifest.json",
+            checkout_context=_CHECKOUT_CONTEXT,
+        )
 
 
 def test_distribution_workflow_generates_then_verifies_bound_release_manifest() -> None:
     workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
     command = (
-        "python -m tools.release_manifest artifacts --output supply-chain/artifact-manifest.json"
+        'python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" '
+        "--output supply-chain/artifact-manifest.json"
     )
 
     assert workflow.count(command) == 2

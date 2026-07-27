@@ -2,12 +2,12 @@
   "distribution": "pyelk-reasoner",
   "inputs": {
     ".github/workflows/release.yml": {
-      "bytes": 2984,
-      "sha256": "49f41751e0c7a481b9e30279d81b22b7095c3aae521e75b6029c7fdb4b7960d2"
+      "bytes": 3018,
+      "sha256": "49c605c8d0390f6c17a8cda217b68dc67044a0fbc1482fc2773c487c5c6b3658"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 14427,
-      "sha256": "f70127ac536b09ca8da7a7948edf111adb28ef8ce3da8851e68b6a16f3eb6dcc"
+      "bytes": 14495,
+      "sha256": "08829aed25eba047c082e199b9d163d0ddbcfa0929ad4691f2d1e58b4b9b9a1b"
     },
     "Cargo.lock": {
       "bytes": 19844,
@@ -54,8 +54,8 @@
       "sha256": "b6f43eaf54c98ff0e47f707c53616e53c13ce1da9fd226bc06890aa74c952055"
     },
     "tools/release_manifest.py": {
-      "bytes": 8543,
-      "sha256": "94b7644ac46ef24a68f047eb56250d6c20899e722833ed90eec403b2305d7c5b"
+      "bytes": 11134,
+      "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
       "bytes": 41583,

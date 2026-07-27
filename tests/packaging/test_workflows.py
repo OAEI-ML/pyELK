@@ -69,6 +69,7 @@ def test_atomic_release_revalidates_evidence_and_keeps_publish_input_distributio
     )
     assert (
         "python -m tools.release_manifest artifacts "
+        '--source-revision "${GITHUB_SHA}" '
         "--output supply-chain/artifact-manifest.json --check"
     ) in workflow
     assert "assert all(path.is_file() for path in artifacts), artifacts" in workflow
