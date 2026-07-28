@@ -54,8 +54,8 @@
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
     "tests/backends/test_rust_core.py": {
-      "bytes": 95542,
-      "sha256": "f4fe568517f0bd238fd4abee1a3d765249d771fbed26a2288f8ecc71ff4bfad1"
+      "bytes": 96408,
+      "sha256": "5f20c4282d3c3e1ad32499c33a208bdb200e7dd5d88e27df1bdfa43be491c0b6"
     },
     "tests/packaging/run_installed_wp14_contract.py": {
       "bytes": 2292,
