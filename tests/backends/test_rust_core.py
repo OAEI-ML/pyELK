@@ -21,6 +21,12 @@ import pytest
 
 from pyelk import Reasoner, ReasonerConfig
 from pyelk.indexing.codec import OntologySection
+from pyelk.indexing.encoded import (
+    ENCODED_BUFFER_WIDTHS,
+    ENCODED_DESCRIPTOR_SHA256,
+    ENCODED_SCHEMA_NAME,
+    ENCODED_SCHEMA_VERSION,
+)
 from tests.integration.test_pure_reasoner import (
     _CLASS_CASES,
     _CLASS_QUERY_CASES,
@@ -649,6 +655,13 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
     try:
         actual = Reasoner(snapshot, config)
         assert actual.backend.name == "rust"
+        assert actual.backend.compiler_handoff == {
+            "buffer_widths": dict(ENCODED_BUFFER_WIDTHS),
+            "descriptor_sha256": ENCODED_DESCRIPTOR_SHA256.hex(),
+            "model_schema": 1,
+            "schema_name": ENCODED_SCHEMA_NAME,
+            "schema_version": ENCODED_SCHEMA_VERSION,
+        }
         assert actual._session is not None
         assert actual._session.diagnostics()["ingestion_path"] == "encoded-native"
         diagnostics = actual.diagnostics()
@@ -664,6 +677,18 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
         assert diagnostics["encoded_zero_copy_buffers"] == 11
         assert diagnostics["encoded_staging_copy_bytes"] == 0
         assert diagnostics["encoded_private_ir_bytes"] == 0
+        for name in (
+            "base_flattening_bytes",
+            "parser_calls",
+            "per_row_ffi_calls",
+            "resolver_calls",
+            "scalar_axiom_materializations",
+            "scalar_term_materializations",
+            "structural_copy_bytes",
+            "wire_decoder_calls",
+            "wire_encoder_calls",
+        ):
+            assert diagnostics[name] == 0
         assert actual.is_consistent() == expected.is_consistent()
         assert actual.classify() == expected.classify()
         assert actual.classify_object_properties() == expected.classify_object_properties()

@@ -18,6 +18,7 @@ from pyelk.exceptions import (
 from pyelk.indexing.codec import CHECKSUM_SIZE
 from pyelk.indexing.ir import EntityId, ReadableBuffer
 from pyelk.reasoning.contracts import (
+    BackendInfo,
     BackendSession,
     CompletenessIssue,
     PolicyFeature,
@@ -95,6 +96,65 @@ def test_completeness_issue_and_policy_identity() -> None:
             features=("A",),
             constructors=(),
             polarities=("ANY",),
+        )
+
+
+def test_backend_info_recursively_freezes_encoded_compiler_handoff() -> None:
+    widths = {"root_ids": 4, "scalar_bytes": 1}
+    handoff: dict[str, object] = {
+        "buffer_widths": widths,
+        "descriptor_sha256": "ab" * 32,
+        "model_schema": 1,
+        "schema_name": "pyowl-core/structural-columns",
+        "schema_version": 1,
+    }
+    encoded = BackendInfo(
+        name="rust",
+        implementation_version="test-native",
+        ir_major=1,
+        ir_minor=0,
+        requested_workers=0,
+        effective_workers=1,
+        native_available=True,
+        fallback_reason=None,
+        _compiler_handoff=handoff,
+    )
+    scalar = BackendInfo(
+        name="python",
+        implementation_version="test-python",
+        ir_major=1,
+        ir_minor=0,
+        requested_workers=0,
+        effective_workers=1,
+        native_available=False,
+        fallback_reason=None,
+    )
+    handoff["schema_name"] = "mutated"
+    widths["root_ids"] = 8
+
+    assert getattr(scalar, "compiler_handoff", None) is None
+    assert encoded.compiler_handoff == {
+        "buffer_widths": {"root_ids": 4, "scalar_bytes": 1},
+        "descriptor_sha256": "ab" * 32,
+        "model_schema": 1,
+        "schema_name": "pyowl-core/structural-columns",
+        "schema_version": 1,
+    }
+    with pytest.raises(TypeError):
+        encoded.compiler_handoff["schema_name"] = "mutated"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        encoded.compiler_handoff["buffer_widths"]["root_ids"] = 8  # type: ignore[index]
+    with pytest.raises(ValueError, match="available Rust backend"):
+        BackendInfo(
+            name="python",
+            implementation_version="test-python",
+            ir_major=1,
+            ir_minor=0,
+            requested_workers=0,
+            effective_workers=1,
+            native_available=False,
+            fallback_reason=None,
+            _compiler_handoff=encoded.compiler_handoff,
         )
 
 

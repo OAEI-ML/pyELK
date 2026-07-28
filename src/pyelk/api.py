@@ -77,6 +77,17 @@ _ENCODED_COUNTER_DEFAULTS: Mapping[str, int | bool] = MappingProxyType(
         "encoded_zero_copy_buffers": 0,
     }
 )
+_ENCODED_FORBIDDEN_WORK_COUNTERS = (
+    "base_flattening_bytes",
+    "parser_calls",
+    "per_row_ffi_calls",
+    "resolver_calls",
+    "scalar_axiom_materializations",
+    "scalar_term_materializations",
+    "structural_copy_bytes",
+    "wire_decoder_calls",
+    "wire_encoder_calls",
+)
 _ENCODED_TIMINGS = (
     "encoded_validation_seconds",
     "encoded_compiler_seconds",
@@ -237,6 +248,7 @@ class Reasoner:
             if not isinstance(info, BackendInfo):
                 raise BackendProtocolError("BackendInfo from backend session", info)
             try:
+                compiler_handoff = getattr(info, "compiler_handoff", None)
                 return BackendInfo(
                     name=info.name,
                     implementation_version=info.implementation_version,
@@ -246,6 +258,7 @@ class Reasoner:
                     effective_workers=info.effective_workers,
                     native_available=info.native_available,
                     fallback_reason=info.fallback_reason,
+                    _compiler_handoff=compiler_handoff,
                 )
             except (TypeError, ValueError) as error:
                 raise BackendProtocolError("a valid BackendInfo", str(error)) from error
@@ -332,6 +345,10 @@ class Reasoner:
                         valid = type(counter_value) is int and counter_value >= 0
                     if not valid:
                         raise BackendProtocolError(f"a measured nonnegative {name}", counter_value)
+                for name in _ENCODED_FORBIDDEN_WORK_COUNTERS:
+                    if name in values and (type(values[name]) is not int or values[name] != 0):
+                        raise BackendProtocolError(f"exact encoded-native {name}", values[name])
+                    values[name] = 0
 
             encoded_phase_seconds: dict[str, float] = {}
             for name in _ENCODED_TIMINGS:

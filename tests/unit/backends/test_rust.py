@@ -18,6 +18,8 @@ from pyelk.exceptions import (
 )
 from pyelk.indexing.codec import SCHEMA_MAJOR, SCHEMA_MINOR
 from pyelk.indexing.encoded import (
+    ENCODED_BUFFER_WIDTHS,
+    ENCODED_DESCRIPTOR_SHA256,
     ENCODED_SCHEMA_NAME,
     ENCODED_SCHEMA_VERSION,
     EncodedStructuralHandoff,
@@ -131,6 +133,7 @@ def test_rust_adapter_transfers_ir_once_and_decodes_every_result() -> None:
     session, native = _session()
     assert native.payload is not None and native.workers == 3
     assert session.info.name == "rust"
+    assert getattr(session.info, "compiler_handoff", None) is None
     assert session.is_inconsistent() is False
     assert session.class_taxonomy().nodes
     assert session.object_property_taxonomy().nodes
@@ -193,7 +196,7 @@ def test_encoded_factory_uses_one_coarse_call_and_retains_owner_until_close() ->
         model_schema=1,
         scope=owl.AxiomScope.CLOSURE,
         descriptor=b"descriptor",
-        descriptor_digest=b"d" * 32,
+        descriptor_digest=ENCODED_DESCRIPTOR_SHA256,
         buffers=MappingProxyType({"column": memoryview(b"value")}),
         segments=(),
         structural_fingerprint=fingerprint,
@@ -214,6 +217,15 @@ def test_encoded_factory_uses_one_coarse_call_and_retains_owner_until_close() ->
     assert native.workers == 2
     assert native.unsupported == "error"
     assert session._encoded_owner is handoff
+    assert session.info.compiler_handoff == {
+        "buffer_widths": dict(ENCODED_BUFFER_WIDTHS),
+        "descriptor_sha256": ENCODED_DESCRIPTOR_SHA256.hex(),
+        "model_schema": 1,
+        "schema_name": ENCODED_SCHEMA_NAME,
+        "schema_version": ENCODED_SCHEMA_VERSION,
+    }
+    with pytest.raises(TypeError):
+        session.info.compiler_handoff["schema_name"] = "mutated"  # type: ignore[index]
     assert session.diagnostics()["ingestion_path"] == "encoded-native"
     session.close()
     assert session._encoded_owner is None

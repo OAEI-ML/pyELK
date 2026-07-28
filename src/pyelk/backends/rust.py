@@ -17,6 +17,7 @@ from pyelk.exceptions import (
 )
 from pyelk.indexing.conversion import FEATURE_INDEX
 from pyelk.indexing.encoded import (
+    ENCODED_BUFFER_WIDTHS,
     ENCODED_SCHEMA_NAME,
     EncodedStructuralHandoff,
     EncodedViewNegotiation,
@@ -233,6 +234,17 @@ class RustBackendSession:
             effective_workers=effective_workers,
             native_available=True,
             fallback_reason=None,
+            _compiler_handoff=(
+                {
+                    "buffer_widths": ENCODED_BUFFER_WIDTHS,
+                    "descriptor_sha256": encoded_owner.descriptor_digest.hex(),
+                    "model_schema": encoded_owner.model_schema,
+                    "schema_name": encoded_owner.schema_name,
+                    "schema_version": encoded_owner.schema_version,
+                }
+                if encoded_owner is not None
+                else None
+            ),
         )
 
     @property

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, IntEnum
+from types import MappingProxyType
 from typing import Literal, NewType, Protocol, TypeAlias, runtime_checkable
 
 from pyelk.indexing.ir import U32_MAX, CompiledOntology, EntityId
@@ -13,6 +14,15 @@ from pyelk.indexing.ir import U32_MAX, CompiledOntology, EntityId
 Polarity: TypeAlias = Literal["ANY", "NEGATIVE", "POSITIVE"]
 DiagnosticScalar: TypeAlias = int | float | str | bool
 QueryResultEntityId = NewType("QueryResultEntityId", int)
+_COMPILER_HANDOFF_FIELDS = frozenset(
+    {
+        "buffer_widths",
+        "descriptor_sha256",
+        "model_schema",
+        "schema_name",
+        "schema_version",
+    }
+)
 
 
 class ReasoningTask(str, Enum):
@@ -75,6 +85,11 @@ class BackendInfo:
     effective_workers: int
     native_available: bool
     fallback_reason: str | None
+    _compiler_handoff: Mapping[str, object] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or self.name not in {"python", "rust"}:
@@ -99,6 +114,67 @@ class BackendInfo:
             raise ValueError("backend native_available must be a boolean")
         if self.fallback_reason is not None and not isinstance(self.fallback_reason, str):
             raise ValueError("backend fallback_reason must be text or None")
+        compiler_handoff = _freeze_compiler_handoff(self._compiler_handoff)
+        if compiler_handoff is not None and (self.name != "rust" or not self.native_available):
+            raise ValueError("only an available Rust backend may publish compiler_handoff")
+        object.__setattr__(self, "_compiler_handoff", compiler_handoff)
+
+    @property
+    def compiler_handoff(self) -> Mapping[str, object]:
+        """Return this session's encoded compiler attestation when one exists."""
+
+        value = self._compiler_handoff
+        if value is None:
+            raise AttributeError("scalar backend has no compiler_handoff")
+        return value
+
+
+def _freeze_compiler_handoff(
+    value: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    """Validate and recursively freeze one public encoded compiler attestation."""
+
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError("compiler_handoff must be a mapping or None")
+    if set(value) != _COMPILER_HANDOFF_FIELDS or not all(isinstance(name, str) for name in value):
+        raise ValueError("compiler_handoff fields are incompatible")
+    schema_name = value["schema_name"]
+    if type(schema_name) is not str or not schema_name:
+        raise TypeError("compiler_handoff schema_name must be nonempty text")
+    for name in ("schema_version", "model_schema"):
+        scalar = value[name]
+        if type(scalar) is not int or scalar < 1:
+            raise TypeError(f"compiler_handoff {name} must be a positive integer")
+    descriptor = value["descriptor_sha256"]
+    if (
+        type(descriptor) is not str
+        or len(descriptor) != 64
+        or any(character not in "0123456789abcdef" for character in descriptor)
+    ):
+        raise TypeError("compiler_handoff descriptor_sha256 must be lowercase SHA-256")
+    raw_widths = value["buffer_widths"]
+    if not isinstance(raw_widths, Mapping):
+        raise TypeError("compiler_handoff buffer_widths must be a mapping")
+    widths: dict[str, int] = {}
+    for name, width in raw_widths.items():
+        if type(name) is not str or not name:
+            raise TypeError("compiler_handoff buffer names must be nonempty text")
+        if type(width) is not int or width < 1:
+            raise TypeError("compiler_handoff buffer widths must be positive integers")
+        widths[name] = width
+    if not widths:
+        raise ValueError("compiler_handoff buffer_widths must not be empty")
+    return MappingProxyType(
+        {
+            "buffer_widths": MappingProxyType(dict(sorted(widths.items()))),
+            "descriptor_sha256": descriptor,
+            "model_schema": value["model_schema"],
+            "schema_name": schema_name,
+            "schema_version": value["schema_version"],
+        }
+    )
 
 
 @dataclass(frozen=True, slots=True)
