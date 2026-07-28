@@ -26,8 +26,12 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5215,
-      "sha256": "6002d37dbf391f4caedff3cc4af8c145c78cacaafb8928f13e2c40968ed6e553"
+      "bytes": 5218,
+      "sha256": "062e3537f1540822817bf97f427c9addd4c9ea00ccfca08dcc52bcac3e645d1b"
+    },
+    "release/core-compatibility.json": {
+      "bytes": 528,
+      "sha256": "581641007065cb20f3daf24f399d9024d63a4f63b05e9c34d9b86e03bcbcdea3"
     },
     "rust-toolchain.toml": {
       "bytes": 86,
@@ -50,12 +54,12 @@
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
     "tests/backends/test_rust_core.py": {
-      "bytes": 84739,
-      "sha256": "36b909644104b5a20de9ab94d83e6bc3314c7ae2a5d82f763152cbf85ec3b484"
+      "bytes": 95542,
+      "sha256": "f4fe568517f0bd238fd4abee1a3d765249d771fbed26a2288f8ecc71ff4bfad1"
     },
     "tests/packaging/run_installed_wp14_contract.py": {
-      "bytes": 2010,
-      "sha256": "f399e94db0b62f6ae84cd8289945298de27df31d44cd08e9940d0eff02212480"
+      "bytes": 2292,
+      "sha256": "343dd939d411165f5f83c3ab41c99c72721af9ac5f48f1d5ea1ea067bd8cdb14"
     },
     "tools/check_artifact.py": {
       "bytes": 33898,
@@ -66,20 +70,22 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 44963,
-      "sha256": "36cd97cc980a9b6d1ead7c83fdf88a5a5c79d76801d7daf0cbad5150d5510b32"
+      "bytes": 46542,
+      "sha256": "30bcbad7c2dead9cf82c0233e9319ebded15e7c5f912c6a2321ed71e197a3c15"
     }
   },
   "installed_native_contracts": [
     {
-      "capability_state": "unadvertised",
+      "capability_state": "advertised",
       "command": "python {project}/tests/packaging/run_installed_wp14_contract.py",
       "id": "wp14-encoded-public-dispatch-short",
       "scope": "bounded-correctness-only",
       "tests": [
         "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
-        "tests/backends/test_rust_core.py::test_hidden_direct_encoded_session_matches_scalar_wire",
-        "tests/backends/test_rust_core.py::test_hidden_public_facade_runs_entirely_from_encoded_native_session"
+        "tests/backends/test_rust_core.py::test_advertised_direct_encoded_session_matches_scalar_wire",
+        "tests/backends/test_rust_core.py::test_public_facade_runs_entirely_from_advertised_encoded_native_session",
+        "tests/backends/test_rust_core.py::test_public_advertised_dispatch_covers_mmap_and_recursive_segments",
+        "tests/backends/test_rust_core.py::test_public_advertised_dispatch_fails_closed_before_scalar_compilation"
       ]
     }
   ],
@@ -87,6 +93,13 @@
   "source_date_epoch": {
     "command": "git show -s --format=%ct HEAD",
     "strategy": "git-commit-timestamp"
+  },
+  "tested_runtime": {
+    "pyowl_core": {
+      "commit": "21503cf5a35c22c1fa35653c13df958df4fca100",
+      "repository": "https://github.com/OAEI-ML/pyOWLCore",
+      "version": "0.1.0.dev0"
+    }
   },
   "tools": {
     "abi3audit": "abi3audit==0.0.26",

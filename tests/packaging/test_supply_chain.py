@@ -110,6 +110,13 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
         "strategy": "git-commit-timestamp",
         "command": "git show -s --format=%ct HEAD",
     }
+    assert provenance["tested_runtime"] == {
+        "pyowl_core": {
+            "commit": "21503cf5a35c22c1fa35653c13df958df4fca100",
+            "repository": "https://github.com/OAEI-ML/pyOWLCore",
+            "version": "0.1.0.dev0",
+        }
+    }
     assert provenance["installed_native_contracts"] == [
         {
             "capability_state": "advertised",
@@ -206,6 +213,21 @@ def test_build_provenance_rejects_missing_installed_wp14_contract(tmp_path: Path
     )
 
     with pytest.raises(ValueError, match="bounded installed WP14 contract"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    compatibility = tmp_path / "release" / "core-compatibility.json"
+    compatibility.write_text(
+        compatibility.read_text(encoding="utf-8").replace(
+            "21503cf5a35c22c1fa35653c13df958df4fca100",
+            "not-a-commit",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="core compatibility pin"):
         build_provenance(tmp_path)
 
 

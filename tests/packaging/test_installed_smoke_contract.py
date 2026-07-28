@@ -82,7 +82,7 @@ def test_every_packaging_lane_names_the_expected_core_and_ingestion_paths() -> N
         assert "--expected-core-backend" in invocation
         assert "--expected-ingestion" in invocation
     assert pyproject.count("--core-backend python") == 2
-    assert "--expected-ingestion scalar-wire" in pyproject
+    assert "--expected-ingestion encoded-native" in pyproject
     assert "--expected-ingestion scalar-python" in pyproject
 
 

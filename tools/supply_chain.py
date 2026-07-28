@@ -55,6 +55,7 @@ _BUILD_INPUT_PATHS = (
     "MANIFEST.in",
     "pyelk_build.py",
     "pyproject.toml",
+    "release/core-compatibility.json",
     "rust-toolchain.toml",
     "rust/pyelk-core/Cargo.toml",
     "rust/pyelk-pyo3/Cargo.toml",
@@ -944,6 +945,26 @@ def build_provenance(root: Path) -> dict[str, Any]:
         raise ValueError(
             "build provenance: installed WP14 contract does not select the exact reviewed tests"
         )
+    try:
+        core_compatibility = json.loads(bound_text("release/core-compatibility.json"))
+    except (TypeError, ValueError) as error:
+        raise ValueError("build provenance: core compatibility pin is not valid JSON") from error
+    if not isinstance(core_compatibility, dict):
+        raise ValueError("build provenance: core compatibility pin is not an object")
+    tested_core = core_compatibility.get("tested_source")
+    redesign = core_compatibility.get("native_ontology_redesign")
+    if (
+        core_compatibility.get("schema") != "pyelk.core-compatibility/1"
+        or core_compatibility.get("dependency_constraint") != _CORE_REQUIREMENT
+        or not isinstance(tested_core, dict)
+        or tested_core.get("repository") != "https://github.com/OAEI-ML/pyOWLCore"
+        or tested_core.get("version") != "0.1.0.dev0"
+        or not isinstance(tested_core.get("commit"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", tested_core["commit"]) is None
+        or not isinstance(redesign, dict)
+        or redesign.get("commit") != tested_core["commit"]
+    ):
+        raise ValueError("build provenance: core compatibility pin is invalid")
     linux = cibuildwheel.get("linux") if isinstance(cibuildwheel, dict) else None
     bootstrap = linux.get("before-all") if isinstance(linux, dict) else None
     if not isinstance(bootstrap, str):
@@ -1037,6 +1058,9 @@ def build_provenance(root: Path) -> dict[str, Any]:
         "source_date_epoch": {
             "strategy": "git-commit-timestamp",
             "command": epoch_command,
+        },
+        "tested_runtime": {
+            "pyowl_core": dict(sorted(tested_core.items())),
         },
         "installed_native_contracts": [
             {
