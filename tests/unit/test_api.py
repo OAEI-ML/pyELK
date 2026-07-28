@@ -253,6 +253,8 @@ def test_public_facade_selects_encoded_metadata_before_scalar_axiom_capture(
         session=_python_session(compiled, config),
         metadata=metadata_from_compiled(compiled),
     )
+    public_a = next(entity for entity in snapshot.signature() if entity.iri.value == "urn:api#A")
+    public_i = next(entity for entity in snapshot.signature() if entity.iri.value == "urn:api#i")
 
     monkeypatch.setattr(
         "pyelk.api.try_create_encoded_backend_session",
@@ -271,22 +273,19 @@ def test_public_facade_selects_encoded_metadata_before_scalar_axiom_capture(
         "signature_fingerprint",
     ):
         monkeypatch.setattr(type(snapshot), name, property(forbidden_fingerprint))
+    monkeypatch.setattr(type(snapshot), "signature", forbidden)
     monkeypatch.setattr("pyelk.api._compile_ontology_with_materialization_count", forbidden)
     monkeypatch.setattr("pyelk.api.create_backend_session", forbidden)
 
     with Reasoner(snapshot, config) as reasoner:
         assert reasoner.ontology is snapshot
-        public_a = next(
-            entity for entity in snapshot.signature() if entity.iri.value == "urn:api#A"
-        )
-        public_i = next(
-            entity for entity in snapshot.signature() if entity.iri.value == "urn:api#i"
-        )
-        assert next(entity for entity in reasoner.all_classes() if entity == public_a) is public_a
+        assert next(entity for entity in reasoner.all_classes() if entity == public_a) == public_a
         assert (
             next(entity for entity in reasoner.all_named_individuals() if entity == public_i)
-            is public_i
+            == public_i
         )
+        actual_a = next(entity for entity in reasoner.all_classes() if entity == public_a)
+        assert hash(actual_a) == hash(public_a)
         assert reasoner.is_consistent().value is True
         assert reasoner.classify().value.supers(_class("A"), direct=True) == (
             reasoner.classify().value.node(_class("B")),

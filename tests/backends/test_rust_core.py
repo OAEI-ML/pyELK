@@ -631,12 +631,20 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
     )
     config = ReasonerConfig(backend="rust", workers=2, unsupported="error")
     expected = Reasoner(snapshot, ReasonerConfig(backend="python", unsupported="error"))
+    public_entities = {
+        (entity.kind, entity.iri.value): entity
+        for entity in snapshot.signature(include_builtins=True)
+    }
+    public_a = public_entities[(owl.EntityKind.CLASS, "urn:facade#A")]
+    public_p = public_entities[(owl.EntityKind.OBJECT_PROPERTY, "urn:facade#p")]
+    public_i = public_entities[(owl.EntityKind.NAMED_INDIVIDUAL, "urn:facade#i")]
 
     def forbidden(*args: object, **kwargs: object) -> object:
         raise AssertionError("public encoded path reached scalar compilation")
 
     monkeypatch.setattr("pyelk.api._compile_ontology_with_materialization_count", forbidden)
     monkeypatch.setattr("pyelk.api.create_backend_session", forbidden)
+    monkeypatch.setattr(type(snapshot), "signature", forbidden)
     actual: Reasoner | None = None
     try:
         actual = Reasoner(snapshot, config)
@@ -660,13 +668,6 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
         assert actual.classify() == expected.classify()
         assert actual.classify_object_properties() == expected.classify_object_properties()
         assert actual.realize() == expected.realize()
-        public_entities = {
-            (entity.kind, entity.iri.value): entity
-            for entity in snapshot.signature(include_builtins=True)
-        }
-        public_a = public_entities[(owl.EntityKind.CLASS, "urn:facade#A")]
-        public_p = public_entities[(owl.EntityKind.OBJECT_PROPERTY, "urn:facade#p")]
-        public_i = public_entities[(owl.EntityKind.NAMED_INDIVIDUAL, "urn:facade#i")]
         class_member = next(
             member
             for node in actual.classify().value.nodes
@@ -685,17 +686,17 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
             for member in node.members
             if member == public_i
         )
-        assert class_member is public_a
-        assert property_member is public_p
-        assert individual_member is public_i
-        assert next(entity for entity in actual.all_classes() if entity == public_a) is public_a
+        assert class_member == public_a
+        assert property_member == public_p
+        assert individual_member == public_i
+        assert next(entity for entity in actual.all_classes() if entity == public_a) == public_a
         assert (
             next(entity for entity in actual.all_object_properties() if entity == public_p)
-            is public_p
+            == public_p
         )
         assert (
             next(entity for entity in actual.all_named_individuals() if entity == public_i)
-            is public_i
+            == public_i
         )
         class_a = owl.Class(owl.IRI("urn:facade#A"))
         class_b = owl.Class(owl.IRI("urn:facade#B"))

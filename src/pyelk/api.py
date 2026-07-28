@@ -172,18 +172,16 @@ class Reasoner:
         else:
             metadata = encoded.metadata
             session = encoded.session
+            entity_by_record = {}
             materialized_scalar_rows = 0
             consumer_compile_seconds = encoded.consumer_compile_seconds
             encoded_view_publication_seconds = encoded.encoded_view_publication_seconds
             expected_compiler_digest = encoded.compiler_digest
-            facade_started = perf_counter()
             try:
                 symbols = CompilerSymbolTable(metadata)
-                entity_by_record = self._capture_entities(ontology, metadata.entities)
             except BaseException:
                 session.close()
                 raise
-            consumer_compile_seconds += perf_counter() - facade_started
         self._compiler_digest: str | None = expected_compiler_digest
         self._consumer_compile_seconds = consumer_compile_seconds
         self._encoded_view_publication_seconds = encoded_view_publication_seconds

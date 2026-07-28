@@ -144,7 +144,7 @@ with Reasoner(model) as reasoner:
     assert reasoner.ontology is shared
     taxonomy = reasoner.classify().require_complete()
     public_a = next(entity for entity in shared.signature() if entity.iri.value.endswith("#A"))
-    assert taxonomy.node(public_a).members[0] is public_a
+    assert taxonomy.node(public_a).members[0] == public_a
 assert model.calls == 1
 ```
 
