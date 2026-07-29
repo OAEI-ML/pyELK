@@ -1,5 +1,13 @@
 {
   "distribution": "pyelk-reasoner",
+  "encoded_ingestion_contract": {
+    "capability_state": "advertised",
+    "descriptor_sha256": "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+    "parity_contract": "wp14-encoded-public-dispatch-short",
+    "required_ingestion_path": "encoded-native",
+    "schema_name": "pyowl-core/structural-columns",
+    "schema_version": 1
+  },
   "inputs": {
     ".github/workflows/release.yml": {
       "bytes": 3018,
@@ -30,8 +38,8 @@
       "sha256": "062e3537f1540822817bf97f427c9addd4c9ea00ccfca08dcc52bcac3e645d1b"
     },
     "release/core-compatibility.json": {
-      "bytes": 528,
-      "sha256": "581641007065cb20f3daf24f399d9024d63a4f63b05e9c34d9b86e03bcbcdea3"
+      "bytes": 987,
+      "sha256": "d7cc7a2827fd5c8e9742682f6de588d0112da951d9901ba1fe6ea1c51a812396"
     },
     "rust-toolchain.toml": {
       "bytes": 86,
@@ -70,8 +78,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 46542,
-      "sha256": "30bcbad7c2dead9cf82c0233e9319ebded15e7c5f912c6a2321ed71e197a3c15"
+      "bytes": 47326,
+      "sha256": "73184f6b001511816532bf1b63f32db64e99df99196f92bc688409c0496d2f3b"
     }
   },
   "installed_native_contracts": [
@@ -96,8 +104,9 @@
   },
   "tested_runtime": {
     "pyowl_core": {
-      "commit": "21503cf5a35c22c1fa35653c13df958df4fca100",
+      "commit": "005c3ccad129757b3a9be125dc064b812b607ef5",
       "repository": "https://github.com/OAEI-ML/pyOWLCore",
+      "tree": "d4f3f29f6594b59f3d45a4811c38fb761a7028b9",
       "version": "0.1.0.dev0"
     }
   },

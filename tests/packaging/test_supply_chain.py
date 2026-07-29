@@ -112,10 +112,19 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["tested_runtime"] == {
         "pyowl_core": {
-            "commit": "21503cf5a35c22c1fa35653c13df958df4fca100",
+            "commit": "005c3ccad129757b3a9be125dc064b812b607ef5",
             "repository": "https://github.com/OAEI-ML/pyOWLCore",
+            "tree": "d4f3f29f6594b59f3d45a4811c38fb761a7028b9",
             "version": "0.1.0.dev0",
         }
+    }
+    assert provenance["encoded_ingestion_contract"] == {
+        "capability_state": "advertised",
+        "descriptor_sha256": ("9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"),
+        "parity_contract": "wp14-encoded-public-dispatch-short",
+        "required_ingestion_path": "encoded-native",
+        "schema_name": "pyowl-core/structural-columns",
+        "schema_version": 1,
     }
     assert provenance["installed_native_contracts"] == [
         {
@@ -221,9 +230,39 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     compatibility = tmp_path / "release" / "core-compatibility.json"
     compatibility.write_text(
         compatibility.read_text(encoding="utf-8").replace(
-            "21503cf5a35c22c1fa35653c13df958df4fca100",
-            "not-a-commit",
+            "005c3ccad129757b3a9be125dc064b812b607ef5",
+            "105c3ccad129757b3a9be125dc064b812b607ef5",
         ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="core compatibility pin"):
+        build_provenance(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("bound_value", "replacement"),
+    [
+        (
+            "d4f3f29f6594b59f3d45a4811c38fb761a7028b9",
+            "e4f3f29f6594b59f3d45a4811c38fb761a7028b9",
+        ),
+        (
+            "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+            "8ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+        ),
+        ("encoded-native", "scalar-wire"),
+    ],
+)
+def test_build_provenance_rejects_divergent_core_tree_or_encoded_contract(
+    tmp_path: Path,
+    bound_value: str,
+    replacement: str,
+) -> None:
+    _copy_build_inputs(tmp_path)
+    compatibility = tmp_path / "release" / "core-compatibility.json"
+    compatibility.write_text(
+        compatibility.read_text(encoding="utf-8").replace(bound_value, replacement),
         encoding="utf-8",
     )
 

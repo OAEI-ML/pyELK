@@ -27,6 +27,17 @@ _LOCAL_MANIFESTS = {
     "pyelk-pyo3": Path("rust/pyelk-pyo3/Cargo.toml"),
 }
 _CORE_REQUIREMENT = "pyowl-core>=0.1,<0.2"
+_CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/2"
+_TESTED_CORE_COMMIT = "005c3ccad129757b3a9be125dc064b812b607ef5"
+_TESTED_CORE_TREE = "d4f3f29f6594b59f3d45a4811c38fb761a7028b9"
+_ENCODED_INGESTION_CONTRACT = {
+    "schema_name": "pyowl-core/structural-columns",
+    "schema_version": 1,
+    "descriptor_sha256": "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+    "capability_state": "advertised",
+    "required_ingestion_path": "encoded-native",
+    "parity_contract": "wp14-encoded-public-dispatch-short",
+}
 _FORBIDDEN_COMPONENTS = {"deeponto", "jpype", "jpype1", "mowl", "owlapi", "robot"}
 _NOTICE_INVENTORY_START = "<!-- pyelk-native-inventory:start -->"
 _NOTICE_INVENTORY_END = "<!-- pyelk-native-inventory:end -->"
@@ -953,16 +964,19 @@ def build_provenance(root: Path) -> dict[str, Any]:
         raise ValueError("build provenance: core compatibility pin is not an object")
     tested_core = core_compatibility.get("tested_source")
     redesign = core_compatibility.get("native_ontology_redesign")
+    encoded_ingestion = core_compatibility.get("encoded_ingestion")
     if (
-        core_compatibility.get("schema") != "pyelk.core-compatibility/1"
+        core_compatibility.get("schema") != _CORE_COMPATIBILITY_SCHEMA
         or core_compatibility.get("dependency_constraint") != _CORE_REQUIREMENT
         or not isinstance(tested_core, dict)
         or tested_core.get("repository") != "https://github.com/OAEI-ML/pyOWLCore"
         or tested_core.get("version") != "0.1.0.dev0"
-        or not isinstance(tested_core.get("commit"), str)
-        or re.fullmatch(r"[0-9a-f]{40}", tested_core["commit"]) is None
+        or tested_core.get("commit") != _TESTED_CORE_COMMIT
+        or tested_core.get("tree") != _TESTED_CORE_TREE
         or not isinstance(redesign, dict)
         or redesign.get("commit") != tested_core["commit"]
+        or redesign.get("tree") != tested_core["tree"]
+        or encoded_ingestion != _ENCODED_INGESTION_CONTRACT
     ):
         raise ValueError("build provenance: core compatibility pin is invalid")
     linux = cibuildwheel.get("linux") if isinstance(cibuildwheel, dict) else None
@@ -1062,6 +1076,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
         "tested_runtime": {
             "pyowl_core": dict(sorted(tested_core.items())),
         },
+        "encoded_ingestion_contract": dict(sorted(encoded_ingestion.items())),
         "installed_native_contracts": [
             {
                 "capability_state": "advertised",
