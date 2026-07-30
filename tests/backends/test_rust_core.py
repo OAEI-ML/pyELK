@@ -1129,7 +1129,7 @@ def test_hidden_overlay_delta_deduplicates_cross_table_annotation_variants(
         scalar.close()
 
 
-def test_hidden_overlay_delta_session_retains_every_segment_owner(
+def test_hidden_overlay_delta_session_retains_canonical_views_not_copied_donor(
     native_module: ModuleType,
 ) -> None:
     source, encoded_source = _direct_encoded_snapshot(
@@ -1144,20 +1144,35 @@ def test_hidden_overlay_delta_session_retains_every_segment_owner(
         tuple(delta_source.iter_axioms()),
         encoded_delta,
     )
-    source_ref = weakref.ref(encoded_source)
-    delta_ref = weakref.ref(encoded_delta)
-    top_ref = weakref.ref(encoded)
+    base_segment, delta_segment = encoded.segments
+    assert base_segment.source is not None
+    assert base_segment.owner is base_segment.source.owner
+    assert delta_segment.source is None
+    assert delta_segment.owner is encoded.owner is overlay
+    source_view_ref = weakref.ref(encoded_source)
+    delta_donor_ref = weakref.ref(encoded_delta)
+    top_view_ref = weakref.ref(encoded)
     session = native_module.create_session_from_encoded(encoded, 1, "error")
-    del source, encoded_source, delta_source, encoded_delta, overlay, encoded
+    del (
+        source,
+        encoded_source,
+        delta_source,
+        encoded_delta,
+        overlay,
+        encoded,
+        base_segment,
+        delta_segment,
+    )
     gc.collect()
-    assert source_ref() is not None
-    assert delta_ref() is not None
-    assert top_ref() is not None
+    assert source_view_ref() is not None
+    # The helper submitted an untrusted wrapper. Core copied its local delta
+    # columns, so the original encoded delta is a donor rather than an owner.
+    assert delta_donor_ref() is None
+    assert top_view_ref() is not None
     session.close()
     gc.collect()
-    assert source_ref() is None
-    assert delta_ref() is None
-    assert top_ref() is None
+    assert source_view_ref() is None
+    assert top_view_ref() is None
 
 
 def test_hidden_composite_members_merge_without_flattening(

@@ -70,8 +70,8 @@
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
     "tests/backends/test_rust_core.py": {
-      "bytes": 96620,
-      "sha256": "d9c40a6efe2efcd27f239ea8bb6edd65986f9192970bcbf8dfbddc01b1a71503"
+      "bytes": 97149,
+      "sha256": "f3513524655d5294a19134be986a49611110ca63cc5c552d6776c01f1c1dbcd1"
     },
     "tests/packaging/install_artifact.py": {
       "bytes": 2757,
