@@ -982,9 +982,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
     override_commands: dict[str, tuple[str, ...]] = {}
     for override in overrides:
         selector = override.get("select") if isinstance(override, dict) else None
-        override_test_command = (
-            override.get("test-command") if isinstance(override, dict) else None
-        )
+        override_test_command = override.get("test-command") if isinstance(override, dict) else None
         if not isinstance(selector, str) or not isinstance(override_test_command, str):
             raise ValueError(
                 "build provenance: cibuildwheel core-backend overrides must be literal"

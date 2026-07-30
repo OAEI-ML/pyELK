@@ -98,8 +98,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 52359,
-      "sha256": "949890268d09f2af2d402cd70e2c056d7f5efd4ac3fe637bce85cf2e3a0787a7"
+      "bytes": 52335,
+      "sha256": "183a36beb8ebf8ed8eb2190969f047467d32fd89ba25133162cc58aa22d9aad6"
     }
   },
   "installed_core_backend_contracts": {
