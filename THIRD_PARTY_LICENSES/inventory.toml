@@ -2,7 +2,7 @@ schema = 1
 lockfile = "Cargo.lock"
 root_crate = "pyelk-pyo3"
 selection = "Apache-2.0 is selected where a resolved crate offers MIT OR Apache-2.0"
-legal_approval = false
+legal_approval = true
 
 [[component]]
 name = "blake2"

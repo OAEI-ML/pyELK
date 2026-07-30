@@ -28,8 +28,8 @@ _LOCAL_MANIFESTS = {
 }
 _CORE_REQUIREMENT = "pyowl-core>=0.1,<0.2"
 _CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/2"
-_TESTED_CORE_COMMIT = "005c3ccad129757b3a9be125dc064b812b607ef5"
-_TESTED_CORE_TREE = "d4f3f29f6594b59f3d45a4811c38fb761a7028b9"
+_TESTED_CORE_COMMIT = "d3e7893b0609fcd7df390375267a00356f09cb22"
+_TESTED_CORE_TREE = "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691"
 _ENCODED_INGESTION_CONTRACT = {
     "schema_name": "pyowl-core/structural-columns",
     "schema_version": 1,
@@ -67,6 +67,7 @@ _BUILD_INPUT_PATHS = (
     "pyelk_build.py",
     "pyproject.toml",
     "release/core-compatibility.json",
+    "release/owner-release-authorization.md",
     "rust-toolchain.toml",
     "rust/pyelk-core/Cargo.toml",
     "rust/pyelk-pyo3/Cargo.toml",
@@ -970,7 +971,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
         or core_compatibility.get("dependency_constraint") != _CORE_REQUIREMENT
         or not isinstance(tested_core, dict)
         or tested_core.get("repository") != "https://github.com/OAEI-ML/pyOWLCore"
-        or tested_core.get("version") != "0.1.0.dev0"
+        or tested_core.get("version") != "0.1.0"
         or tested_core.get("commit") != _TESTED_CORE_COMMIT
         or tested_core.get("tree") != _TESTED_CORE_TREE
         or not isinstance(redesign, dict)

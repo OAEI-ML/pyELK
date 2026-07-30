@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -59,8 +60,8 @@ def test_reviewed_inventory_matches_the_production_lock_closure() -> None:
         {"name": "pyowl-core", "requirement": ">=0.1,<0.2"}
     ]
     assert inventory["java_components"] == []
-    assert inventory["legal_approval"] is False
-    assert inventory["release_blockers"]
+    assert inventory["legal_approval"] is True
+    assert inventory["release_blockers"] == []
 
 
 def test_pure_and_native_sboms_are_variant_exact_and_deterministic() -> None:
@@ -71,7 +72,7 @@ def test_pure_and_native_sboms_are_variant_exact_and_deterministic() -> None:
     assert native == build_cyclonedx(ROOT, "native")
     assert [component["name"] for component in pure["components"]] == ["pyowl-core"]
     assert len(native["components"]) == 32
-    assert native["metadata"]["component"]["version"] == "0.1.0.dev0"
+    assert native["metadata"]["component"]["version"] == "0.1.0"
     assert native["dependencies"][0]["dependsOn"] == [
         "pkg:cargo/blake2@0.10.6",
         "pkg:cargo/pyo3@0.29.0",
@@ -96,8 +97,8 @@ def test_sbom_validator_rejects_non_spdx_or_unbound_components() -> None:
 
     assert validate_cyclonedx(document, "native") == [
         "sbom: component pkg:cargo/blake2@0.10.6 has an unreviewed SPDX license",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0.dev0?variant=native is not canonical",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0.dev0?variant=native "
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0?variant=native is not canonical",
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0?variant=native "
         "names unknown components ['pkg:cargo/unbound@9.9.9']",
     ]
 
@@ -112,10 +113,10 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["tested_runtime"] == {
         "pyowl_core": {
-            "commit": "005c3ccad129757b3a9be125dc064b812b607ef5",
+            "commit": "d3e7893b0609fcd7df390375267a00356f09cb22",
             "repository": "https://github.com/OAEI-ML/pyOWLCore",
-            "tree": "d4f3f29f6594b59f3d45a4811c38fb761a7028b9",
-            "version": "0.1.0.dev0",
+            "tree": "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
+            "version": "0.1.0",
         }
     }
     assert provenance["encoded_ingestion_contract"] == {
@@ -230,8 +231,8 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     compatibility = tmp_path / "release" / "core-compatibility.json"
     compatibility.write_text(
         compatibility.read_text(encoding="utf-8").replace(
-            "005c3ccad129757b3a9be125dc064b812b607ef5",
-            "105c3ccad129757b3a9be125dc064b812b607ef5",
+            "d3e7893b0609fcd7df390375267a00356f09cb22",
+            "c3e7893b0609fcd7df390375267a00356f09cb22",
         ),
         encoding="utf-8",
     )
@@ -244,8 +245,8 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     ("bound_value", "replacement"),
     [
         (
-            "d4f3f29f6594b59f3d45a4811c38fb761a7028b9",
-            "e4f3f29f6594b59f3d45a4811c38fb761a7028b9",
+            "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
+            "22cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
         ),
         (
             "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
@@ -494,7 +495,7 @@ def test_inventory_loader_does_not_coerce_approval_or_component_types(tmp_path: 
     inventory_path = tmp_path / "THIRD_PARTY_LICENSES" / "inventory.toml"
     inventory = inventory_path.read_text(encoding="utf-8")
     inventory_path.write_text(
-        inventory.replace("legal_approval = false", 'legal_approval = "false"'),
+        inventory.replace("legal_approval = true", 'legal_approval = "true"'),
         encoding="utf-8",
     )
 
@@ -545,7 +546,14 @@ def test_non_apache_selection_requires_packaged_terms(tmp_path: Path) -> None:
 def test_release_gate_fails_closed_until_legal_approval(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    inventory = SUPPLY_CHAIN.load_inventory(ROOT / "THIRD_PARTY_LICENSES" / "inventory.toml")
+    monkeypatch.setattr(
+        SUPPLY_CHAIN,
+        "load_inventory",
+        lambda path: replace(inventory, legal_approval=False),
+    )
     assert generate_evidence(ROOT, tmp_path) == []
     assert (
         main(

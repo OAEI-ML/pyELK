@@ -38,7 +38,7 @@ LICENSE_PAYLOADS = AUDITOR.LICENSE_PAYLOADS
 METADATA = (
     b"Metadata-Version: 2.4\n"
     b"Name: pyelk-reasoner\n"
-    b"Version: 0.1.0.dev0\n"
+    b"Version: 0.1.0\n"
     b"Requires-Python: >=3.10\n"
     b"License-Expression: Apache-2.0\n"
     + b"".join(f"License-File: {name}\n".encode() for name in LICENSE_PAYLOADS)
@@ -62,7 +62,7 @@ def _wheel(
     metadata: bytes = METADATA,
     source: bytes = b"VALUE = 1\n",
     extra: dict[str, bytes] | None = None,
-    dist_info: str = "pyelk_reasoner-0.1.0.dev0.dist-info",
+    dist_info: str = "pyelk_reasoner-0.1.0.dist-info",
     extra_tags: tuple[str, ...] = (),
     wheel_version: str = "1.0",
     root_is_pure: str | None = None,
@@ -71,7 +71,7 @@ def _wheel(
     tamper_after_record: dict[str, bytes] | None = None,
 ) -> Path:
     tag = "cp310-abi3-test_platform" if native else "py3-none-any"
-    path = tmp_path / f"pyelk_reasoner-0.1.0.dev0-{tag}.whl"
+    path = tmp_path / f"pyelk_reasoner-0.1.0-{tag}.whl"
     pure_value = root_is_pure or ("false" if native else "true")
     wheel = (
         f"Wheel-Version: {wheel_version}\n".encode()
@@ -107,9 +107,9 @@ def _sdist(
     tmp_path: Path,
     *,
     extra: dict[str, bytes] | None = None,
-    root: str = "pyelk_reasoner-0.1.0.dev0",
+    root: str = "pyelk_reasoner-0.1.0",
 ) -> Path:
-    path = tmp_path / "pyelk_reasoner-0.1.0.dev0.tar.gz"
+    path = tmp_path / "pyelk_reasoner-0.1.0.tar.gz"
     files = {
         "PKG-INFO": METADATA,
         "Cargo.lock": b"version = 4\n",
@@ -148,13 +148,13 @@ def test_wheel_requires_exact_filename_and_dist_info_identity(tmp_path: Path) ->
     foreign_root = _wheel(
         tmp_path,
         native=False,
-        dist_info="foreign_project-0.1.0.dev0.dist-info",
+        dist_info="foreign_project-0.1.0.dist-info",
     )
     with pytest.raises(AuditError, match="identity roots differ"):
         AUDITOR.inspect_artifact(foreign_root)
 
     wheel = _wheel(tmp_path, native=False)
-    foreign_filename = tmp_path / "foreign_project-0.1.0.dev0-py3-none-any.whl"
+    foreign_filename = tmp_path / "foreign_project-0.1.0-py3-none-any.whl"
     wheel.rename(foreign_filename)
     with pytest.raises(AuditError, match="filename does not match"):
         AUDITOR.inspect_artifact(foreign_filename)
@@ -165,7 +165,7 @@ def test_sdist_requires_exact_filename_and_root_identity(tmp_path: Path) -> None
         AUDITOR.inspect_artifact(
             _sdist(
                 tmp_path,
-                root="foreign_project-0.1.0.dev0",
+                root="foreign_project-0.1.0",
             )
         )
 
@@ -173,7 +173,7 @@ def test_sdist_requires_exact_filename_and_root_identity(tmp_path: Path) -> None
 def test_compressed_repaired_platform_tags_are_expanded(tmp_path: Path) -> None:
     original = _wheel(tmp_path, native=True)
     repaired = tmp_path / (
-        "pyelk_reasoner-0.1.0.dev0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+        "pyelk_reasoner-0.1.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
     )
     files: dict[str, bytes] = {}
     with zipfile.ZipFile(original) as source:
@@ -186,7 +186,7 @@ def test_compressed_repaired_platform_tags_are_expanded(tmp_path: Path) -> None:
                     b"Tag: cp310-abi3-manylinux2014_x86_64\n",
                 )
             files[info.filename] = value
-    record_name = "pyelk_reasoner-0.1.0.dev0.dist-info/RECORD"
+    record_name = "pyelk_reasoner-0.1.0.dist-info/RECORD"
     files.pop(record_name)
     files[record_name] = _record(files, record_name)
     with zipfile.ZipFile(repaired, "w") as target:
@@ -274,7 +274,7 @@ def test_license_payloads_must_match_repository_sources(tmp_path: Path, kind: st
         artifact = _wheel(
             tmp_path,
             native=False,
-            extra={"pyelk_reasoner-0.1.0.dev0.dist-info/licenses/NOTICE.pyelk": b"changed\n"},
+            extra={"pyelk_reasoner-0.1.0.dist-info/licenses/NOTICE.pyelk": b"changed\n"},
         )
     else:
         artifact = _sdist(tmp_path, extra={"NOTICE.pyelk": b"changed\n"})
@@ -291,7 +291,7 @@ def test_legal_payload_digest_matches_wheel_and_sdist_and_detects_tampering(
     sdist = AUDITOR.inspect_artifact(_sdist(sdist_root))
     tampered_root = tmp_path / "tampered"
     tampered_root.mkdir()
-    dist_info = "pyelk_reasoner-0.1.0.dev0.dist-info"
+    dist_info = "pyelk_reasoner-0.1.0.dist-info"
     tampered = _wheel(
         tampered_root,
         native=False,

@@ -25,39 +25,39 @@ _CHECKOUT_CONTEXT = {
 }
 
 _MATRIX = {
-    "pyelk_reasoner-0.1.0.dev0.tar.gz": ("sdist", ()),
-    "pyelk_reasoner-0.1.0.dev0-py3-none-any.whl": ("pure-wheel", ("py3-none-any",)),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": (
+    "pyelk_reasoner-0.1.0.tar.gz": ("sdist", ()),
+    "pyelk_reasoner-0.1.0-py3-none-any.whl": ("pure-wheel", ("py3-none-any",)),
+    "pyelk_reasoner-0.1.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl": (
         "native-wheel",
         (
             "cp310-abi3-manylinux_2_17_x86_64",
             "cp310-abi3-manylinux2014_x86_64",
         ),
     ),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": (
+    "pyelk_reasoner-0.1.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": (
         "native-wheel",
         (
             "cp310-abi3-manylinux_2_17_aarch64",
             "cp310-abi3-manylinux2014_aarch64",
         ),
     ),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-musllinux_1_2_x86_64.whl": (
+    "pyelk_reasoner-0.1.0-cp310-abi3-musllinux_1_2_x86_64.whl": (
         "native-wheel",
         ("cp310-abi3-musllinux_1_2_x86_64",),
     ),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-musllinux_1_2_aarch64.whl": (
+    "pyelk_reasoner-0.1.0-cp310-abi3-musllinux_1_2_aarch64.whl": (
         "native-wheel",
         ("cp310-abi3-musllinux_1_2_aarch64",),
     ),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-macosx_10_12_x86_64.whl": (
+    "pyelk_reasoner-0.1.0-cp310-abi3-macosx_10_12_x86_64.whl": (
         "native-wheel",
         ("cp310-abi3-macosx_10_12_x86_64",),
     ),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-macosx_11_0_arm64.whl": (
+    "pyelk_reasoner-0.1.0-cp310-abi3-macosx_11_0_arm64.whl": (
         "native-wheel",
         ("cp310-abi3-macosx_11_0_arm64",),
     ),
-    "pyelk_reasoner-0.1.0.dev0-cp310-abi3-win_amd64.whl": (
+    "pyelk_reasoner-0.1.0-cp310-abi3-win_amd64.whl": (
         "native-wheel",
         ("cp310-abi3-win_amd64",),
     ),
@@ -76,7 +76,7 @@ def _make_report(
         path=str(path.resolve()),
         kind=kind,
         name="pyelk-reasoner",
-        version="0.1.0.dev0",
+        version="0.1.0",
         requires_python=">=3.10",
         tags=tags,
         native_members=("pyelk/_native.abi3.so",) if kind == "native-wheel" else (),
@@ -186,8 +186,8 @@ def test_matrix_rejects_a_non_tier_one_native_substitution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     artifacts = _artifacts(tmp_path)
-    windows = artifacts / "pyelk_reasoner-0.1.0.dev0-cp310-abi3-win_amd64.whl"
-    arm = artifacts / "pyelk_reasoner-0.1.0.dev0-cp310-abi3-win_arm64.whl"
+    windows = artifacts / "pyelk_reasoner-0.1.0-cp310-abi3-win_amd64.whl"
+    arm = artifacts / "pyelk_reasoner-0.1.0-cp310-abi3-win_arm64.whl"
     windows.rename(arm)
 
     def inspect_with_arm64(path: Path, expected: str = "auto") -> ArtifactReport:
@@ -209,7 +209,7 @@ def test_binding_rejects_an_artifact_changed_during_inspection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    wheel = tmp_path / "pyelk_reasoner-0.1.0.dev0-py3-none-any.whl"
+    wheel = tmp_path / "pyelk_reasoner-0.1.0-py3-none-any.whl"
     wheel.write_bytes(b"before")
 
     def mutate(path: Path, expected: str = "auto") -> ArtifactReport:
@@ -252,7 +252,7 @@ def test_verification_rejects_artifact_tampering_and_self_sweeping(
     output = tmp_path / "artifact-manifest.json"
     generate_manifest(artifacts, output, checkout_context=_CHECKOUT_CONTEXT)
 
-    pure = artifacts / "pyelk_reasoner-0.1.0.dev0-py3-none-any.whl"
+    pure = artifacts / "pyelk_reasoner-0.1.0-py3-none-any.whl"
     pure.write_bytes(b"replaced")
     with pytest.raises(ManifestError, match="does not match staged artifacts"):
         generate_manifest(

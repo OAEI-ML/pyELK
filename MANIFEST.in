@@ -1,5 +1,6 @@
 include Cargo.toml
 include Cargo.lock
+include CHANGELOG.md
 include LICENSE
 include NOTICE.pyelk
 include README.md

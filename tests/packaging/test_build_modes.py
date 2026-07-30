@@ -127,7 +127,7 @@ def test_missing_manifest_falls_back_only_in_optional_mode(
 
 
 def test_source_archive_normalizes_gzip_tar_metadata_and_order(tmp_path: Path) -> None:
-    source = tmp_path / "pyelk_reasoner-0.1.0.dev0"
+    source = tmp_path / "pyelk_reasoner-0.1.0"
     nested = source / "package"
     nested.mkdir(parents=True)
     regular = nested / "module.py"

@@ -404,7 +404,7 @@ def _composite_encoded(
 
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
-    assert native_module.implementation_version() == "0.1.0.dev0"
+    assert native_module.implementation_version() == "0.1.0"
     assert native_module.ir_version() == (1, 0)
     assert native_module.self_check() is True
     assert issubclass(native_module.NativeUnsupportedFeatureError, ValueError)
