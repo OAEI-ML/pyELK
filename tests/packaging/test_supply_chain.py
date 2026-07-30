@@ -114,10 +114,10 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["tested_runtime"] == {
         "pyowl_core": {
-            "commit": "d3e7893b0609fcd7df390375267a00356f09cb22",
+            "commit": "0aab7b137b5a6eef173b8ec000aa84ff8d41e196",
             "repository": "https://github.com/OAEI-ML/pyOWLCore",
-            "tree": "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
-            "version": "0.1.0",
+            "tree": "ca01ade1c99f804b7be550ac245a94fbf7411149",
+            "version": "0.1.1",
         }
     }
     assert provenance["encoded_ingestion_contract"] == {
@@ -234,7 +234,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     compatibility = tmp_path / "release" / "core-compatibility.json"
     compatibility.write_text(
         compatibility.read_text(encoding="utf-8").replace(
-            "d3e7893b0609fcd7df390375267a00356f09cb22",
+            "0aab7b137b5a6eef173b8ec000aa84ff8d41e196",
             "c3e7893b0609fcd7df390375267a00356f09cb22",
         ),
         encoding="utf-8",
@@ -248,7 +248,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     ("bound_value", "replacement"),
     [
         (
-            "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
+            "ca01ade1c99f804b7be550ac245a94fbf7411149",
             "22cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
         ),
         (

@@ -15,6 +15,6 @@ independently under `reports/release/0.1.1`.
 The 0.1.1 release publishes the source distribution, universal fallback wheel, and all seven
 tier-one native wheels atomically through the environment-protected trusted-publishing workflow.
 
-The production release remains bound to pyowl-core 0.1.0 commit
-`d3e7893b0609fcd7df390375267a00356f09cb22` and tree
-`32cc4cbf9c99f1b45785cb29f4f059ec0f86a691`.
+The production release is bound to pyowl-core 0.1.1 commit
+`0aab7b137b5a6eef173b8ec000aa84ff8d41e196` and tree
+`ca01ade1c99f804b7be550ac245a94fbf7411149`.

@@ -78,6 +78,7 @@ def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> Non
     assert "artifacts/*.whl" in release_bundle
     assert "artifacts/*.tar.gz" in release_bundle
     assert "supply-chain" not in release_bundle
+    assert workflow.count('"pyowl-core==0.1.1"') == 3
 
 
 def test_atomic_release_revalidates_evidence_and_keeps_publish_input_distribution_only() -> None:

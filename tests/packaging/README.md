@@ -74,7 +74,7 @@ contain `pyowl-core` and, for a source install, every `[build-system]` requireme
 
 ```bash
 python -m pip download --dest wheelhouse --only-binary=:all: \
-  'pyowl-core>=0.1,<0.2' 'setuptools>=77,<84' \
+  'pyowl-core==0.1.1' 'setuptools>=77,<84' \
   setuptools-rust==1.13.0 'wheel>=0.45,<0.47'
 python tests/packaging/install_artifact.py dist/*.tar.gz \
   --python "$(command -v python)" --wheelhouse wheelhouse \

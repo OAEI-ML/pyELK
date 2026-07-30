@@ -18,8 +18,8 @@
       "sha256": "5009a023d7ce3638316dddc04e46cb1870e2175da725fff1f0a02134d8bbb0bf"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 16330,
-      "sha256": "a863ff0c7008ae98d209b8bc7a1b78b6de8106308cf1e4f368a6b1f2e12be312"
+      "bytes": 16321,
+      "sha256": "d6409a11fde65bc16393bd75f73578796f382891e0fec856a7db5aa618d43a11"
     },
     "Cargo.lock": {
       "bytes": 19832,
@@ -43,11 +43,11 @@
     },
     "release/core-compatibility.json": {
       "bytes": 982,
-      "sha256": "068dc6516a306e091c8b1cbfd77f5a81fc49634fa0fa5d696b9ef1aa5d24f8fe"
+      "sha256": "973d1653c812af7c391d507084249b913fb3f296fb8650b52915209cb0781e1e"
     },
     "release/owner-release-authorization-0.1.1.md": {
-      "bytes": 1007,
-      "sha256": "65446dcb38afd401ef8680ffa2a6614e0ac2eed7af1004098bd629945d9ca4b1"
+      "bytes": 1002,
+      "sha256": "eb14e42e66698ba79f7b111a60362efc355a107caf611757f6ed7a65e641afa8"
     },
     "rust-toolchain.toml": {
       "bytes": 51,
@@ -91,7 +91,7 @@
     },
     "tools/supply_chain.py": {
       "bytes": 48151,
-      "sha256": "685958ff4120a3f24ac87539e24c6cb4088a6142209be8d7aea9de39429beb9b"
+      "sha256": "46c37b13e287cbe9bc4151a9f847789c8c6c963425481404269534d3c2cc7072"
     }
   },
   "installed_native_contracts": [
@@ -116,10 +116,10 @@
   },
   "tested_runtime": {
     "pyowl_core": {
-      "commit": "d3e7893b0609fcd7df390375267a00356f09cb22",
+      "commit": "0aab7b137b5a6eef173b8ec000aa84ff8d41e196",
       "repository": "https://github.com/OAEI-ML/pyOWLCore",
-      "tree": "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
-      "version": "0.1.0"
+      "tree": "ca01ade1c99f804b7be550ac245a94fbf7411149",
+      "version": "0.1.1"
     }
   },
   "tools": {

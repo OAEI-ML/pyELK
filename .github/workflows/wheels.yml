@@ -104,7 +104,7 @@ jobs:
       - name: Prepare the complete offline wheelhouse
         run: >-
           python -m pip download --dest wheelhouse --only-binary=:all:
-          "pyowl-core>=0.1,<0.2" "setuptools>=77,<84"
+          "pyowl-core==0.1.1" "setuptools>=77,<84"
           setuptools-rust==1.13.0 "wheel>=0.45,<0.47"
 
       - name: Install universal wheel with no compiler or Java
@@ -277,7 +277,7 @@ jobs:
         shell: bash
         run: >-
           python -m pip download --dest wheelhouse --only-binary=:all:
-          "pyowl-core>=0.1,<0.2"
+          "pyowl-core==0.1.1"
 
       - name: Exercise ABI3 wheel with Rust and forced Python
         shell: bash
@@ -331,7 +331,7 @@ jobs:
       - name: Download universal runtime dependency
         run: >-
           python -m pip download --dest wheelhouse --only-binary=:all:
-          "pyowl-core>=0.1,<0.2"
+          "pyowl-core==0.1.1"
 
       - name: Exercise musllinux wheel on native hardware
         env:

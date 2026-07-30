@@ -28,8 +28,8 @@ _LOCAL_MANIFESTS = {
 }
 _CORE_REQUIREMENT = "pyowl-core>=0.1,<0.2"
 _CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/2"
-_TESTED_CORE_COMMIT = "d3e7893b0609fcd7df390375267a00356f09cb22"
-_TESTED_CORE_TREE = "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691"
+_TESTED_CORE_COMMIT = "0aab7b137b5a6eef173b8ec000aa84ff8d41e196"
+_TESTED_CORE_TREE = "ca01ade1c99f804b7be550ac245a94fbf7411149"
 _ENCODED_INGESTION_CONTRACT = {
     "schema_name": "pyowl-core/structural-columns",
     "schema_version": 1,
@@ -973,7 +973,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
         or core_compatibility.get("dependency_constraint") != _CORE_REQUIREMENT
         or not isinstance(tested_core, dict)
         or tested_core.get("repository") != "https://github.com/OAEI-ML/pyOWLCore"
-        or tested_core.get("version") != "0.1.0"
+        or tested_core.get("version") != "0.1.1"
         or tested_core.get("commit") != _TESTED_CORE_COMMIT
         or tested_core.get("tree") != _TESTED_CORE_TREE
         or not isinstance(redesign, dict)
