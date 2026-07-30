@@ -18,8 +18,8 @@
       "sha256": "3b1c7660321cc2b5f7d299e881ecf4d0160973ce675105a4e49367aa0f7faca4"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 16324,
-      "sha256": "1d7000790dd628e89cddc1961bbc7f0e31195050d5355b371ed0d163ad360a07"
+      "bytes": 16330,
+      "sha256": "4bb2bcf93542d88af8c23910817ba9df38f53474c922e536c2de02c75faf298a"
     },
     "Cargo.lock": {
       "bytes": 19832,
