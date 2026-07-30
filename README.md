@@ -1,5 +1,9 @@
 # pyELK
 
+[![PyPI](https://img.shields.io/pypi/v/pyelk-reasoner)](https://pypi.org/project/pyelk-reasoner/)
+[![Python](https://img.shields.io/pypi/pyversions/pyelk-reasoner)](https://pypi.org/project/pyelk-reasoner/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 pyELK is a Java-free implementation of the core reasoning behaviour of
 [ELK Reasoner 0.6.0](https://github.com/liveontologies/elk-reasoner/releases/tag/v0.6.0).
 It provides one typed Python API with a portable pure-Python backend and an optional
@@ -17,6 +21,10 @@ install selects a compatible native wheel when one is published and otherwise in
 universal Python wheel. Python 3.10 and 3.12 run the complete release suites; the native
 module uses the CPython 3.10 limited ABI and is additionally exercised on every supported
 CPython minor through 3.14.
+
+Start with the [documentation index](docs/index.md) or the
+[getting-started guide](docs/getting-started.md). The distribution is
+`pyelk-reasoner`; do not install the unrelated `pyelk` graph-layout package.
 
 ## First classification
 

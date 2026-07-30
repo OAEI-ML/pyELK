@@ -46,7 +46,10 @@ dev = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/OAEI-ML/pyELK"
+Documentation = "https://github.com/OAEI-ML/pyELK/tree/main/docs"
 Repository = "https://github.com/OAEI-ML/pyELK"
+Issues = "https://github.com/OAEI-ML/pyELK/issues"
 Specifications = "https://github.com/OAEI-ML/pyELK/tree/main/specs"
 
 [tool.setuptools]
