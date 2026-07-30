@@ -122,6 +122,18 @@ struct EncodedIngestionMetrics {
     native_boundary_seconds: f64,
 }
 
+fn covered_native_boundary_seconds(
+    measured: f64,
+    validation: f64,
+    compiler: f64,
+    session_build: f64,
+) -> f64 {
+    // Sub-phase and enclosing Instant readings can quantize in opposite directions for
+    // very small ontologies.  Preserve the measured boundary while guaranteeing that its
+    // public diagnostic covers every separately reported phase.
+    measured.max(validation + compiler + session_build)
+}
+
 struct EncodedPostingBinding<'py> {
     mode: EncodedPostingMode,
     root_ids: EncodedBufferBinding<'py>,
@@ -1176,7 +1188,12 @@ fn create_session_from_encoded(
         let session =
             py.detach(move || NativeCoreSession::from_ontology(ontology, worker_count))?;
         metrics.session_build_seconds = session_started.elapsed().as_secs_f64();
-        metrics.native_boundary_seconds = boundary_started.elapsed().as_secs_f64();
+        metrics.native_boundary_seconds = covered_native_boundary_seconds(
+            boundary_started.elapsed().as_secs_f64(),
+            metrics.validation_seconds,
+            metrics.compiler_seconds,
+            metrics.session_build_seconds,
+        );
         Ok((session, metrics))
     }));
     let (session, metrics) = match outcome {
@@ -1491,6 +1508,34 @@ fn encoded_ingestion_metrics(
         session_build_seconds: 0.0,
         native_boundary_seconds: 0.0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::covered_native_boundary_seconds;
+
+    #[test]
+    fn encoded_native_boundary_covers_quantized_subphases() {
+        let validation = 0.000_041_25;
+        let compiler = 0.000_075;
+        let session_build = 0.000_025_01;
+        let measured = 0.000_141_25;
+        let covered =
+            covered_native_boundary_seconds(measured, validation, compiler, session_build);
+
+        assert_eq!(covered, validation + compiler + session_build);
+        assert!(covered >= measured);
+    }
+
+    #[test]
+    fn encoded_native_boundary_preserves_larger_measurement() {
+        let measured = 0.5;
+
+        assert_eq!(
+            covered_native_boundary_seconds(measured, 0.1, 0.2, 0.1),
+            measured
+        );
+    }
 }
 
 fn validate_encoded_input<'py>(
