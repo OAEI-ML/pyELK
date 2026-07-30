@@ -43,11 +43,11 @@
     },
     "release/core-compatibility.json": {
       "bytes": 982,
-      "sha256": "973d1653c812af7c391d507084249b913fb3f296fb8650b52915209cb0781e1e"
+      "sha256": "1b017ab43ece033ec77a5af49651e3213cefc96597029e6072e7ddd4723eea43"
     },
     "release/owner-release-authorization-0.1.1.md": {
       "bytes": 1002,
-      "sha256": "eb14e42e66698ba79f7b111a60362efc355a107caf611757f6ed7a65e641afa8"
+      "sha256": "034e4989f2ebd1e7f0b15614f4dffcdd60a9c55f61eb3e502893923af47d9d1b"
     },
     "rust-toolchain.toml": {
       "bytes": 51,
@@ -91,7 +91,7 @@
     },
     "tools/supply_chain.py": {
       "bytes": 48151,
-      "sha256": "46c37b13e287cbe9bc4151a9f847789c8c6c963425481404269534d3c2cc7072"
+      "sha256": "701197288cfccdfeda009c41637794d14406e848db0763f4972232c00eaadf13"
     }
   },
   "installed_native_contracts": [
@@ -116,9 +116,9 @@
   },
   "tested_runtime": {
     "pyowl_core": {
-      "commit": "0aab7b137b5a6eef173b8ec000aa84ff8d41e196",
+      "commit": "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19",
       "repository": "https://github.com/OAEI-ML/pyOWLCore",
-      "tree": "ca01ade1c99f804b7be550ac245a94fbf7411149",
+      "tree": "e72fc93248cd363a5c67dac9efffb367a71c2b1d",
       "version": "0.1.1"
     }
   },

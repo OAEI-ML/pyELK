@@ -16,5 +16,5 @@ The 0.1.1 release publishes the source distribution, universal fallback wheel, a
 tier-one native wheels atomically through the environment-protected trusted-publishing workflow.
 
 The production release is bound to pyowl-core 0.1.1 commit
-`0aab7b137b5a6eef173b8ec000aa84ff8d41e196` and tree
-`ca01ade1c99f804b7be550ac245a94fbf7411149`.
+`b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19` and tree
+`e72fc93248cd363a5c67dac9efffb367a71c2b1d`.
