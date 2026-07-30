@@ -791,7 +791,7 @@ def _oracle_source_digest() -> str:
         for path in JAVA_ORACLE.rglob("*")
         if path.is_file() and "target" not in path.relative_to(JAVA_ORACLE).parts
     ]
-    for path in sorted(files):
+    for path in sorted(files, key=lambda candidate: candidate.relative_to(JAVA_ORACLE).as_posix()):
         relative = path.relative_to(JAVA_ORACLE).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(4, "big"))
         digest.update(relative)
