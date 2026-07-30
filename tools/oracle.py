@@ -340,7 +340,8 @@ def _family(relative: Path) -> str:
 
 def _entries(resources: Path) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
-    for path in sorted(item for item in resources.rglob("*") if item.is_file()):
+    files = (item for item in resources.rglob("*") if item.is_file())
+    for path in sorted(files, key=lambda candidate: candidate.relative_to(resources).as_posix()):
         relative = path.relative_to(resources)
         role = "ontology" if path.suffix == ".owl" else "upstream_golden"
         result.append(
@@ -416,7 +417,7 @@ def _managed_tree_digest(path: Path) -> str:
     digest = hashlib.sha256()
     managed = [path / "LICENSE.txt", path / "NOTICE.md", path / "manifest.json"]
     managed.extend(value for value in (path / "upstream").rglob("*") if value.is_file())
-    for item in sorted(managed):
+    for item in sorted(managed, key=lambda candidate: candidate.relative_to(path).as_posix()):
         if not item.is_file():
             return "missing"
         relative = item.relative_to(path).as_posix().encode("utf-8")
@@ -669,7 +670,8 @@ def sync_features(source: Path, *, check: bool) -> None:
 
 def _tree_digest_for_all_files(path: Path) -> str:
     digest = hashlib.sha256()
-    for item in sorted(value for value in path.rglob("*") if value.is_file()):
+    files = (value for value in path.rglob("*") if value.is_file())
+    for item in sorted(files, key=lambda candidate: candidate.relative_to(path).as_posix()):
         relative = item.relative_to(path).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(4, "big"))
         digest.update(relative)
@@ -1157,13 +1159,14 @@ def _canonical_expected(
 
 def _render_expected(expected: dict[Path, dict[str, Any]]) -> dict[Path, bytes]:
     return {
-        relative: _render(payload).encode("utf-8") for relative, payload in sorted(expected.items())
+        relative: _render(payload).encode("utf-8")
+        for relative, payload in sorted(expected.items(), key=lambda item: item[0].as_posix())
     }
 
 
 def _expected_tree_digest(files: dict[Path, bytes]) -> str:
     digest = hashlib.sha256()
-    for relative, content in sorted(files.items()):
+    for relative, content in sorted(files.items(), key=lambda item: item[0].as_posix()):
         name = relative.as_posix().encode("utf-8")
         digest.update(len(name).to_bytes(4, "big"))
         digest.update(name)
@@ -1180,7 +1183,7 @@ def _oracle_evidence(
             "path": relative.as_posix(),
             "sha256": hashlib.sha256(content).hexdigest(),
         }
-        for relative, content in sorted(files.items())
+        for relative, content in sorted(files.items(), key=lambda item: item[0].as_posix())
     ]
     digest = _expected_tree_digest(files)
     manifest = {
