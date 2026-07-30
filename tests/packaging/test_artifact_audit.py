@@ -144,6 +144,27 @@ def test_valid_artifacts_and_equivalent_payloads_pass(tmp_path: Path) -> None:
     assert AUDITOR.compare_wheels(pure, native)[1].tags == ("cp310-abi3-test_platform",)
 
 
+def test_compare_accepts_platform_metadata_line_endings(tmp_path: Path) -> None:
+    pure = _wheel(tmp_path, native=False)
+    native = _wheel(tmp_path, native=True, metadata=METADATA.replace(b"\n", b"\r\n"))
+
+    pure_report, native_report = AUDITOR.compare_wheels(pure, native)
+
+    assert pure_report.metadata_sha256 == native_report.metadata_sha256
+
+
+def test_compare_rejects_substantive_metadata_difference(tmp_path: Path) -> None:
+    pure = _wheel(tmp_path, native=False)
+    native = _wheel(
+        tmp_path,
+        native=True,
+        metadata=METADATA.replace(b"\n\nfixture", b"\n\nchanged fixture"),
+    )
+
+    with pytest.raises(AuditError, match="METADATA bytes differ"):
+        AUDITOR.compare_wheels(pure, native)
+
+
 def test_wheel_requires_exact_filename_and_dist_info_identity(tmp_path: Path) -> None:
     foreign_root = _wheel(
         tmp_path,

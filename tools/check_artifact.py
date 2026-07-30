@@ -277,6 +277,12 @@ def _metadata(members: dict[str, bytes], *, wheel: bool) -> tuple[Message, bytes
     return BytesParser().parsebytes(raw), raw
 
 
+def _metadata_sha256(raw: bytes) -> str:
+    """Hash metadata after normalizing the platform-dependent line ending."""
+
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
+
+
 def _dependency_name(requirement: str) -> str:
     match = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", requirement)
     if match is None:
@@ -655,7 +661,7 @@ def _audit_wheel(
         tags=tags,
         native_members=native_members,
         python_hashes=hashes,
-        metadata_sha256=hashlib.sha256(metadata_raw).hexdigest(),
+        metadata_sha256=_metadata_sha256(metadata_raw),
         legal_payload_sha256=_legal_payload_sha256(members, wheel=True),
         archive_sha256=archive_sha256,
     )
@@ -716,7 +722,7 @@ def _audit_sdist(
         tags=(),
         native_members=(),
         python_hashes=_python_hashes(members, sdist=True),
-        metadata_sha256=hashlib.sha256(metadata_raw).hexdigest(),
+        metadata_sha256=_metadata_sha256(metadata_raw),
         legal_payload_sha256=_legal_payload_sha256(members, wheel=False),
         archive_sha256=archive_sha256,
     )
