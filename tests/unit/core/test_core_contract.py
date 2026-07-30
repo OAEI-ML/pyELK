@@ -210,6 +210,24 @@ def test_non_view_and_non_core_fingerprint_fail_closed() -> None:
         capture_compatible_view(_as_view(_View(logical_fingerprint=object())))
 
 
+def test_bounded_view_validation_does_not_evaluate_fingerprint_descriptors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = _View()
+
+    def forbidden(_view: object) -> object:
+        raise AssertionError("bounded validation read an ontology fingerprint")
+
+    for name in (
+        "structural_fingerprint",
+        "logical_fingerprint",
+        "signature_fingerprint",
+    ):
+        monkeypatch.setattr(_View, name, property(forbidden), raising=False)
+
+    assert elk_core._require_compatible_view(_as_view(view)) == elk_core.current_core_versions()
+
+
 def test_capture_retains_exact_view_and_fingerprint_identities() -> None:
     raw_view: object = _View()
     view = cast(_View, raw_view)

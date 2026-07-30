@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from inspect import getattr_static
 
 import pyowl_core as _core
 from pyowl_core import (
@@ -64,6 +65,23 @@ _REQUIRED_VIEW_FEATURES = frozenset(
         "document-scoped-anonymous",
         "import-manifest",
         "owl2-structural",
+    }
+)
+_ONTOLOGY_VIEW_MEMBERS = frozenset(
+    {
+        "capabilities",
+        "contains",
+        "is_complete",
+        "iter_axioms",
+        "iter_extensions",
+        "logical_fingerprint",
+        "ontology_annotations",
+        "origin_index",
+        "report",
+        "signature",
+        "signature_fingerprint",
+        "structural_fingerprint",
+        "view",
     }
 )
 
@@ -275,14 +293,18 @@ def _require_compatible_view(view: OntologyView) -> CoreVersionInfo:
     """Validate the bounded core contract without reading ontology-sized state."""
 
     versions = require_core_compatibility()
-    if not isinstance(view, OntologyView):
+    try:
+        for member in _ONTOLOGY_VIEW_MEMBERS:
+            getattr_static(view, member)
+    except AttributeError:
         raise _compatibility_error(
             "OntologyView",
             "runtime protocol",
             type(view).__name__,
             versions=versions,
-        )
-    _require_view_capabilities(view.capabilities, versions)
+        ) from None
+    capabilities = view.capabilities
+    _require_view_capabilities(capabilities, versions)
     return versions
 
 
