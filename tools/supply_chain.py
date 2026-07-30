@@ -989,8 +989,10 @@ def build_provenance(root: Path) -> dict[str, Any]:
     rustup_installer_sha256 = sorted(
         set(re.findall(r"(?m)^\s*rustup_sha256=([0-9a-f]{64})$", bootstrap))
     )
-    if len(rustup_installer_sha256) != 2:
-        raise ValueError("build provenance: Linux Rust bootstrap must bind two installer checksums")
+    if len(rustup_installer_sha256) != 4:
+        raise ValueError(
+            "build provenance: Linux Rust bootstrap must bind four installer checksums"
+        )
     if (
         "https://static.rust-lang.org/rustup/archive/$rustup_version/$rustup_host/rustup-init"
         not in bootstrap

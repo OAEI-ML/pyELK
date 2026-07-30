@@ -180,7 +180,7 @@ jobs:
           # The v4.1.0 Windows test virtualenv cannot launch its copied
           # interpreter on windows-2025; exercise that wheel below with the
           # setup-python interpreter instead.
-          CIBW_TEST_SKIP_WINDOWS: "*"
+          CIBW_TEST_SKIP: ${{ runner.os == 'Windows' && '*' || '' }}
           CIBW_ENVIRONMENT_MACOS: >-
             PYELK_BUILD_PURE=0 PYELK_REQUIRE_NATIVE=1 CARGO_TERM_COLOR=always
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.macos-target }}

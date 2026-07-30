@@ -33,13 +33,16 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert "delvewheel==1.13.0" in workflow
     assert 'check "$wheel" --expect native-wheel --external' in workflow
     assert "rustup_version=1.28.2" in pyproject
-    assert pyproject.count("rustup_sha256=") == 2
+    assert pyproject.count("rustup_sha256=") == 4
+    assert "x86_64-unknown-linux-musl" in pyproject
+    assert "aarch64-unknown-linux-musl" in pyproject
     assert "sha256sum -c" in pyproject
     assert "https://sh.rustup.rs" not in pyproject
     assert re.search(r"\|\s*(?:sh|bash)(?:\s|$)", pyproject) is None
     assert 'before-test = "python -m pip install' in pyproject
     assert "test-requires" not in pyproject
-    assert 'CIBW_TEST_SKIP_WINDOWS: "*"' in workflow
+    assert "CIBW_TEST_SKIP: ${{ runner.os == 'Windows' && '*' || '' }}" in workflow
+    assert "CIBW_TEST_SKIP_WINDOWS" not in workflow
     assert "Select CPython 3.10 for Windows installed-wheel tests" in workflow
     windows_test = workflow.split(
         "- name: Exercise Windows native wheel with Rust and forced Python",

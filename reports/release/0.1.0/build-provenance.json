@@ -14,8 +14,8 @@
       "sha256": "3b1c7660321cc2b5f7d299e881ecf4d0160973ce675105a4e49367aa0f7faca4"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 16293,
-      "sha256": "a18c4cdb6929f7cdd760383a8f156575c83b01ad7e696d5f57f5521bf89052f1"
+      "bytes": 16324,
+      "sha256": "1d7000790dd628e89cddc1961bbc7f0e31195050d5355b371ed0d163ad360a07"
     },
     "Cargo.lock": {
       "bytes": 19832,
@@ -34,8 +34,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5405,
-      "sha256": "182ac8d91d96c3903b11d9106c9bf1cab532dc9544b6065e46a50ee1ed4317ea"
+      "bytes": 5811,
+      "sha256": "ec96af547f757c0cc7d8044137e1d449ecd72e719871e65991345ee13e8224b1"
     },
     "release/core-compatibility.json": {
       "bytes": 982,
@@ -82,8 +82,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 47353,
-      "sha256": "7ff6ad46e5dda35b952a2d0ef0bce5e3d91470069618a53d86559dd462b51d80"
+      "bytes": 47376,
+      "sha256": "0c0a30fe840d9fa2a5dc592a76170af2a0ce4617e9d3ff880e1f0487ed64c8f1"
     }
   },
   "installed_native_contracts": [
@@ -133,7 +133,9 @@
     "rustup": "1.28.2",
     "rustup_installer_sha256": [
       "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
-      "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c"
+      "a97c8f56d7462908695348dd8c71ea6740c138ce303715793a690503a94fc9a9",
+      "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c",
+      "e6599a1c7be58a2d8eaca66a80e0dc006d87bbcf780a58b7343d6e14c1605cb2"
     ],
     "setuptools_rust": "setuptools-rust==1.13.0",
     "wheel_builder": "wheel==0.46.3"
