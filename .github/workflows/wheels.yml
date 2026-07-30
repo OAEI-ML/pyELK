@@ -340,7 +340,7 @@ jobs:
       - name: Download universal runtime dependency
         run: >-
           python -m pip download --dest wheelhouse --only-binary=:all:
-          "pyowl-core==0.1.1"
+          --platform any "pyowl-core==0.1.1"
 
       - name: Exercise musllinux wheel on native hardware
         env:

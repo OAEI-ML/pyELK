@@ -129,6 +129,7 @@ def test_forced_any_and_musllinux_lanes_require_pure_core() -> None:
     assert compiler_free.count("--expected-core-backend python") == 2
     assert native_wheels.count("--core-backend native") == 2
     assert "--core-backend python" not in native_wheels
+    assert "--platform any" in musllinux
     assert musllinux.count("--expected-core-backend python") == 2
     assert "--expected-core-backend native" not in musllinux
 

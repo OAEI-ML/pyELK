@@ -1036,10 +1036,11 @@ def build_provenance(root: Path) -> dict[str, Any]:
             "and exercise the universal-core fallback"
         )
     if (
-        musllinux.count("--expected-core-backend python") != 2
+        "--platform any" not in musllinux
+        or musllinux.count("--expected-core-backend python") != 2
         or "--expected-core-backend native" in musllinux
     ):
-        raise ValueError("build provenance: musllinux must require pure pyowl-core")
+        raise ValueError("build provenance: musllinux must force and require pure pyowl-core")
     contract_script = bound_text("tests/packaging/run_installed_wp14_contract.py")
     if _literal_string_tuple(contract_script, "CONTRACT_NODE_IDS") != _INSTALLED_NATIVE_CONTRACTS:
         raise ValueError(

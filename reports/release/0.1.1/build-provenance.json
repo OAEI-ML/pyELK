@@ -18,8 +18,8 @@
       "sha256": "5009a023d7ce3638316dddc04e46cb1870e2175da725fff1f0a02134d8bbb0bf"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 17091,
-      "sha256": "34857a05d1b858fc82b61caa38d566f608889886aa1a95bfbfe09d916f8328a2"
+      "bytes": 17106,
+      "sha256": "f3dac5297db934357d35236c483b21369bb39b5799ee9143b0e5168bdeb468b2"
     },
     "Cargo.lock": {
       "bytes": 19832,
@@ -98,8 +98,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 52335,
-      "sha256": "183a36beb8ebf8ed8eb2190969f047467d32fd89ba25133162cc58aa22d9aad6"
+      "bytes": 52390,
+      "sha256": "3e866b6ed92ba3fc397d23fd3f72a4686858e23110464c300f03c58d4eb0dcef"
     }
   },
   "installed_core_backend_contracts": {

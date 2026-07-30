@@ -288,6 +288,28 @@ def test_build_provenance_rejects_unforced_pure_core_wheelhouse(tmp_path: Path) 
         build_provenance(tmp_path)
 
 
+def test_build_provenance_rejects_unforced_musllinux_core_wheelhouse(
+    tmp_path: Path,
+) -> None:
+    _copy_build_inputs(tmp_path)
+    workflow = tmp_path / ".github/workflows/wheels.yml"
+    text = workflow.read_text(encoding="utf-8")
+    prefix, musllinux = text.split("  musllinux-supported-cpython:", maxsplit=1)
+    workflow.write_text(
+        prefix
+        + "  musllinux-supported-cpython:"
+        + musllinux.replace(
+            '--platform any "pyowl-core==0.1.1"',
+            '"pyowl-core==0.1.1"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="musllinux must force and require pure pyowl-core"):
+        build_provenance(tmp_path)
+
+
 def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) -> None:
     _copy_build_inputs(tmp_path)
     compatibility = tmp_path / "release" / "core-compatibility.json"
