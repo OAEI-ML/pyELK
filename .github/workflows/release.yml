@@ -39,6 +39,8 @@ jobs:
           path: supply-chain
 
       - name: Revalidate artifact-bound release evidence
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m tools.supply_chain --check --require-approval --output-dir supply-chain
           python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" --output supply-chain/artifact-manifest.json --check

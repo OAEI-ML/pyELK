@@ -41,6 +41,8 @@ jobs:
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
       - name: Validate dependency inventory, legal selections, and SBOMs
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: >-
           python -m tools.supply_chain --check
           --output-dir reports/release/0.1.0
@@ -376,11 +378,15 @@ jobs:
           done
 
       - name: Revalidate the staged dependency and SBOM evidence
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: >-
           python -m tools.supply_chain --check --require-approval
           --output-dir supply-chain
 
       - name: Generate and verify the artifact-bound release manifest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" --output supply-chain/artifact-manifest.json
           python -m tools.release_manifest artifacts --source-revision "${GITHUB_SHA}" --output supply-chain/artifact-manifest.json --check

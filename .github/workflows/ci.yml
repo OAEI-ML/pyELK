@@ -96,6 +96,6 @@ jobs:
         run: |
           python -c "from pathlib import Path; wheels=list(Path('dist').glob('*.whl')); assert len(wheels) == 1 and wheels[0].name.endswith('-py3-none-any.whl')"
           python -m venv .wheel-venv
-          .wheel-venv/bin/python -m pip install --no-deps dist/*.whl
+          .wheel-venv/bin/python -m pip install dist/*.whl
           .wheel-venv/bin/python -I -c "import importlib.util, pyelk; assert importlib.util.find_spec('pyelk._native') is None"
           .wheel-venv/bin/python -m pip check

@@ -10,12 +10,12 @@
   },
   "inputs": {
     ".github/workflows/release.yml": {
-      "bytes": 3018,
-      "sha256": "49c605c8d0390f6c17a8cda217b68dc67044a0fbc1482fc2773c487c5c6b3658"
+      "bytes": 3077,
+      "sha256": "3b1c7660321cc2b5f7d299e881ecf4d0160973ce675105a4e49367aa0f7faca4"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 15018,
-      "sha256": "747ac35225f4e57942e9648b0364170b7a82b2936bb08e1a93869e065d03ce52"
+      "bytes": 15195,
+      "sha256": "ed45309053948a417c583c99d667acfbe5ba91522ad9570883c5243730df92e7"
     },
     "Cargo.lock": {
       "bytes": 19832,
@@ -34,8 +34,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5384,
-      "sha256": "8f0a8b883870ae176eb9c129278f666987f27b3ff9ba2687f686b88b2504f59d"
+      "bytes": 5419,
+      "sha256": "e453f3084a749dc1d22d9e751a80253790e76c29c4eff497f75647282c36e329"
     },
     "release/core-compatibility.json": {
       "bytes": 982,

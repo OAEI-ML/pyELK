@@ -18,7 +18,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: "1.97.1"
   FUZZ_TOOLCHAIN: "nightly-2026-07-14"
-  CARGO_FUZZ_VERSION: "0.12.0"
+  CARGO_FUZZ_VERSION: "0.13.2"
 
 jobs:
   rust-quality:

@@ -17,6 +17,8 @@ def test_foundation_uses_compiler_free_auto_fallback_without_masking_backend_tes
     assert "PYELK_PURE_PYTHON" not in global_configuration
     assert "Verify external toolchains are absent" in workflow
     assert "python -m pytest" in workflow
+    assert ".wheel-venv/bin/python -m pip install dist/*.whl" in workflow
+    assert "pip install --no-deps dist/*.whl" not in workflow
 
 
 def test_distribution_workflow_enforces_reproducibility_and_external_audits() -> None:
@@ -35,12 +37,15 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert "sha256sum --check --strict" in pyproject
     assert "https://sh.rustup.rs" not in pyproject
     assert re.search(r"\|\s*(?:sh|bash)(?:\s|$)", pyproject) is None
+    assert 'before-test = "python -m pip install' in pyproject
+    assert "test-requires" not in pyproject
 
 
 def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> None:
     workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
 
     assert workflow.count("python -m tools.supply_chain --check") == 2
+    assert workflow.count("PYTHONPATH: ${{ github.workspace }}") == 3
     assert "reports/release/0.1.0" in workflow
     assert "name: supply-chain-evidence" in workflow
     assert "path: supply-chain" in workflow
@@ -67,6 +72,7 @@ def test_atomic_release_revalidates_evidence_and_keeps_publish_input_distributio
         "python -m tools.supply_chain --check --require-approval --output-dir supply-chain"
         in workflow
     )
+    assert "PYTHONPATH: ${{ github.workspace }}" in workflow
     assert (
         "python -m tools.release_manifest artifacts "
         '--source-revision "${GITHUB_SHA}" '
@@ -103,7 +109,7 @@ def test_rust_workflow_pins_toolchains_and_enforces_quality_gates() -> None:
     assert "permissions:\n  contents: read" in workflow
     assert 'RUST_TOOLCHAIN: "1.97.1"' in workflow
     assert 'FUZZ_TOOLCHAIN: "nightly-2026-07-14"' in workflow
-    assert 'CARGO_FUZZ_VERSION: "0.12.0"' in workflow
+    assert 'CARGO_FUZZ_VERSION: "0.13.2"' in workflow
     assert (
         workflow.count(
             'cargo +"$FUZZ_TOOLCHAIN" install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked'
