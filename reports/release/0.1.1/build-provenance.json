@@ -1,0 +1,152 @@
+{
+  "distribution": "pyelk-reasoner",
+  "encoded_ingestion_contract": {
+    "capability_state": "advertised",
+    "descriptor_sha256": "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+    "parity_contract": "wp14-encoded-public-dispatch-short",
+    "required_ingestion_path": "encoded-native",
+    "schema_name": "pyowl-core/structural-columns",
+    "schema_version": 1
+  },
+  "inputs": {
+    ".gitattributes": {
+      "bytes": 19,
+      "sha256": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
+    },
+    ".github/workflows/release.yml": {
+      "bytes": 3394,
+      "sha256": "5009a023d7ce3638316dddc04e46cb1870e2175da725fff1f0a02134d8bbb0bf"
+    },
+    ".github/workflows/wheels.yml": {
+      "bytes": 16330,
+      "sha256": "a863ff0c7008ae98d209b8bc7a1b78b6de8106308cf1e4f368a6b1f2e12be312"
+    },
+    "Cargo.lock": {
+      "bytes": 19832,
+      "sha256": "560250ca37ce44643b8a11e3639391d50fede9346a017507f54294ad7e3f75d6"
+    },
+    "Cargo.toml": {
+      "bytes": 459,
+      "sha256": "def2b2a62e32bebe4893c742e1eb847a6d00d50782436269b4298d1aebce9524"
+    },
+    "MANIFEST.in": {
+      "bytes": 630,
+      "sha256": "c001bd9835bdace8a8dd5cee72b9fc108c46934f5f36e6b0b7f7895129764c0e"
+    },
+    "pyelk_build.py": {
+      "bytes": 2257,
+      "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
+    },
+    "pyproject.toml": {
+      "bytes": 5608,
+      "sha256": "79c9c1f1aae55aee8ad4e36e97878c99211cc0ea48d0086630100c14e9e66569"
+    },
+    "release/core-compatibility.json": {
+      "bytes": 982,
+      "sha256": "068dc6516a306e091c8b1cbfd77f5a81fc49634fa0fa5d696b9ef1aa5d24f8fe"
+    },
+    "release/owner-release-authorization-0.1.1.md": {
+      "bytes": 1007,
+      "sha256": "65446dcb38afd401ef8680ffa2a6614e0ac2eed7af1004098bd629945d9ca4b1"
+    },
+    "rust-toolchain.toml": {
+      "bytes": 51,
+      "sha256": "3003a09987459e5921dcddde94f8ea929b2d5e66efbbc30160e9d78de7ff010a"
+    },
+    "rust/pyelk-core/Cargo.toml": {
+      "bytes": 429,
+      "sha256": "b5a4f0106b07688480e716a5458b8ae7f2b08e3616d1c2a5b4b3c9a354287025"
+    },
+    "rust/pyelk-pyo3/Cargo.toml": {
+      "bytes": 488,
+      "sha256": "f283bcf061f9a19679207cfd8f54443dcd6ec90fa7d333e54a995c3f233fe3b7"
+    },
+    "rust/pyelk-pyo3/build.rs": {
+      "bytes": 339,
+      "sha256": "499ead2834b224317b20d9800794d3eb74d67413b4ec25ad961fca38c9b88a31"
+    },
+    "setup.py": {
+      "bytes": 4109,
+      "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
+    },
+    "tests/backends/test_rust_core.py": {
+      "bytes": 96620,
+      "sha256": "d9c40a6efe2efcd27f239ea8bb6edd65986f9192970bcbf8dfbddc01b1a71503"
+    },
+    "tests/packaging/run_installed_suite.py": {
+      "bytes": 3271,
+      "sha256": "85335462ab143d662110869d2fff9a953b75f04c4b5fbcfff2965713a332dd84"
+    },
+    "tests/packaging/run_installed_wp14_contract.py": {
+      "bytes": 2292,
+      "sha256": "343dd939d411165f5f83c3ab41c99c72721af9ac5f48f1d5ea1ea067bd8cdb14"
+    },
+    "tools/check_artifact.py": {
+      "bytes": 34067,
+      "sha256": "e91bcfc7c2a7b3a7c251451bd6d0c398d6e2a4332f8dd83da91816ce62ce3d67"
+    },
+    "tools/release_manifest.py": {
+      "bytes": 11134,
+      "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
+    },
+    "tools/supply_chain.py": {
+      "bytes": 48151,
+      "sha256": "685958ff4120a3f24ac87539e24c6cb4088a6142209be8d7aea9de39429beb9b"
+    }
+  },
+  "installed_native_contracts": [
+    {
+      "capability_state": "advertised",
+      "command": "python {project}/tests/packaging/run_installed_wp14_contract.py",
+      "id": "wp14-encoded-public-dispatch-short",
+      "scope": "bounded-correctness-only",
+      "tests": [
+        "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
+        "tests/backends/test_rust_core.py::test_advertised_direct_encoded_session_matches_scalar_wire",
+        "tests/backends/test_rust_core.py::test_public_facade_runs_entirely_from_advertised_encoded_native_session",
+        "tests/backends/test_rust_core.py::test_public_advertised_dispatch_covers_mmap_and_recursive_segments",
+        "tests/backends/test_rust_core.py::test_public_advertised_dispatch_fails_closed_before_scalar_compilation"
+      ]
+    }
+  ],
+  "schema": "pyelk.build-provenance/1",
+  "source_date_epoch": {
+    "command": "git show -s --format=%ct HEAD",
+    "strategy": "git-commit-timestamp"
+  },
+  "tested_runtime": {
+    "pyowl_core": {
+      "commit": "d3e7893b0609fcd7df390375267a00356f09cb22",
+      "repository": "https://github.com/OAEI-ML/pyOWLCore",
+      "tree": "32cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
+      "version": "0.1.0"
+    }
+  },
+  "tools": {
+    "abi3audit": "abi3audit==0.0.26",
+    "auditwheel": "auditwheel==6.7.0",
+    "cargo_manifest_rust_version": "1.85",
+    "cibuildwheel_action": "pypa/cibuildwheel@a0a973acdc9e7b7f8b04ac5c80e6883a5a102615",
+    "delocate": "delocate==0.13.0",
+    "delvewheel": "delvewheel==1.13.0",
+    "musllinux_cargo_package": "cargo=1.87.0-r1",
+    "musllinux_rust_package": "rust=1.87.0-r1",
+    "musllinux_smoke_images": [
+      "python:3.11-alpine@sha256:25976e9d34a0fab1f278cae931f34c8303d97bf0c0d7f85b6b4dcf641d7702a4",
+      "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
+      "python:3.13-alpine@sha256:399babc8b49529dabfd9c922f2b5eea81d611e4512e3ed250d75bd2e7683f4b0",
+      "python:3.14-alpine@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92"
+    ],
+    "python_build_backend": "setuptools==83.0.0",
+    "python_build_frontend": "build==1.5.0",
+    "rust_toolchain": "1.97.1",
+    "rustup": "1.28.2",
+    "rustup_installer_sha256": [
+      "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
+      "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c"
+    ],
+    "setuptools_rust": "setuptools-rust==1.13.0",
+    "wheel_builder": "wheel==0.46.3"
+  },
+  "version": "0.1.1"
+}

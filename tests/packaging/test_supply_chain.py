@@ -73,7 +73,7 @@ def test_pure_and_native_sboms_are_variant_exact_and_deterministic() -> None:
     assert native == build_cyclonedx(ROOT, "native")
     assert [component["name"] for component in pure["components"]] == ["pyowl-core"]
     assert len(native["components"]) == 32
-    assert native["metadata"]["component"]["version"] == "0.1.0"
+    assert native["metadata"]["component"]["version"] == "0.1.1"
     assert native["dependencies"][0]["dependsOn"] == [
         "pkg:cargo/blake2@0.10.6",
         "pkg:cargo/pyo3@0.29.0",
@@ -98,8 +98,8 @@ def test_sbom_validator_rejects_non_spdx_or_unbound_components() -> None:
 
     assert validate_cyclonedx(document, "native") == [
         "sbom: component pkg:cargo/blake2@0.10.6 has an unreviewed SPDX license",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0?variant=native is not canonical",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.0?variant=native "
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.1?variant=native is not canonical",
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.1?variant=native "
         "names unknown components ['pkg:cargo/unbound@9.9.9']",
     ]
 

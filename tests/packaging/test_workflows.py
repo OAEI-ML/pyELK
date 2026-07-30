@@ -65,7 +65,7 @@ def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> Non
 
     assert workflow.count("python -m tools.supply_chain --check") == 2
     assert workflow.count("PYTHONPATH: ${{ github.workspace }}") == 3
-    assert "reports/release/0.1.0" in workflow
+    assert "reports/release/0.1.1" in workflow
     assert "name: supply-chain-evidence" in workflow
     assert "path: supply-chain" in workflow
     assert "supply-chain/*.json" in workflow
@@ -99,6 +99,15 @@ def test_atomic_release_revalidates_evidence_and_keeps_publish_input_distributio
     ) in workflow
     assert "assert all(path.is_file() for path in artifacts), artifacts" in workflow
     assert "packages-dir: artifacts" in workflow
+    assert "group: release-${{ github.ref }}" in workflow
+    assert "cancel-in-progress: false" in workflow
+    publish = workflow.split("  publish:", maxsplit=1)[1]
+    assert "startsWith(github.ref, 'refs/tags/v')" in publish
+    assert "timeout-minutes: 10" in publish
+    assert "permissions:\n      id-token: write" in publish
+    assert "api-token" not in publish
+    assert "skip-existing: false" in publish
+    assert "skip-existing: true" not in workflow
 
 
 def test_every_supported_later_cpython_exercises_glibc_musl_macos_and_windows() -> None:

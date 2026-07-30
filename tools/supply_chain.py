@@ -68,7 +68,7 @@ _BUILD_INPUT_PATHS = (
     "pyelk_build.py",
     "pyproject.toml",
     "release/core-compatibility.json",
-    "release/owner-release-authorization.md",
+    "release/owner-release-authorization-0.1.1.md",
     "rust-toolchain.toml",
     "rust/pyelk-core/Cargo.toml",
     "rust/pyelk-pyo3/Cargo.toml",

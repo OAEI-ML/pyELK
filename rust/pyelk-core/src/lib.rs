@@ -19,4 +19,4 @@ pub use result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
 pub use session::{DiagnosticValue, NativeCoreSession};
 
 /// Native implementation identifier handshaken by the Python dispatcher.
-pub const IMPLEMENTATION_VERSION: &str = "0.1.0";
+pub const IMPLEMENTATION_VERSION: &str = "0.1.1";

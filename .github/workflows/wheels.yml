@@ -45,7 +45,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: >-
           python -m tools.supply_chain --check
-          --output-dir reports/release/0.1.0
+          --output-dir reports/release/0.1.1
 
       - name: Build the reproducible sdist and explicit zero-extension wheel twice
         env:
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: supply-chain-evidence
-          path: reports/release/0.1.0/*.json
+          path: reports/release/0.1.1/*.json
           if-no-files-found: error
           retention-days: 7
 

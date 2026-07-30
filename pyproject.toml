@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyelk-reasoner"
-version = "0.1.0"
+version = "0.1.1"
 description = "ELK-compatible OWL 2 EL reasoning in pure Python with optional Rust acceleration"
 readme = "README.md"
 requires-python = ">=3.10"
