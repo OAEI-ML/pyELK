@@ -14,8 +14,8 @@
       "sha256": "3b1c7660321cc2b5f7d299e881ecf4d0160973ce675105a4e49367aa0f7faca4"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 15195,
-      "sha256": "ed45309053948a417c583c99d667acfbe5ba91522ad9570883c5243730df92e7"
+      "bytes": 16293,
+      "sha256": "a18c4cdb6929f7cdd760383a8f156575c83b01ad7e696d5f57f5521bf89052f1"
     },
     "Cargo.lock": {
       "bytes": 19832,
@@ -34,8 +34,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5419,
-      "sha256": "e453f3084a749dc1d22d9e751a80253790e76c29c4eff497f75647282c36e329"
+      "bytes": 5405,
+      "sha256": "182ac8d91d96c3903b11d9106c9bf1cab532dc9544b6065e46a50ee1ed4317ea"
     },
     "release/core-compatibility.json": {
       "bytes": 982,
@@ -46,8 +46,8 @@
       "sha256": "b766ab8ec09b594f842590a6d029317e62614e47d08ec5161cccef3ec973d1b4"
     },
     "rust-toolchain.toml": {
-      "bytes": 86,
-      "sha256": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e"
+      "bytes": 51,
+      "sha256": "3003a09987459e5921dcddde94f8ea929b2d5e66efbbc30160e9d78de7ff010a"
     },
     "rust/pyelk-core/Cargo.toml": {
       "bytes": 429,
@@ -82,8 +82,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 47367,
-      "sha256": "6afdb0a644324986b75c259d1990d9f1e9e5a647095050eccbac0e8bd5fb582c"
+      "bytes": 47353,
+      "sha256": "7ff6ad46e5dda35b952a2d0ef0bce5e3d91470069618a53d86559dd462b51d80"
     }
   },
   "installed_native_contracts": [

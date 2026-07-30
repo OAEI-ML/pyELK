@@ -98,7 +98,7 @@ rustup_installer="$rustup_directory/rustup-init"
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
   --output "$rustup_installer" \
   "https://static.rust-lang.org/rustup/archive/$rustup_version/$rustup_host/rustup-init"
-printf '%s  %s\n' "$rustup_sha256" "$rustup_installer" | sha256sum --check --strict
+printf '%s  %s\n' "$rustup_sha256" "$rustup_installer" | sha256sum -c
 chmod 0755 "$rustup_installer"
 "$rustup_installer" -y --default-toolchain "$rust_toolchain" --profile minimal --no-modify-path
 """

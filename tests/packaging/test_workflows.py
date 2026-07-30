@@ -34,11 +34,26 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert 'check "$wheel" --expect native-wheel --external' in workflow
     assert "rustup_version=1.28.2" in pyproject
     assert pyproject.count("rustup_sha256=") == 2
-    assert "sha256sum --check --strict" in pyproject
+    assert "sha256sum -c" in pyproject
     assert "https://sh.rustup.rs" not in pyproject
     assert re.search(r"\|\s*(?:sh|bash)(?:\s|$)", pyproject) is None
     assert 'before-test = "python -m pip install' in pyproject
     assert "test-requires" not in pyproject
+    assert 'CIBW_TEST_SKIP_WINDOWS: "*"' in workflow
+    assert "Select CPython 3.10 for Windows installed-wheel tests" in workflow
+    windows_test = workflow.split(
+        "- name: Exercise Windows native wheel with Rust and forced Python",
+        maxsplit=1,
+    )[1].split("- name: Install pinned Linux", maxsplit=1)[0]
+    assert "run_installed_wp14_contract.py" in windows_test
+    assert windows_test.count("run_installed_suite.py") == 2
+    assert "--backend rust" in windows_test
+    assert "--backend python" in windows_test
+    compiler_free = workflow.split("compiler-free-installed:", maxsplit=1)[1].split(
+        "native-wheels:",
+        maxsplit=1,
+    )[0]
+    assert compiler_free.count("--force-python") == 2
 
 
 def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> None:
@@ -101,6 +116,7 @@ def test_every_supported_later_cpython_exercises_glibc_musl_macos_and_windows() 
 
 def test_rust_workflow_pins_toolchains_and_enforces_quality_gates() -> None:
     workflow = (ROOT / ".github/workflows/rust.yml").read_text(encoding="utf-8")
+    toolchain = (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
 
     assert "  push:" in workflow
     assert "  pull_request:" in workflow
@@ -121,6 +137,9 @@ def test_rust_workflow_pins_toolchains_and_enforces_quality_gates() -> None:
         "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings" in workflow
     )
     assert "cargo test --locked --workspace --all-features" in workflow
+    assert 'channel = "1.97.1"' in toolchain
+    assert 'profile = "minimal"' in toolchain
+    assert "components" not in toolchain
 
     action_references = re.findall(r"^\s*-?\s*uses:\s*([^\s#]+)", workflow, flags=re.MULTILINE)
     assert action_references

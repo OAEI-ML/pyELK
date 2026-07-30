@@ -994,7 +994,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
     if (
         "https://static.rust-lang.org/rustup/archive/$rustup_version/$rustup_host/rustup-init"
         not in bootstrap
-        or "sha256sum --check --strict" not in bootstrap
+        or "sha256sum -c" not in bootstrap
         or "https://sh.rustup.rs" in bootstrap
         or re.search(r"\|\s*(?:sh|bash)(?:\s|$)", bootstrap) is not None
     ):
