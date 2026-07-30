@@ -986,12 +986,24 @@ def build_provenance(root: Path) -> dict[str, Any]:
         raise ValueError("build provenance: Linux Rust bootstrap must be a literal string")
     rustup_version = _shell_assignment(bootstrap, "rustup_version")
     container_toolchain = _shell_assignment(bootstrap, "rust_toolchain")
+    musllinux_rust = _shell_assignment(bootstrap, "musllinux_rust")
+    musllinux_cargo = _shell_assignment(bootstrap, "musllinux_cargo")
     rustup_installer_sha256 = sorted(
         set(re.findall(r"(?m)^\s*rustup_sha256=([0-9a-f]{64})$", bootstrap))
     )
-    if len(rustup_installer_sha256) != 4:
+    if len(rustup_installer_sha256) != 2:
         raise ValueError(
-            "build provenance: Linux Rust bootstrap must bind four installer checksums"
+            "build provenance: Linux Rust bootstrap must bind two glibc installer checksums"
+        )
+    apk_package = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$")
+    if (
+        apk_package.fullmatch(musllinux_rust) is None
+        or apk_package.fullmatch(musllinux_cargo) is None
+        or 'apk add --no-cache "rust=$musllinux_rust" "cargo=$musllinux_cargo"'
+        not in bootstrap
+    ):
+        raise ValueError(
+            "build provenance: musllinux Rust and Cargo packages must be exact apk pins"
         )
     if (
         "https://static.rust-lang.org/rustup/archive/$rustup_version/$rustup_host/rustup-init"
@@ -1094,6 +1106,8 @@ def build_provenance(root: Path) -> dict[str, Any]:
             "cargo_manifest_rust_version": rust_msrv,
             "rustup": rustup_version,
             "rustup_installer_sha256": rustup_installer_sha256,
+            "musllinux_rust_package": f"rust={musllinux_rust}",
+            "musllinux_cargo_package": f"cargo={musllinux_cargo}",
             "musllinux_smoke_images": musllinux_smoke_images,
             **versions,
         },

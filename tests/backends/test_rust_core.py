@@ -12,6 +12,7 @@ import weakref
 from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import Any
@@ -105,7 +106,7 @@ def _native_library() -> Path:
 def native_module(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ModuleType]:
     """Load the workspace extension without installing it into the source tree."""
 
-    destination = tmp_path_factory.mktemp("pyelk-native") / "_native.so"
+    destination = tmp_path_factory.mktemp("pyelk-native") / f"_native{EXTENSION_SUFFIXES[0]}"
     shutil.copy2(_native_library(), destination)
     spec = importlib.util.spec_from_file_location("pyelk._native", destination)
     if spec is None or spec.loader is None:

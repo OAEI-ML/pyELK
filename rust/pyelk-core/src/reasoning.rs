@@ -593,15 +593,15 @@ impl<'a> RuleDispatcher<'a> {
         products: &mut Vec<Conclusion>,
     ) -> CoreResult<()> {
         let record = self.properties.chains[chain as usize];
-        if record.suffix_chain.is_some()
-            && let Some(super_properties) = self.told_super_properties.get(&chain)
-        {
-            for &super_property in super_properties {
-                products.push(Conclusion::BackwardLink {
-                    destination: target,
-                    relation: super_property,
-                    source: destination,
-                });
+        if record.suffix_chain.is_some() {
+            if let Some(super_properties) = self.told_super_properties.get(&chain) {
+                for &super_property in super_properties {
+                    products.push(Conclusion::BackwardLink {
+                        destination: target,
+                        relation: super_property,
+                        source: destination,
+                    });
+                }
             }
         }
         if let Some(compositions) = self.properties.compositions_for_right_chain(chain) {

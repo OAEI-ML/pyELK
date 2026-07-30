@@ -160,10 +160,10 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
         "rustup": "1.28.2",
         "rustup_installer_sha256": [
             "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
-            "a97c8f56d7462908695348dd8c71ea6740c138ce303715793a690503a94fc9a9",
             "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c",
-            "e6599a1c7be58a2d8eaca66a80e0dc006d87bbcf780a58b7343d6e14c1605cb2",
         ],
+        "musllinux_rust_package": "rust=1.87.0-r1",
+        "musllinux_cargo_package": "cargo=1.87.0-r1",
         "musllinux_smoke_images": [
             "python:3.11-alpine@sha256:"
             "25976e9d34a0fab1f278cae931f34c8303d97bf0c0d7f85b6b4dcf641d7702a4",
@@ -291,6 +291,21 @@ def test_build_provenance_rejects_mutable_rustup_bootstrap(tmp_path: Path) -> No
         ValueError,
         match=r"Linux bootstrap rustup_version|archive- and checksum-bound",
     ):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_mutable_musllinux_compiler_packages(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            'apk add --no-cache "rust=$musllinux_rust" "cargo=$musllinux_cargo"',
+            "apk add --no-cache rust cargo",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must be exact apk pins"):
         build_provenance(tmp_path)
 
 

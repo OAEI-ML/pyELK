@@ -437,12 +437,12 @@ impl QueryIr {
             .zip(ontology_ids)
             .map(|(entity, value)| {
                 let ontology_id = (value != U32_RESERVED).then_some(value);
-                if let Some(identifier) = ontology_id
-                    && !seen_ontology_ids.insert(identifier)
-                {
-                    return Err(CoreError::protocol(
-                        "query ontology entity IDs must be unique",
-                    ));
+                if let Some(identifier) = ontology_id {
+                    if !seen_ontology_ids.insert(identifier) {
+                        return Err(CoreError::protocol(
+                            "query ontology entity IDs must be unique",
+                        ));
+                    }
                 }
                 Ok(QueryEntity {
                     entity,

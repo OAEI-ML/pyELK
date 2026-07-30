@@ -33,9 +33,10 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert "delvewheel==1.13.0" in workflow
     assert 'check "$wheel" --expect native-wheel --external' in workflow
     assert "rustup_version=1.28.2" in pyproject
-    assert pyproject.count("rustup_sha256=") == 4
-    assert "x86_64-unknown-linux-musl" in pyproject
-    assert "aarch64-unknown-linux-musl" in pyproject
+    assert pyproject.count("rustup_sha256=") == 2
+    assert "musllinux_rust=1.87.0-r1" in pyproject
+    assert "musllinux_cargo=1.87.0-r1" in pyproject
+    assert 'apk add --no-cache "rust=$musllinux_rust" "cargo=$musllinux_cargo"' in pyproject
     assert "sha256sum -c" in pyproject
     assert "https://sh.rustup.rs" not in pyproject
     assert re.search(r"\|\s*(?:sh|bash)(?:\s|$)", pyproject) is None

@@ -34,8 +34,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5811,
-      "sha256": "ec96af547f757c0cc7d8044137e1d449ecd72e719871e65991345ee13e8224b1"
+      "bytes": 5608,
+      "sha256": "f64f20d5290637266f74c7fc7c024bb098600a4e125fad17dea860eeafb550ac"
     },
     "release/core-compatibility.json": {
       "bytes": 982,
@@ -66,8 +66,8 @@
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
     "tests/backends/test_rust_core.py": {
-      "bytes": 96403,
-      "sha256": "e5206c6149475643611267d49d7984ceb55c51e9f003caf0c0506f7034f9db39"
+      "bytes": 96475,
+      "sha256": "69aaa1cd1d205ce13b557f59e98c18881b1ca4882d5f7e8e30249509c40d97bf"
     },
     "tests/packaging/run_installed_wp14_contract.py": {
       "bytes": 2292,
@@ -82,8 +82,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 47376,
-      "sha256": "0c0a30fe840d9fa2a5dc592a76170af2a0ce4617e9d3ff880e1f0487ed64c8f1"
+      "bytes": 48074,
+      "sha256": "91ab50ca13ee0c791d8c7ccffe5e55ca58d681e2c1c559d49b2bdd345d6bf525"
     }
   },
   "installed_native_contracts": [
@@ -121,6 +121,8 @@
     "cibuildwheel_action": "pypa/cibuildwheel@a0a973acdc9e7b7f8b04ac5c80e6883a5a102615",
     "delocate": "delocate==0.13.0",
     "delvewheel": "delvewheel==1.13.0",
+    "musllinux_cargo_package": "cargo=1.87.0-r1",
+    "musllinux_rust_package": "rust=1.87.0-r1",
     "musllinux_smoke_images": [
       "python:3.11-alpine@sha256:25976e9d34a0fab1f278cae931f34c8303d97bf0c0d7f85b6b4dcf641d7702a4",
       "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df",
@@ -133,9 +135,7 @@
     "rustup": "1.28.2",
     "rustup_installer_sha256": [
       "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c",
-      "a97c8f56d7462908695348dd8c71ea6740c138ce303715793a690503a94fc9a9",
-      "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c",
-      "e6599a1c7be58a2d8eaca66a80e0dc006d87bbcf780a58b7343d6e14c1605cb2"
+      "e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c"
     ],
     "setuptools_rust": "setuptools-rust==1.13.0",
     "wheel_builder": "wheel==0.46.3"
