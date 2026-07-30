@@ -81,16 +81,56 @@ def test_every_packaging_lane_names_the_expected_core_and_ingestion_paths() -> N
         invocation = workflow[offset:] if boundary < 0 else workflow[offset:boundary]
         assert "--expected-core-backend" in invocation
         assert "--expected-ingestion" in invocation
-    assert pyproject.count("--core-backend python") == 2
+    default_cibuildwheel, manylinux_override, musllinux_override = pyproject.split(
+        "[[tool.cibuildwheel.overrides]]"
+    )
+    assert default_cibuildwheel.count("--core-backend native") == 2
+    assert "--core-backend python" not in default_cibuildwheel
+    assert 'select = "*-manylinux*"' in manylinux_override
+    assert manylinux_override.count("--core-backend python") == 2
+    assert "--core-backend native" not in manylinux_override
+    assert 'select = "*-musllinux*"' in musllinux_override
+    assert musllinux_override.count("--core-backend python") == 2
+    assert "--core-backend native" not in musllinux_override
     assert "--expected-ingestion encoded-native" in pyproject
     assert "--expected-ingestion scalar-python" in pyproject
 
 
-def test_released_core_abi3_lanes_require_encoded_native_ingestion() -> None:
+def test_released_core_abi3_lanes_require_native_core_and_encoded_ingestion() -> None:
     workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
+    abi3 = workflow.split("  abi3-supported-cpython:", maxsplit=1)[1].split(
+        "  musllinux-supported-cpython:",
+        maxsplit=1,
+    )[0]
 
     assert "--expected-ingestion scalar-wire" not in workflow
-    assert workflow.count("--expected-ingestion encoded-native") >= 2
+    assert abi3.count("--expected-core-backend native") == 2
+    assert abi3.count("--expected-core-backend python") == 2
+    assert "--platform any" in abi3
+    assert "--expected-ingestion encoded-native" in abi3
+
+
+def test_forced_any_and_musllinux_lanes_require_pure_core() -> None:
+    workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
+    compiler_free = workflow.split("  compiler-free-installed:", maxsplit=1)[1].split(
+        "  native-wheels:",
+        maxsplit=1,
+    )[0]
+    native_wheels = workflow.split("  native-wheels:", maxsplit=1)[1].split(
+        "  abi3-supported-cpython:",
+        maxsplit=1,
+    )[0]
+    musllinux = workflow.split("  musllinux-supported-cpython:", maxsplit=1)[1].split(
+        "  artifact-consistency:",
+        maxsplit=1,
+    )[0]
+
+    assert "--platform any" in compiler_free
+    assert compiler_free.count("--expected-core-backend python") == 2
+    assert native_wheels.count("--core-backend native") == 2
+    assert "--core-backend python" not in native_wheels
+    assert musllinux.count("--expected-core-backend python") == 2
+    assert "--expected-core-backend native" not in musllinux
 
 
 def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> None:
@@ -116,8 +156,12 @@ def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> No
     contract = (ROOT / "tests/backends/test_rust_core.py").read_text(encoding="utf-8")
     provenance = (ROOT / "tools/supply_chain.py").read_text(encoding="utf-8")
 
-    assert metadata.count(command) == 1
-    assert metadata.index(command) < metadata.index("run_installed_suite.py --backend rust")
+    assert metadata.count(command) == 3
+    lanes = metadata.split("[[tool.cibuildwheel.overrides]]")
+    assert len(lanes) == 3
+    for lane in lanes:
+        assert lane.count(command) == 1
+        assert lane.index(command) < lane.index("run_installed_suite.py --backend rust")
     assert nodes == runner.CONTRACT_NODE_IDS
     runner_source = (ROOT / "tests/packaging/run_installed_wp14_contract.py").read_text(
         encoding="utf-8"

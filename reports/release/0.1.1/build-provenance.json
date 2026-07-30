@@ -18,8 +18,8 @@
       "sha256": "5009a023d7ce3638316dddc04e46cb1870e2175da725fff1f0a02134d8bbb0bf"
     },
     ".github/workflows/wheels.yml": {
-      "bytes": 16321,
-      "sha256": "d6409a11fde65bc16393bd75f73578796f382891e0fec856a7db5aa618d43a11"
+      "bytes": 17091,
+      "sha256": "34857a05d1b858fc82b61caa38d566f608889886aa1a95bfbfe09d916f8328a2"
     },
     "Cargo.lock": {
       "bytes": 19832,
@@ -38,8 +38,8 @@
       "sha256": "3296ce48d1c0d4a8cb66e9261272cd5cce6ef35c27455a65931fce13987fa3e0"
     },
     "pyproject.toml": {
-      "bytes": 5608,
-      "sha256": "79c9c1f1aae55aee8ad4e36e97878c99211cc0ea48d0086630100c14e9e66569"
+      "bytes": 6414,
+      "sha256": "de7426d609e083340573e54f1b8628f68452197b8b2aab9c5be153b577c11661"
     },
     "release/core-compatibility.json": {
       "bytes": 982,
@@ -73,6 +73,14 @@
       "bytes": 96620,
       "sha256": "d9c40a6efe2efcd27f239ea8bb6edd65986f9192970bcbf8dfbddc01b1a71503"
     },
+    "tests/packaging/install_artifact.py": {
+      "bytes": 2757,
+      "sha256": "c272cbaa9d7465c7391dc5a85a22068856d374ef8c4e34a86521832a3c406850"
+    },
+    "tests/packaging/installed_smoke.py": {
+      "bytes": 4881,
+      "sha256": "fe075c62ec55f9ede0808d0ebfb5d35c84eda3762a93be1a0f5ad744ee63b41d"
+    },
     "tests/packaging/run_installed_suite.py": {
       "bytes": 3271,
       "sha256": "85335462ab143d662110869d2fff9a953b75f04c4b5fbcfff2965713a332dd84"
@@ -90,9 +98,16 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 48151,
-      "sha256": "701197288cfccdfeda009c41637794d14406e848db0763f4972232c00eaadf13"
+      "bytes": 52359,
+      "sha256": "949890268d09f2af2d402cd70e2c056d7f5efd4ac3fe637bce85cf2e3a0787a7"
     }
+  },
+  "installed_core_backend_contracts": {
+    "approved_native_hosted_lanes": "native",
+    "compiler_free_forced_any": "python",
+    "manylinux2014_build_container": "python",
+    "musllinux": "python",
+    "native_wheel_universal_core_fallback": "python"
   },
   "installed_native_contracts": [
     {

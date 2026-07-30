@@ -53,11 +53,14 @@ def test_distribution_workflow_enforces_reproducibility_and_external_audits() ->
     assert windows_test.count("run_installed_suite.py") == 2
     assert "--backend rust" in windows_test
     assert "--backend python" in windows_test
+    assert windows_test.count("--core-backend native") == 2
+    assert "--core-backend python" not in windows_test
     compiler_free = workflow.split("compiler-free-installed:", maxsplit=1)[1].split(
         "native-wheels:",
         maxsplit=1,
     )[0]
     assert compiler_free.count("--force-python") == 2
+    assert "--platform any" in compiler_free
 
 
 def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> None:
@@ -78,7 +81,7 @@ def test_distribution_workflow_stages_revalidated_supply_chain_evidence() -> Non
     assert "artifacts/*.whl" in release_bundle
     assert "artifacts/*.tar.gz" in release_bundle
     assert "supply-chain" not in release_bundle
-    assert workflow.count('"pyowl-core==0.1.1"') == 3
+    assert workflow.count('"pyowl-core==0.1.1"') == 4
 
 
 def test_atomic_release_revalidates_evidence_and_keeps_publish_input_distribution_only() -> None:

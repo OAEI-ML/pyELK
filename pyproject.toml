@@ -68,6 +68,14 @@ skip = ["*-win32", "*-manylinux_i686", "*-musllinux_i686"]
 build-frontend = "build"
 environment = { PYELK_BUILD_PURE = "0", PYELK_REQUIRE_NATIVE = "1", CARGO_TERM_COLOR = "always" }
 before-test = "python -m pip install 'hypothesis>=6.100,<7' 'import-linter>=2.1,<3' 'pytest>=8.2,<10'"
+test-command = "python {project}/tests/packaging/run_installed_wp14_contract.py && python {project}/tests/packaging/run_installed_suite.py --backend rust --core-backend native --expected-ingestion encoded-native && python {project}/tests/packaging/run_installed_suite.py --backend python --core-backend native --expected-ingestion scalar-python"
+
+[[tool.cibuildwheel.overrides]]
+select = "*-manylinux*"
+test-command = "python {project}/tests/packaging/run_installed_wp14_contract.py && python {project}/tests/packaging/run_installed_suite.py --backend rust --core-backend python --expected-ingestion encoded-native && python {project}/tests/packaging/run_installed_suite.py --backend python --core-backend python --expected-ingestion scalar-python"
+
+[[tool.cibuildwheel.overrides]]
+select = "*-musllinux*"
 test-command = "python {project}/tests/packaging/run_installed_wp14_contract.py && python {project}/tests/packaging/run_installed_suite.py --backend rust --core-backend python --expected-ingestion encoded-native && python {project}/tests/packaging/run_installed_suite.py --backend python --core-backend python --expected-ingestion scalar-python"
 
 [tool.cibuildwheel.linux]

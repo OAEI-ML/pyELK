@@ -128,6 +128,13 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
         "schema_name": "pyowl-core/structural-columns",
         "schema_version": 1,
     }
+    assert provenance["installed_core_backend_contracts"] == {
+        "approved_native_hosted_lanes": "native",
+        "compiler_free_forced_any": "python",
+        "manylinux2014_build_container": "python",
+        "musllinux": "python",
+        "native_wheel_universal_core_fallback": "python",
+    }
     assert provenance["installed_native_contracts"] == [
         {
             "capability_state": "advertised",
@@ -226,6 +233,58 @@ def test_build_provenance_rejects_missing_installed_wp14_contract(tmp_path: Path
     )
 
     with pytest.raises(ValueError, match="bounded installed WP14 contract"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_pure_core_on_approved_native_platforms(
+    tmp_path: Path,
+) -> None:
+    _copy_build_inputs(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    default, override = text.split("[[tool.cibuildwheel.overrides]]", maxsplit=1)
+    pyproject.write_text(
+        default.replace("--core-backend native", "--core-backend python")
+        + "[[tool.cibuildwheel.overrides]]"
+        + override,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="require the native pyowl-core backend"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_native_core_on_musllinux(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    default, manylinux, musllinux = text.split("[[tool.cibuildwheel.overrides]]")
+    pyproject.write_text(
+        default
+        + "[[tool.cibuildwheel.overrides]]"
+        + manylinux
+        + "[[tool.cibuildwheel.overrides]]"
+        + musllinux.replace("--core-backend python", "--core-backend native"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="old-glibc and musllinux builders must require pure"):
+        build_provenance(tmp_path)
+
+
+def test_build_provenance_rejects_unforced_pure_core_wheelhouse(tmp_path: Path) -> None:
+    _copy_build_inputs(tmp_path)
+    workflow = tmp_path / ".github/workflows/wheels.yml"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8").replace(
+            '--platform any "pyowl-core==0.1.1"',
+            '"pyowl-core==0.1.1"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="force and require pure pyowl-core"):
         build_provenance(tmp_path)
 
 

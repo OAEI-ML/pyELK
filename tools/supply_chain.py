@@ -75,6 +75,8 @@ _BUILD_INPUT_PATHS = (
     "rust/pyelk-pyo3/build.rs",
     "setup.py",
     "tests/backends/test_rust_core.py",
+    "tests/packaging/install_artifact.py",
+    "tests/packaging/installed_smoke.py",
     "tests/packaging/run_installed_wp14_contract.py",
     "tests/packaging/run_installed_suite.py",
     "tools/check_artifact.py",
@@ -83,6 +85,26 @@ _BUILD_INPUT_PATHS = (
 )
 _INSTALLED_NATIVE_CONTRACT_COMMAND = (
     "python {project}/tests/packaging/run_installed_wp14_contract.py"
+)
+_INSTALLED_NATIVE_CORE_COMMANDS = (
+    (
+        "python {project}/tests/packaging/run_installed_suite.py "
+        "--backend rust --core-backend native --expected-ingestion encoded-native"
+    ),
+    (
+        "python {project}/tests/packaging/run_installed_suite.py "
+        "--backend python --core-backend native --expected-ingestion scalar-python"
+    ),
+)
+_INSTALLED_PURE_CORE_COMMANDS = (
+    (
+        "python {project}/tests/packaging/run_installed_suite.py "
+        "--backend rust --core-backend python --expected-ingestion encoded-native"
+    ),
+    (
+        "python {project}/tests/packaging/run_installed_suite.py "
+        "--backend python --core-backend python --expected-ingestion scalar-python"
+    ),
 )
 _INSTALLED_NATIVE_CONTRACTS = (
     "tests/backends/test_rust_core.py::test_native_handshake_and_defensive_decoder",
@@ -947,13 +969,79 @@ def build_provenance(root: Path) -> dict[str, Any]:
     if not isinstance(test_command, str):
         raise ValueError("build provenance: cibuildwheel test-command must be a literal string")
     commands = tuple(command.strip() for command in test_command.split("&&"))
-    if (
-        commands.count(_INSTALLED_NATIVE_CONTRACT_COMMAND) != 1
-        or commands[0] != _INSTALLED_NATIVE_CONTRACT_COMMAND
+    if commands != (_INSTALLED_NATIVE_CONTRACT_COMMAND, *_INSTALLED_NATIVE_CORE_COMMANDS):
+        raise ValueError(
+            "build provenance: native wheels must run the bounded installed WP14 contract "
+            "first and require the native pyowl-core backend"
+        )
+    overrides = cibuildwheel.get("overrides") if isinstance(cibuildwheel, dict) else None
+    if not isinstance(overrides, list) or len(overrides) != 2:
+        raise ValueError(
+            "build provenance: expected manylinux and musllinux cibuildwheel overrides"
+        )
+    override_commands: dict[str, tuple[str, ...]] = {}
+    for override in overrides:
+        selector = override.get("select") if isinstance(override, dict) else None
+        override_test_command = (
+            override.get("test-command") if isinstance(override, dict) else None
+        )
+        if not isinstance(selector, str) or not isinstance(override_test_command, str):
+            raise ValueError(
+                "build provenance: cibuildwheel core-backend overrides must be literal"
+            )
+        override_commands[selector] = tuple(
+            command.strip() for command in override_test_command.split("&&")
+        )
+    if set(override_commands) != {"*-manylinux*", "*-musllinux*"} or any(
+        value != (_INSTALLED_NATIVE_CONTRACT_COMMAND, *_INSTALLED_PURE_CORE_COMMANDS)
+        for value in override_commands.values()
     ):
         raise ValueError(
-            "build provenance: native wheels must run the bounded installed WP14 contract first"
+            "build provenance: old-glibc and musllinux builders must require pure pyowl-core"
         )
+    try:
+        compiler_free = wheels.split("  compiler-free-installed:", maxsplit=1)[1].split(
+            "  native-wheels:",
+            maxsplit=1,
+        )[0]
+        native_wheels = wheels.split("  native-wheels:", maxsplit=1)[1].split(
+            "  abi3-supported-cpython:",
+            maxsplit=1,
+        )[0]
+        abi3 = wheels.split("  abi3-supported-cpython:", maxsplit=1)[1].split(
+            "  musllinux-supported-cpython:",
+            maxsplit=1,
+        )[0]
+        musllinux = wheels.split("  musllinux-supported-cpython:", maxsplit=1)[1].split(
+            "  artifact-consistency:",
+            maxsplit=1,
+        )[0]
+    except (IndexError, ValueError) as error:
+        raise ValueError("build provenance: installed-wheel job boundaries are invalid") from error
+    if (
+        "--platform any" not in compiler_free
+        or compiler_free.count("--expected-core-backend python") != 2
+        or "--expected-core-backend native" in compiler_free
+    ):
+        raise ValueError(
+            "build provenance: compiler-free wheels must force and require pure pyowl-core"
+        )
+    if (
+        native_wheels.count("--core-backend native") != 2
+        or "--core-backend python" in native_wheels
+        or abi3.count("--expected-core-backend native") != 2
+        or abi3.count("--expected-core-backend python") != 2
+        or "--platform any" not in abi3
+    ):
+        raise ValueError(
+            "build provenance: approved native platforms must require native pyowl-core "
+            "and exercise the universal-core fallback"
+        )
+    if (
+        musllinux.count("--expected-core-backend python") != 2
+        or "--expected-core-backend native" in musllinux
+    ):
+        raise ValueError("build provenance: musllinux must require pure pyowl-core")
     contract_script = bound_text("tests/packaging/run_installed_wp14_contract.py")
     if _literal_string_tuple(contract_script, "CONTRACT_NODE_IDS") != _INSTALLED_NATIVE_CONTRACTS:
         raise ValueError(
@@ -1093,6 +1181,13 @@ def build_provenance(root: Path) -> dict[str, Any]:
             "pyowl_core": dict(sorted(tested_core.items())),
         },
         "encoded_ingestion_contract": dict(sorted(encoded_ingestion.items())),
+        "installed_core_backend_contracts": {
+            "approved_native_hosted_lanes": "native",
+            "compiler_free_forced_any": "python",
+            "manylinux2014_build_container": "python",
+            "musllinux": "python",
+            "native_wheel_universal_core_fallback": "python",
+        },
         "installed_native_contracts": [
             {
                 "capability_state": "advertised",
