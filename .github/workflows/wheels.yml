@@ -286,7 +286,7 @@ jobs:
         run: |
           wheel="$(find native -name "$WHEEL_PATTERN" -print -quit)"
           test -n "$wheel"
-          python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend rust --expected-core-backend python --expected-ingestion scalar-wire
+          python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend rust --expected-core-backend python --expected-ingestion encoded-native
           python tests/packaging/install_artifact.py "$wheel" --python "$(command -v python)" --wheelhouse wheelhouse --expected-backend python --expected-core-backend python --expected-ingestion scalar-python --force-python
 
   musllinux-supported-cpython:
@@ -341,7 +341,7 @@ jobs:
           docker run --rm -v "$PWD:/project" -w /tmp "$PYTHON_IMAGE" sh -ec '
             python -m venv /tmp/venv
             /tmp/venv/bin/python -m pip install --no-index --find-links /project/wheelhouse /project/native/*musllinux*'"$ARCH"'.whl
-            /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend rust --expected-core-backend python --expected-ingestion scalar-wire
+            /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend rust --expected-core-backend python --expected-ingestion encoded-native
             /tmp/venv/bin/python /project/tests/packaging/installed_smoke.py --expected-backend python --expected-core-backend python --expected-ingestion scalar-python --force-python
           '
 

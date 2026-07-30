@@ -86,6 +86,13 @@ def test_every_packaging_lane_names_the_expected_core_and_ingestion_paths() -> N
     assert "--expected-ingestion scalar-python" in pyproject
 
 
+def test_released_core_abi3_lanes_require_encoded_native_ingestion() -> None:
+    workflow = (ROOT / ".github/workflows/wheels.yml").read_text(encoding="utf-8")
+
+    assert "--expected-ingestion scalar-wire" not in workflow
+    assert workflow.count("--expected-ingestion encoded-native") >= 2
+
+
 def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> None:
     command = "python {project}/tests/packaging/run_installed_wp14_contract.py"
     nodes = (
