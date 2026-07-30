@@ -18,7 +18,6 @@ import argparse
 import gc
 import json
 import platform
-import resource
 import statistics
 import sys
 import time
@@ -126,7 +125,11 @@ def _assert_result(
         raise AssertionError("scheduler attempted duplicate storage")
 
 
-def _peak_rss_bytes() -> int:
+def _peak_rss_bytes() -> int | None:
+    try:
+        import resource
+    except ImportError:
+        return None
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(peak if sys.platform == "darwin" else peak * 1024)
 

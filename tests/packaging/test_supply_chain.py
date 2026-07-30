@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -364,6 +365,10 @@ def test_build_provenance_parses_the_exact_hashed_payload(
     }
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows prevents replacing an open file, which precludes this path-swap attack",
+)
 def test_build_provenance_rejects_path_replacement_during_capture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

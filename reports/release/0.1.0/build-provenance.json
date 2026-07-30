@@ -9,6 +9,10 @@
     "schema_version": 1
   },
   "inputs": {
+    ".gitattributes": {
+      "bytes": 19,
+      "sha256": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
+    },
     ".github/workflows/release.yml": {
       "bytes": 3077,
       "sha256": "3b1c7660321cc2b5f7d299e881ecf4d0160973ce675105a4e49367aa0f7faca4"
@@ -66,8 +70,12 @@
       "sha256": "a5beffcabc599661d9bffe3ddb74396d80748720aaae237fdcb30a8255b76153"
     },
     "tests/backends/test_rust_core.py": {
-      "bytes": 96475,
-      "sha256": "69aaa1cd1d205ce13b557f59e98c18881b1ca4882d5f7e8e30249509c40d97bf"
+      "bytes": 96620,
+      "sha256": "0485a7034d6a4f2184a26e9659dca0a0080d4912cd2b25e6a969c2c3dfb5cd7d"
+    },
+    "tests/packaging/run_installed_suite.py": {
+      "bytes": 3271,
+      "sha256": "85335462ab143d662110869d2fff9a953b75f04c4b5fbcfff2965713a332dd84"
     },
     "tests/packaging/run_installed_wp14_contract.py": {
       "bytes": 2292,
@@ -82,8 +90,8 @@
       "sha256": "8308c7e02cc6925575190ad50a68250d6bd4f53fe37038301170e9a41b6f5385"
     },
     "tools/supply_chain.py": {
-      "bytes": 48074,
-      "sha256": "91ab50ca13ee0c791d8c7ccffe5e55ca58d681e2c1c559d49b2bdd345d6bf525"
+      "bytes": 48145,
+      "sha256": "bd93085c692de8fd06b8d761e59e3f98342d3c8ca7edbbe5017d58c1c9cef781"
     }
   },
   "installed_native_contracts": [

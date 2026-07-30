@@ -59,6 +59,7 @@ _ALLOWED_SELECTED_LICENSES = {
     "MIT",
 }
 _BUILD_INPUT_PATHS = (
+    ".gitattributes",
     ".github/workflows/release.yml",
     ".github/workflows/wheels.yml",
     "Cargo.lock",
@@ -75,6 +76,7 @@ _BUILD_INPUT_PATHS = (
     "setup.py",
     "tests/backends/test_rust_core.py",
     "tests/packaging/run_installed_wp14_contract.py",
+    "tests/packaging/run_installed_suite.py",
     "tools/check_artifact.py",
     "tools/release_manifest.py",
     "tools/supply_chain.py",
@@ -376,7 +378,7 @@ def validate_inventory(root: Path) -> list[str]:
     try:
         inventory = load_inventory(inventory_path)
     except (KeyError, OSError, TypeError, ValueError) as error:
-        return [f"inventory: cannot load {inventory_path.relative_to(root)}: {error}"]
+        return [f"inventory: cannot load {inventory_path.relative_to(root).as_posix()}: {error}"]
     violations: list[str] = []
     violations.extend(validate_notice(root, inventory))
     if inventory.schema != 1:
@@ -999,8 +1001,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
     if (
         apk_package.fullmatch(musllinux_rust) is None
         or apk_package.fullmatch(musllinux_cargo) is None
-        or 'apk add --no-cache "rust=$musllinux_rust" "cargo=$musllinux_cargo"'
-        not in bootstrap
+        or 'apk add --no-cache "rust=$musllinux_rust" "cargo=$musllinux_cargo"' not in bootstrap
     ):
         raise ValueError(
             "build provenance: musllinux Rust and Cargo packages must be exact apk pins"

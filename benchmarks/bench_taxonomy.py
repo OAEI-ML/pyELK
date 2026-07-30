@@ -18,7 +18,6 @@ import argparse
 import gc
 import json
 import platform
-import resource
 import statistics
 import sys
 import time
@@ -74,7 +73,11 @@ def _assert_total_order(result: ReducedGraph, size: int) -> None:
         raise AssertionError("total-order reduction did not produce its unique chain cover")
 
 
-def _peak_rss_bytes() -> int:
+def _peak_rss_bytes() -> int | None:
+    try:
+        import resource
+    except ImportError:
+        return None
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(peak if sys.platform == "darwin" else peak * 1024)
 

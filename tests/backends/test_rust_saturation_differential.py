@@ -8,6 +8,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from hashlib import blake2b
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 from types import ModuleType
 
@@ -46,8 +47,15 @@ def _native_library() -> Path:
 
 @pytest.fixture(scope="session")
 def native_differential_module(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ModuleType]:
-    destination = tmp_path_factory.mktemp("pyelk-native-differential") / "_native.so"
-    shutil.copy2(_native_library(), destination)
+    source = _native_library()
+    root = Path(__file__).parents[2].resolve()
+    if root in source.parents:
+        destination = (
+            tmp_path_factory.mktemp("pyelk-native-differential") / f"_native{EXTENSION_SUFFIXES[0]}"
+        )
+        shutil.copy2(source, destination)
+    else:
+        destination = source
     spec = importlib.util.spec_from_file_location("pyelk._native", destination)
     if spec is None or spec.loader is None:
         pytest.fail(f"could not create an import spec for {destination}")

@@ -106,8 +106,13 @@ def _native_library() -> Path:
 def native_module(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ModuleType]:
     """Load the workspace extension without installing it into the source tree."""
 
-    destination = tmp_path_factory.mktemp("pyelk-native") / f"_native{EXTENSION_SUFFIXES[0]}"
-    shutil.copy2(_native_library(), destination)
+    source = _native_library()
+    root = Path(__file__).parents[2].resolve()
+    if root in source.parents:
+        destination = tmp_path_factory.mktemp("pyelk-native") / f"_native{EXTENSION_SUFFIXES[0]}"
+        shutil.copy2(source, destination)
+    else:
+        destination = source
     spec = importlib.util.spec_from_file_location("pyelk._native", destination)
     if spec is None or spec.loader is None:
         pytest.fail(f"could not create an import spec for {destination}")
