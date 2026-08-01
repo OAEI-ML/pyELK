@@ -15,8 +15,9 @@ requires Java.
 
 ## Classify an ontology
 
-`Reasoner` accepts a path, bytes, a caller-owned binary stream, or an existing
-`pyowl_core.OntologyView`:
+`Reasoner` accepts a path, bytes, a caller-owned text or binary stream (pass a
+stable `document_iri` with it), an `OntologyDocument`, an existing
+`pyowl_core.OntologyView`, or a `SnapshotProvider`:
 
 ```python
 import pyowl_core as owl
@@ -81,3 +82,10 @@ with Reasoner(view) as reasoner:
 
 Configure import resolution while loading the view. Ignored or unresolved
 imports are never silently described as complete reasoning.
+
+## Next steps
+
+The [API reference](api-reference.md) covers every public operation, the result
+and taxonomy values, diagnostics, and the exception hierarchy. The
+[architecture overview](architecture.md) explains how inputs are compiled and
+saturated before answers are produced.
