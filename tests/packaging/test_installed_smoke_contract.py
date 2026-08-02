@@ -169,7 +169,7 @@ def test_native_wheel_runs_bounded_wp14_encoded_public_dispatch_contract() -> No
     )
     assert "source checkout imported" in runner_source
     assert "installed WP14 contract attempted network access" in runner_source
-    assert '"pyowl-core/structural-columns": 1' in contract
+    assert '"pyowl-core/structural-columns": 2' in contract
     assert 'diagnostics["ingestion_path"] == "encoded-native"' in contract
     for relative in (
         '"tests/backends/test_rust_core.py"',

@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 
 PROJECT_NAME = "pyelk-reasoner"
-CORE_REQUIREMENT = frozenset({">=0.1", "<0.2"})
+CORE_REQUIREMENT = frozenset({">=0.2", "<0.3"})
 ROOT = Path(__file__).resolve().parents[1]
 LICENSE_EXPRESSION = "Apache-2.0"
 _LICENSE_PATHS = (
@@ -447,7 +447,7 @@ def _audit_metadata(message: Message) -> tuple[str, str, str]:
     actual = _requirement_specifiers(core_requirements[0])
     if actual != CORE_REQUIREMENT:
         raise AuditError(
-            "pyowl-core requirement must be exactly pyowl-core>=0.1,<0.2; "
+            "pyowl-core requirement must be exactly pyowl-core>=0.2,<0.3; "
             f"found {core_requirements[0]!r}"
         )
     return name, version, requires_python

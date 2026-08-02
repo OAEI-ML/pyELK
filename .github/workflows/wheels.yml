@@ -45,7 +45,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: >-
           python -m tools.supply_chain --check
-          --output-dir reports/release/0.1.1
+          --output-dir reports/release/0.2.0
 
       - name: Build the reproducible sdist and explicit zero-extension wheel twice
         env:
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: supply-chain-evidence
-          path: reports/release/0.1.1/*.json
+          path: reports/release/0.2.0/*.json
           if-no-files-found: error
           retention-days: 7
 
@@ -106,7 +106,7 @@ jobs:
           python -m pip download --dest wheelhouse --only-binary=:all: \
             "setuptools>=77,<84" setuptools-rust==1.13.0 "wheel>=0.45,<0.47"
           python -m pip download --dest wheelhouse --only-binary=:all: \
-            --platform any "pyowl-core==0.1.1"
+            --platform any "pyowl-core==0.2.0"
 
       - name: Install universal wheel with no compiler or Java
         run: >-
@@ -278,13 +278,13 @@ jobs:
         shell: bash
         run: >-
           python -m pip download --dest wheelhouse --only-binary=:all:
-          "pyowl-core==0.1.1"
+          "pyowl-core==0.2.0"
 
       - name: Prepare universal-core fallback wheelhouse
         shell: bash
         run: >-
           python -m pip download --dest pure-core-wheelhouse --only-binary=:all:
-          --platform any "pyowl-core==0.1.1"
+          --platform any "pyowl-core==0.2.0"
 
       - name: Exercise ABI3 wheel with native and universal core
         shell: bash
@@ -340,7 +340,7 @@ jobs:
       - name: Download universal runtime dependency
         run: >-
           python -m pip download --dest wheelhouse --only-binary=:all:
-          --platform any "pyowl-core==0.1.1"
+          --platform any "pyowl-core==0.2.0"
 
       - name: Exercise musllinux wheel on native hardware
         env:
