@@ -114,9 +114,9 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["tested_runtime"] == {
         "pyowl_core": {
-            "commit": "422a63363e0b67857eebfca6dd67595ebaad7a09",
+            "commit": "85415249251b84474735a3581b94bb1d881bb902",
             "repository": "https://github.com/OAEI-ML/pyOWLCore",
-            "tree": "56dc47d73870a786a1248d89bf10a89155fcffff",
+            "tree": "724396db74844daa7a3453ea28449b076bc7aacf",
             "version": "0.2.0",
         }
     }
@@ -129,8 +129,8 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["native_ontology_redesign"] == {
         "classification": "model-schema-2-component-scoped-anonymous-redesign",
-        "commit": "422a63363e0b67857eebfca6dd67595ebaad7a09",
-        "tree": "56dc47d73870a786a1248d89bf10a89155fcffff",
+        "commit": "85415249251b84474735a3581b94bb1d881bb902",
+        "tree": "724396db74844daa7a3453ea28449b076bc7aacf",
         "workpackages": [
             "WP14",
             "WP15",
@@ -339,7 +339,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     compatibility = tmp_path / "release" / "core-compatibility.json"
     compatibility.write_text(
         compatibility.read_text(encoding="utf-8").replace(
-            "422a63363e0b67857eebfca6dd67595ebaad7a09",
+            "85415249251b84474735a3581b94bb1d881bb902",
             "c3e7893b0609fcd7df390375267a00356f09cb22",
         ),
         encoding="utf-8",
@@ -353,7 +353,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     ("bound_value", "replacement"),
     [
         (
-            "56dc47d73870a786a1248d89bf10a89155fcffff",
+            "724396db74844daa7a3453ea28449b076bc7aacf",
             "22cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
         ),
         (
