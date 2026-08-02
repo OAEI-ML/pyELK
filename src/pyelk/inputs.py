@@ -28,7 +28,7 @@ from pyowl_core import (
 from .core import CapturedOntology, _require_compatible_view, capture_compatible_view
 
 # These aliases intentionally preserve core identity, signatures, exceptions, and future
-# compatible 0.1 implementation fixes.  In particular, load_snapshot continues to reject
+# compatible 0.2 implementation fixes.  In particular, load_snapshot continues to reject
 # view/provider input rather than materialising it into a concrete snapshot.
 load_snapshot = _core.load_snapshot
 coerce_snapshot = _core.coerce_snapshot

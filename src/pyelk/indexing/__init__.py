@@ -7,6 +7,7 @@ to import the OWL model dependency merely to decode backend data.
 from typing import TYPE_CHECKING, Any
 
 from pyelk.indexing.encoded import (
+    ENCODED_MODEL_SCHEMA,
     ENCODED_SCHEMA_NAME,
     ENCODED_SCHEMA_VERSION,
     EncodedStructuralHandoff,
@@ -82,6 +83,7 @@ __all__ = [
     "COMPILER_SCHEMA_VERSION",
     "DEFAULT_MAX_NODES_PER_AXIOM",
     "ELK_COMPATIBILITY_ID",
+    "ENCODED_MODEL_SCHEMA",
     "ENCODED_SCHEMA_NAME",
     "ENCODED_SCHEMA_VERSION",
     "FEATURE_VECTOR_LENGTH",

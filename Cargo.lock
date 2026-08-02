@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "pyelk-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "blake2",
  "criterion",
@@ -408,7 +408,7 @@ dependencies = [
 
 [[package]]
 name = "pyelk-pyo3"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "blake2",
  "pyelk-core",

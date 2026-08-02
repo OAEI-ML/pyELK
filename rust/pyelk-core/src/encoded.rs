@@ -1,4 +1,4 @@
-//! Defensive structural validation for pyowl-core encoded-view schema 1.
+//! Defensive structural validation for pyowl-core encoded-view schema 2.
 //!
 //! This module borrows the eleven public columns directly.  It establishes the
 //! shape, bounds, scalar arena, root-category, canonical dense ordering,
@@ -19,10 +19,10 @@ use crate::ir::{
     Occurrence, Ontology,
 };
 
-/// Frozen SHA-256 of the canonical pyowl-core structural-columns v1 descriptor.
-pub const DESCRIPTOR_SHA256_V1: [u8; 32] = [
-    0x9a, 0xd2, 0x9d, 0xb6, 0xa7, 0xe6, 0x16, 0xf6, 0x5c, 0xea, 0x29, 0x57, 0xbc, 0x5b, 0xa8, 0xd1,
-    0xf9, 0xb9, 0x9e, 0xf0, 0xeb, 0x1f, 0xe1, 0x43, 0x2c, 0x09, 0xbe, 0x25, 0x78, 0x62, 0x67, 0xb5,
+/// Frozen SHA-256 of the canonical pyowl-core structural-columns v2 descriptor.
+pub const DESCRIPTOR_SHA256_V2: [u8; 32] = [
+    0xc5, 0x1d, 0x0e, 0xb7, 0xec, 0xf6, 0xf2, 0x9a, 0xd3, 0x49, 0x5f, 0xe7, 0xc4, 0x0a, 0x2e, 0xa6,
+    0x74, 0x1c, 0xf0, 0x3a, 0x7c, 0xf1, 0x94, 0xd5, 0x14, 0x17, 0xbb, 0x81, 0x0d, 0xf9, 0x0f, 0x51,
 ];
 
 const ROOT_ONTOLOGY_ANNOTATION: u8 = 1;
@@ -172,7 +172,7 @@ macro_rules! constructor_role_ledger {
     };
 }
 
-// Generated from pyowl-core model schema 1 constructor annotations and the
+// Generated from pyowl-core model schema 2 constructor annotations and the
 // frozen structural-columns descriptor. One row is retained for every tag so
 // an arity-preserving kind or node-category substitution cannot cross the ABI.
 constructor_role_ledger! {
@@ -567,7 +567,7 @@ impl DfsFrame {
     }
 }
 
-/// Validate structural-columns v1 before the private compiler consumes it.
+/// Validate structural-columns v2 before the private compiler consumes it.
 pub fn validate_columns<B: ByteSource>(
     columns: EncodedColumns<B>,
     limits: EncodedLimits,
@@ -774,7 +774,7 @@ fn validate_columns_with_lengths<B: ByteSource>(
     }
 
     // Dense-node validation below proves that the one-based IDs are ranks in
-    // canonical-model-v1 byte order, making this tuple comparison equivalent
+    // canonical-model-v2 byte order, making this tuple comparison equivalent
     // to the descriptor's `(root kind, canonical bytes)` ordering rule.
     let mut previous_root = None;
     for root in 0..root_count {
@@ -860,7 +860,7 @@ fn validate_literal_constraints<B: ByteSource>(
     }
     if datatype.iri == RDF_LANG_STRING_IRI {
         return Err(CoreError::protocol(
-            "encoded rdf:langString literal is not canonical model schema 1",
+            "encoded rdf:langString literal is not canonical model schema 2",
         ));
     }
     if let Some(language) = optional_text_field(node, 2, columns)? {
@@ -1051,8 +1051,8 @@ fn valid_language_tag(language: &str) -> bool {
 /// Compile the installed encoded-ontology slice with strict unsupported handling.
 ///
 /// The compatibility wrapper binds the caller-provided private source fingerprint after direct
-/// compilation. Capability advertisement remains disabled until the complete schema slice and
-/// segment/lifecycle/performance gates pass.
+/// compilation. The PyO3 boundary advertises this compiler only after exact schema-2 negotiation;
+/// envelope, segment, and owner-lifetime validation happen before this entry point.
 ///
 /// `source_fingerprint` is already bound by the caller to the core snapshot and compiler options;
 /// the structural columns intentionally do not carry pyELK's private cache-key material.
@@ -1902,7 +1902,7 @@ fn hash_segmented_logical<B: ByteSource>(
     max_work: u64,
 ) -> CoreResult<[u8; 32]> {
     let mut digest = Sha256::new();
-    digest.update(b"pyowl-core:snapshot-logical:v1\0");
+    digest.update(b"pyowl-core:snapshot-logical:v2\0");
     digest.update(b"datatype-policy:owl2-v1\0");
     hash_varint(
         &mut digest,
@@ -1931,7 +1931,7 @@ fn hash_segmented_signature<B: ByteSource>(
     max_work: u64,
 ) -> CoreResult<[u8; 32]> {
     let mut digest = Sha256::new();
-    digest.update(b"pyowl-core:snapshot-signature:v1\0");
+    digest.update(b"pyowl-core:snapshot-signature:v2\0");
     digest.update([1]);
     hash_varint(
         &mut digest,
@@ -6104,7 +6104,7 @@ fn entity_kind_scalar<B: ByteSource>(
         }
     }
     Err(CoreError::protocol(
-        "encoded entity kind is not a model-schema-1 value",
+        "encoded entity kind is not a model-schema-2 value",
     ))
 }
 
@@ -6212,7 +6212,7 @@ fn validate_leaf_component<B: ByteSource>(
         }
         COMPONENT_SET | COMPONENT_SEQUENCE => {
             return Err(CoreError::protocol(
-                "encoded nested collection item is not supported by schema 1",
+                "encoded nested collection item is not supported by schema 2",
             ));
         }
         _ => return Err(CoreError::protocol("unknown encoded component kind")),
@@ -7534,7 +7534,7 @@ mod tests {
         malformed.scalar_bytes[5..10].copy_from_slice(b"other");
         assert!(matches!(
             validate_columns(malformed.borrowed(), EncodedLimits::default()),
-            Err(CoreError::Protocol(message)) if message.contains("model-schema-1")
+            Err(CoreError::Protocol(message)) if message.contains("model-schema-2")
         ));
     }
 
@@ -7674,7 +7674,7 @@ mod tests {
     }
 
     #[test]
-    fn dense_node_and_root_order_follow_canonical_model_v1_bytes() {
+    fn dense_node_and_root_order_follow_canonical_model_v2_bytes() {
         validate_columns(equivalent_classes().borrowed(), EncodedLimits::default()).unwrap();
         validate_columns(two_declarations().borrowed(), EncodedLimits::default()).unwrap();
         validate_columns(equivalent_class_pair().borrowed(), EncodedLimits::default()).unwrap();
@@ -8319,14 +8319,14 @@ mod tests {
             actual.semantic_fingerprints,
             Some(EncodedSemanticFingerprints {
                 logical: [
-                    0xdb, 0x90, 0x13, 0x21, 0x4f, 0xd3, 0xb9, 0x29, 0xe1, 0xb4, 0xd2, 0xef, 0xea,
-                    0x6b, 0x3f, 0x02, 0xd5, 0x10, 0x70, 0x84, 0x2f, 0x47, 0x5d, 0x7b, 0xb6, 0x9a,
-                    0xe8, 0x4e, 0x7d, 0xb5, 0xdb, 0x15,
+                    0x82, 0x81, 0x93, 0x67, 0x66, 0x43, 0x38, 0x67, 0x54, 0x5c, 0xcb, 0x70, 0x7d,
+                    0x10, 0x7e, 0xc4, 0xb8, 0x05, 0x97, 0x50, 0x65, 0x8b, 0x40, 0xd3, 0x06, 0x6e,
+                    0x1f, 0x19, 0x99, 0x73, 0xb6, 0x86,
                 ],
                 signature: [
-                    0x54, 0x44, 0x78, 0xa8, 0x3a, 0xd3, 0x74, 0x85, 0x86, 0xf3, 0x09, 0x88, 0x16,
-                    0x16, 0x1c, 0x01, 0x43, 0xb7, 0x30, 0x15, 0x00, 0xe2, 0x9c, 0x2c, 0x53, 0xd0,
-                    0xcf, 0x73, 0x1f, 0x5a, 0x78, 0x50,
+                    0x03, 0x1c, 0x08, 0x12, 0xa6, 0x47, 0xd8, 0x95, 0xd8, 0x8b, 0x29, 0x74, 0x9a,
+                    0x34, 0xb6, 0x43, 0x07, 0x60, 0xc6, 0xa4, 0xa8, 0x46, 0x79, 0x9e, 0x66, 0xfb,
+                    0x80, 0xeb, 0x50, 0x2d, 0x79, 0x40,
                 ],
             })
         );
@@ -8362,7 +8362,7 @@ mod tests {
     }
 
     #[test]
-    fn segmented_semantic_fingerprints_match_core_canonical_model_v1() {
+    fn segmented_semantic_fingerprints_match_core_canonical_model_v2() {
         let source = named_subclass();
         let empty = &[][..];
         let compilation = compile_encoded_segments_with_policy(
@@ -8380,21 +8380,21 @@ mod tests {
             compilation.semantic_fingerprints,
             Some(EncodedSemanticFingerprints {
                 logical: [
-                    0xbe, 0xaf, 0x86, 0x60, 0x68, 0xbd, 0x31, 0x73, 0x49, 0xcf, 0xa5, 0x27, 0x99,
-                    0x6b, 0x80, 0x01, 0xbf, 0x82, 0xb0, 0xd2, 0xb2, 0x05, 0xd6, 0x57, 0x9a, 0x71,
-                    0x09, 0x53, 0x51, 0x1f, 0x8d, 0x91,
+                    0x10, 0x46, 0x23, 0x53, 0xc5, 0x01, 0xb7, 0x62, 0xb7, 0x1b, 0x88, 0x76, 0x6b,
+                    0x45, 0x79, 0x23, 0xa5, 0x7c, 0x3d, 0xc3, 0x10, 0x33, 0xe9, 0x67, 0xc4, 0x50,
+                    0xab, 0xa6, 0x28, 0xfd, 0x31, 0x3d,
                 ],
                 signature: [
-                    0x54, 0x44, 0x78, 0xa8, 0x3a, 0xd3, 0x74, 0x85, 0x86, 0xf3, 0x09, 0x88, 0x16,
-                    0x16, 0x1c, 0x01, 0x43, 0xb7, 0x30, 0x15, 0x00, 0xe2, 0x9c, 0x2c, 0x53, 0xd0,
-                    0xcf, 0x73, 0x1f, 0x5a, 0x78, 0x50,
+                    0x03, 0x1c, 0x08, 0x12, 0xa6, 0x47, 0xd8, 0x95, 0xd8, 0x8b, 0x29, 0x74, 0x9a,
+                    0x34, 0xb6, 0x43, 0x07, 0x60, 0xc6, 0xa4, 0xa8, 0x46, 0x79, 0x9e, 0x66, 0xfb,
+                    0x80, 0xeb, 0x50, 0x2d, 0x79, 0x40,
                 ],
             })
         );
     }
 
     #[test]
-    fn segmented_extension_fingerprints_match_core_canonical_model_v1() {
+    fn segmented_extension_fingerprints_match_core_canonical_model_v2() {
         let source = swrl_rule();
         let empty = &[][..];
         let compilation = compile_encoded_segments_with_policy(
@@ -8412,14 +8412,14 @@ mod tests {
             compilation.semantic_fingerprints,
             Some(EncodedSemanticFingerprints {
                 logical: [
-                    0xfe, 0x11, 0x56, 0xfa, 0x19, 0x08, 0xac, 0x30, 0xcb, 0x43, 0xc7, 0xeb, 0xfb,
-                    0x9f, 0xa4, 0x62, 0xfc, 0xca, 0xa6, 0x25, 0xb5, 0xaf, 0xef, 0x14, 0xa7, 0x58,
-                    0x1a, 0x92, 0xa0, 0x8f, 0x13, 0x41,
+                    0x6b, 0xa2, 0x2d, 0x57, 0xb1, 0xad, 0xbf, 0x2f, 0xd1, 0x08, 0xe4, 0xdd, 0xa1,
+                    0x61, 0xf8, 0xa7, 0x38, 0x33, 0x69, 0x4e, 0x64, 0x8b, 0x0c, 0x2e, 0x75, 0x05,
+                    0x32, 0xc3, 0xe7, 0x19, 0x02, 0x7c,
                 ],
                 signature: [
-                    0x09, 0x5e, 0x76, 0xc7, 0x1f, 0x21, 0xf8, 0x01, 0xed, 0x07, 0x0a, 0x32, 0x56,
-                    0x90, 0xef, 0x18, 0xc5, 0x3e, 0xc4, 0x2e, 0x2e, 0x89, 0x78, 0x00, 0xe4, 0xc7,
-                    0x17, 0x0f, 0x95, 0xc2, 0x2e, 0xd2,
+                    0x8e, 0x4d, 0x29, 0x5c, 0x35, 0x34, 0xa5, 0x31, 0x65, 0x84, 0xa9, 0x27, 0x2b,
+                    0xaa, 0x46, 0x05, 0x98, 0x1c, 0xbf, 0x7f, 0xa9, 0x73, 0x21, 0x03, 0x8e, 0x51,
+                    0x8a, 0x79, 0x1d, 0x39, 0x51, 0x49,
                 ],
             })
         );

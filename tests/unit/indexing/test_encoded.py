@@ -6,11 +6,12 @@ from typing import Any, TypeVar, cast
 
 import pyowl_core as owl
 import pytest
-from pyowl_core.backends.native_views import ENCODED_STRUCTURAL_DESCRIPTOR_V1
+from pyowl_core.backends.native_views import ENCODED_STRUCTURAL_DESCRIPTOR_V2
 
 from pyelk.indexing.encoded import (
     ENCODED_BUFFER_WIDTHS,
     ENCODED_DESCRIPTOR_SHA256,
+    ENCODED_MODEL_SCHEMA,
     ENCODED_SCHEMA_NAME,
     ENCODED_SCHEMA_VERSION,
     negotiate_encoded_structural_view,
@@ -31,31 +32,33 @@ class _EncodedStructuralView:
     def __init__(self, owner: _View) -> None:
         self.schema_name = ENCODED_SCHEMA_NAME
         self.schema_version = ENCODED_SCHEMA_VERSION
-        self.model_schema = 1
+        self.model_schema = ENCODED_MODEL_SCHEMA
         self.owner = owner
         self.scope = owl.AxiomScope.CLOSURE
-        self.descriptor = ENCODED_STRUCTURAL_DESCRIPTOR_V1
+        self.descriptor = ENCODED_STRUCTURAL_DESCRIPTOR_V2
         self.descriptor_digest = sha256(self.descriptor).digest()
         self.buffers = {
             name: memoryview(b"\x00" * (8 if name == "node_field_offsets" else 0))
             for name in ENCODED_BUFFER_WIDTHS
         }
         self.segments: tuple[object, ...] = ()
-        self.structural_fingerprint = owl.Fingerprint("sha256", 1, b"e" * 32)
+        self.structural_fingerprint = owl.Fingerprint("sha256", 2, b"e" * 32)
 
 
 class _View:
     def __init__(self, *, advertise: bool = True) -> None:
         self.capabilities = owl.CoreCapabilities(
             adapter_protocol=1,
-            model_schema=1,
-            wire_format=(1, 0),
+            model_schema=2,
+            wire_format=(1, 2),
             features=_FEATURES,
-            encoded_view_schemas=({ENCODED_SCHEMA_NAME: 1} if advertise else {}),
+            encoded_view_schemas=(
+                {ENCODED_SCHEMA_NAME: ENCODED_SCHEMA_VERSION} if advertise else {}
+            ),
         )
-        self.structural_fingerprint = owl.Fingerprint("sha256", 1, b"s" * 32)
-        self.logical_fingerprint = owl.Fingerprint("sha256", 1, b"l" * 32)
-        self.signature_fingerprint = owl.Fingerprint("sha256", 1, b"g" * 32)
+        self.structural_fingerprint = owl.Fingerprint("sha256", 2, b"s" * 32)
+        self.logical_fingerprint = owl.Fingerprint("sha256", 2, b"l" * 32)
+        self.signature_fingerprint = owl.Fingerprint("sha256", 2, b"g" * 32)
         self.report = object()
         self.origin_index = owl.OriginIndex()
         self.is_complete = True
@@ -129,6 +132,25 @@ def test_capability_absence_is_a_scalar_fallback_result(
     assert view.requests == []
 
 
+def test_older_advertised_schema_selects_scalar_before_acquisition() -> None:
+    view = _View()
+    view.capabilities = owl.CoreCapabilities(
+        adapter_protocol=1,
+        model_schema=2,
+        wire_format=(1, 2),
+        features=_FEATURES,
+        encoded_view_schemas={ENCODED_SCHEMA_NAME: 1},
+    )
+
+    result = negotiate_encoded_structural_view(_as_view(view))
+
+    assert result.available is False
+    assert result.handoff is None
+    assert result.advertised_schema == 1
+    assert "requires 2" in (result.reason or "")
+    assert view.requests == []
+
+
 def test_false_advertising_fails_closed_before_scalar_traversal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -172,8 +194,9 @@ def test_valid_handoff_retains_exact_owner_and_read_only_buffers(
     ("field", "invalid"),
     [
         ("schema_name", "wrong/schema"),
-        ("schema_version", 2),
-        ("model_schema", 2),
+        ("schema_version", 1),
+        ("model_schema", 1),
+        ("structural_fingerprint", owl.Fingerprint("sha256", 1, b"e" * 32)),
         ("descriptor", b""),
         ("buffers", {}),
         ("buffers", {"writable": bytearray(b"bad")}),

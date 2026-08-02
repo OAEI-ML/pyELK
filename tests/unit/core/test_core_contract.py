@@ -38,17 +38,17 @@ class _View:
     ) -> None:
         self.capabilities = capabilities or pyowl_core.CoreCapabilities(
             adapter_protocol=1,
-            model_schema=1,
-            wire_format=(1, 0),
+            model_schema=2,
+            wire_format=(1, 2),
             features=_FEATURES,
         )
-        self.structural_fingerprint = pyowl_core.Fingerprint("sha256", 1, b"s" * 32)
+        self.structural_fingerprint = pyowl_core.Fingerprint("sha256", 2, b"s" * 32)
         self.logical_fingerprint = (
-            pyowl_core.Fingerprint("sha256", 1, b"l" * 32)
+            pyowl_core.Fingerprint("sha256", 2, b"l" * 32)
             if logical_fingerprint is None
             else logical_fingerprint
         )
-        self.signature_fingerprint = pyowl_core.Fingerprint("sha256", 1, b"g" * 32)
+        self.signature_fingerprint = pyowl_core.Fingerprint("sha256", 2, b"g" * 32)
         self.report = object()
         self.origin_index = pyowl_core.OriginIndex()
         self.is_complete = True
@@ -156,19 +156,20 @@ def test_current_core_contract_is_compatible() -> None:
 
 
 def test_compatible_patch_prerelease_and_wire_minor_are_accepted() -> None:
-    versions = CoreVersionInfo("0.1.99rc1+local", (0, 1), 1, (1, 99), 1)
+    versions = CoreVersionInfo("0.2.99rc1+local", (0, 2), 2, (1, 99), 1)
     assert require_core_compatibility(versions) is versions
 
 
 @pytest.mark.parametrize(
     "versions",
     [
-        CoreVersionInfo("0.2.0", (0, 1), 1, (1, 0), 1),
-        CoreVersionInfo("not-semver", (0, 1), 1, (1, 0), 1),
-        CoreVersionInfo("0.1.0", (0, 2), 1, (1, 0), 1),
-        CoreVersionInfo("0.1.0", (0, 1), 2, (1, 0), 1),
-        CoreVersionInfo("0.1.0", (0, 1), 1, (2, 0), 1),
-        CoreVersionInfo("0.1.0", (0, 1), 1, (1, 0), 2),
+        CoreVersionInfo("0.1.99", (0, 2), 2, (1, 2), 1),
+        CoreVersionInfo("not-semver", (0, 2), 2, (1, 2), 1),
+        CoreVersionInfo("0.2.0", (0, 1), 2, (1, 2), 1),
+        CoreVersionInfo("0.2.0", (0, 2), 1, (1, 2), 1),
+        CoreVersionInfo("0.2.0", (0, 2), 2, (2, 0), 1),
+        CoreVersionInfo("0.2.0", (0, 2), 2, (1, 1), 1),
+        CoreVersionInfo("0.2.0", (0, 2), 2, (1, 2), 2),
     ],
 )
 def test_incompatible_core_contract_has_structured_expected_actual_diagnostics(
@@ -188,10 +189,11 @@ def test_incompatible_core_contract_has_structured_expected_actual_diagnostics(
 @pytest.mark.parametrize(
     "capabilities",
     [
-        pyowl_core.CoreCapabilities(2, 1, (1, 0), _FEATURES),
-        pyowl_core.CoreCapabilities(1, 2, (1, 0), _FEATURES),
-        pyowl_core.CoreCapabilities(1, 1, (2, 0), _FEATURES),
-        pyowl_core.CoreCapabilities(1, 1, (1, 0), frozenset({"owl2-structural"})),
+        pyowl_core.CoreCapabilities(2, 2, (1, 2), _FEATURES),
+        pyowl_core.CoreCapabilities(1, 1, (1, 2), _FEATURES),
+        pyowl_core.CoreCapabilities(1, 2, (2, 0), _FEATURES),
+        pyowl_core.CoreCapabilities(1, 2, (1, 1), _FEATURES),
+        pyowl_core.CoreCapabilities(1, 2, (1, 2), frozenset({"owl2-structural"})),
     ],
 )
 def test_incompatible_view_capabilities_fail_before_capture(
@@ -208,6 +210,17 @@ def test_non_view_and_non_core_fingerprint_fail_closed() -> None:
         capture_compatible_view(_as_view(object()))
     with pytest.raises(pyowl_core.AdapterCompatibilityError, match="logical_fingerprint"):
         capture_compatible_view(_as_view(_View(logical_fingerprint=object())))
+    with pytest.raises(
+        pyowl_core.AdapterCompatibilityError,
+        match=r"logical_fingerprint\.schema",
+    ):
+        capture_compatible_view(
+            _as_view(
+                _View(
+                    logical_fingerprint=pyowl_core.Fingerprint("sha256", 1, b"l" * 32),
+                )
+            )
+        )
 
 
 def test_bounded_view_validation_does_not_evaluate_fingerprint_descriptors(

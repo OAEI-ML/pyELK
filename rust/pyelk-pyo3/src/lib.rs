@@ -12,7 +12,7 @@ use std::time::Instant;
 use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use pyelk_core::encoded::{
-    ByteSource, DESCRIPTOR_SHA256_V1, EncodedColumns, EncodedCompilationSegment, EncodedLimits,
+    ByteSource, DESCRIPTOR_SHA256_V2, EncodedColumns, EncodedCompilationSegment, EncodedLimits,
     EncodedPostingMode, EncodedUnsupportedPolicy, compile_encoded_hierarchy_selected_with_policy,
     compile_encoded_hierarchy_with_policy, compile_encoded_overlay_delta_selected_with_policy,
     compile_encoded_overlay_delta_with_policy, compile_encoded_segments_with_policy,
@@ -38,8 +38,8 @@ type Blake2b256 = Blake2b<U32>;
 create_exception!(_native, NativeUnsupportedFeatureError, PyValueError);
 
 const ENCODED_SCHEMA_NAME: &str = "pyowl-core/structural-columns";
-const ENCODED_SCHEMA_VERSION: u64 = 1;
-const ENCODED_MODEL_SCHEMA: u64 = 1;
+const ENCODED_SCHEMA_VERSION: u64 = 2;
+const ENCODED_MODEL_SCHEMA: u64 = 2;
 const ENCODED_BUFFER_COUNT: usize = 11;
 const SEGMENT_DIRECT: u64 = 1;
 const SEGMENT_OVERLAY_BASE: u64 = 2;
@@ -2076,9 +2076,9 @@ fn validate_structural_fingerprint(
     segments: &Bound<'_, PyTuple>,
 ) -> CoreResult<()> {
     let expected = read_fingerprint(encoded_view, "structural_fingerprint")?;
-    if expected.schema != 1 {
+    if expected.schema != ENCODED_MODEL_SCHEMA {
         return Err(CoreError::protocol(
-            "encoded structural fingerprint schema must be one",
+            "encoded structural fingerprint schema must match model schema 2",
         ));
     }
     let descriptor = required_attribute(encoded_view, "descriptor")?;
@@ -2100,7 +2100,7 @@ fn validate_structural_fingerprint(
         columns.scalar_bytes,
     ];
     let mut digest = Sha256::new();
-    digest.update(b"pyowl-core:encoded-structural-view:v1\0");
+    digest.update(b"pyowl-core:encoded-structural-view:v2\0");
     update_varint_frame(&mut digest, descriptor.as_bytes())?;
     for (name, source) in ENCODED_BUFFER_NAMES.into_iter().zip(sources) {
         update_varint_frame(&mut digest, name.as_bytes())?;
@@ -2126,6 +2126,11 @@ fn validate_structural_fingerprint(
             digest.update([0]);
         } else {
             let source_fingerprint = read_fingerprint(&source, "structural_fingerprint")?;
+            if source_fingerprint.schema != ENCODED_MODEL_SCHEMA {
+                return Err(CoreError::protocol(
+                    "referenced structural fingerprint schema must match model schema 2",
+                ));
+            }
             let source_schema = u32::try_from(source_fingerprint.schema).map_err(|_| {
                 CoreError::protocol("referenced structural fingerprint schema exceeds u32")
             })?;
@@ -2261,9 +2266,9 @@ fn validate_encoded_envelope<'py>(
     let descriptor = descriptor.cast::<PyBytes>().map_err(|_| {
         CoreError::protocol("encoded view descriptor must be exact immutable bytes")
     })?;
-    if Sha256::digest(descriptor.as_bytes()).as_slice() != DESCRIPTOR_SHA256_V1 {
+    if Sha256::digest(descriptor.as_bytes()).as_slice() != DESCRIPTOR_SHA256_V2 {
         return Err(CoreError::protocol(
-            "encoded view descriptor does not match structural-columns v1",
+            "encoded view descriptor does not match structural-columns v2",
         ));
     }
 
@@ -2412,7 +2417,7 @@ impl FingerprintParts {
     fn sha256(digest: [u8; 32]) -> Self {
         Self {
             algorithm: "sha256".to_owned(),
-            schema: 1,
+            schema: ENCODED_MODEL_SCHEMA,
             digest,
         }
     }
@@ -2420,9 +2425,16 @@ impl FingerprintParts {
 
 impl EncodedSourceParts {
     fn from_owner(owner: &Bound<'_, PyAny>, model_schema: u64) -> CoreResult<Self> {
+        let logical = read_fingerprint(owner, "logical_fingerprint")?;
+        let signature = read_fingerprint(owner, "signature_fingerprint")?;
+        if logical.schema != model_schema || signature.schema != model_schema {
+            return Err(CoreError::protocol(
+                "encoded owner semantic fingerprint schemas must match model schema",
+            ));
+        }
         Ok(Self {
-            logical: Some(read_fingerprint(owner, "logical_fingerprint")?),
-            signature: Some(read_fingerprint(owner, "signature_fingerprint")?),
+            logical: Some(logical),
+            signature: Some(signature),
             model_schema,
         })
     }

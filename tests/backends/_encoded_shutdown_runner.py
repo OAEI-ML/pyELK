@@ -36,7 +36,7 @@ def main() -> int:
             imports=owl.ImportPolicy.IGNORE,
         ),
     )
-    encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+    encoded = native_views.produce_encoded_structural_view_v2(snapshot)
     session = native.create_session_from_encoded(encoded, 2, "error")
     assert session.diagnostics()["encoded_zero_copy_buffers"] == 11
     assert session.class_taxonomy()

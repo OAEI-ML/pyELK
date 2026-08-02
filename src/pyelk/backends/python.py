@@ -23,7 +23,7 @@ from pyelk.reasoning.realization import realization
 from pyelk.reasoning.session import SaturationSession
 from pyelk.reasoning.taxonomy import class_taxonomy, object_property_taxonomy
 
-IMPLEMENTATION_VERSION = "0.1.1"
+IMPLEMENTATION_VERSION = "0.2.0"
 
 
 class PythonBackendFactory:

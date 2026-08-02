@@ -104,9 +104,9 @@ def test_backend_info_recursively_freezes_encoded_compiler_handoff() -> None:
     handoff: dict[str, object] = {
         "buffer_widths": widths,
         "descriptor_sha256": "ab" * 32,
-        "model_schema": 1,
+        "model_schema": 2,
         "schema_name": "pyowl-core/structural-columns",
-        "schema_version": 1,
+        "schema_version": 2,
     }
     encoded = BackendInfo(
         name="rust",
@@ -136,9 +136,9 @@ def test_backend_info_recursively_freezes_encoded_compiler_handoff() -> None:
     assert encoded.compiler_handoff == {
         "buffer_widths": {"root_ids": 4, "scalar_bytes": 1},
         "descriptor_sha256": "ab" * 32,
-        "model_schema": 1,
+        "model_schema": 2,
         "schema_name": "pyowl-core/structural-columns",
-        "schema_version": 1,
+        "schema_version": 2,
     }
     with pytest.raises(TypeError):
         encoded.compiler_handoff["schema_name"] = "mutated"  # type: ignore[index]

@@ -47,11 +47,11 @@ from pyowl_core import (
     load_snapshot,
 )
 
-EXPECTED_PACKAGE_RANGE = ">=0.1,<0.2"
-EXPECTED_API_VERSION = (0, 1)
-EXPECTED_MODEL_SCHEMA_VERSION = 1
+EXPECTED_PACKAGE_RANGE = ">=0.2,<0.3"
+EXPECTED_API_VERSION = (0, 2)
+EXPECTED_MODEL_SCHEMA_VERSION = 2
 EXPECTED_WIRE_MAJOR = 1
-MINIMUM_WIRE_MINOR = 0
+MINIMUM_WIRE_MINOR = 2
 EXPECTED_ADAPTER_PROTOCOL_VERSION = 1
 
 _SEMVER = re.compile(
@@ -175,7 +175,7 @@ def _compatibility_error(
 def require_core_compatibility(
     actual: CoreVersionInfo | None = None,
 ) -> CoreVersionInfo:
-    """Require the pyowl-core 0.1 API/model/wire/adapter compatibility line."""
+    """Require the pyowl-core 0.2 API/model/wire/adapter compatibility line."""
 
     versions = actual or current_core_versions()
     match = _SEMVER.fullmatch(versions.package_version)
@@ -312,6 +312,7 @@ def capture_compatible_view(view: OntologyView) -> CapturedOntology:
     """Validate and retain an already-coerced core view by exact identity."""
 
     versions = _require_compatible_view(view)
+    fingerprints: dict[str, Fingerprint] = {}
     for name in (
         "structural_fingerprint",
         "logical_fingerprint",
@@ -326,11 +327,20 @@ def capture_compatible_view(view: OntologyView) -> CapturedOntology:
                 versions=versions,
                 capabilities=view.capabilities,
             )
+        if value.schema != EXPECTED_MODEL_SCHEMA_VERSION:
+            raise _compatibility_error(
+                f"{name}.schema",
+                str(EXPECTED_MODEL_SCHEMA_VERSION),
+                str(value.schema),
+                versions=versions,
+                capabilities=view.capabilities,
+            )
+        fingerprints[name] = value
     return CapturedOntology(
         view=view,
-        structural_fingerprint=view.structural_fingerprint,
-        logical_fingerprint=view.logical_fingerprint,
-        signature_fingerprint=view.signature_fingerprint,
+        structural_fingerprint=fingerprints["structural_fingerprint"],
+        logical_fingerprint=fingerprints["logical_fingerprint"],
+        signature_fingerprint=fingerprints["signature_fingerprint"],
         core_package_version=versions.package_version,
         core_api_version=versions.api_version,
         core_model_schema_version=versions.model_schema_version,

@@ -502,7 +502,7 @@ def _scalar_sample(
 def _acquire_encoded(view: owl.OntologyView, *, experimental_producer: bool) -> tuple[Any, str]:
     if experimental_producer:
         return (
-            native_views.produce_encoded_structural_view_v1(view),
+            native_views.produce_encoded_structural_view_v2(view),
             "experimental-scalar-fallback",
         )
     advertised = view.capabilities.encoded_view_schemas.get(ENCODED_SCHEMA_NAME)
@@ -842,7 +842,7 @@ def run(
 
     native_schema = native_schemas.get(ENCODED_SCHEMA_NAME)
     if native_schema is None or native_schema < ENCODED_SCHEMA_VERSION:
-        blockers.append("native extension does not advertise structural-columns v1")
+        blockers.append("native extension does not advertise structural-columns v2")
     unavailable_core = [
         name
         for name, version in core_advertised.items()
@@ -850,7 +850,7 @@ def run(
     ]
     if unavailable_core:
         blockers.append(
-            "core does not advertise structural-columns v1 for: " + ", ".join(unavailable_core)
+            "core does not advertise structural-columns v2 for: " + ", ".join(unavailable_core)
         )
     if producers != {"public-negotiated-retained"}:
         blockers.append("benchmark did not use only retained or mapped public producers")

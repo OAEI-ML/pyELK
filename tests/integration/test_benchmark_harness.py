@@ -935,7 +935,7 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
         probe.capabilities.encoded_view_schemas.get(bench_encoded_ingestion.ENCODED_SCHEMA_NAME)
         != bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
     ):
-        pytest.skip("installed pyowl-core does not advertise structural-columns v1")
+        pytest.skip("installed pyowl-core does not advertise structural-columns v2")
 
     payload = bench_encoded_ingestion.run(
         class_count=20,
@@ -958,7 +958,7 @@ def test_advertised_core_ingestion_uses_only_the_public_producer() -> None:
         capabilities["native_advertised_schema"] == bench_encoded_ingestion.ENCODED_SCHEMA_VERSION
     )
     assert (
-        "native extension does not advertise structural-columns v1" not in payload["gate_blockers"]
+        "native extension does not advertise structural-columns v2" not in payload["gate_blockers"]
     )
     for row in payload["workloads"].values():
         counters = row["encoded_native"]["counters"]

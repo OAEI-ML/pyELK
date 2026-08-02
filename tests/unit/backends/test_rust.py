@@ -187,13 +187,13 @@ def test_encoded_factory_uses_one_coarse_call_and_retains_owner_until_close() ->
     native = _EncodedNativeModule(compiled)
     owner = object()
     encoded = object()
-    fingerprint = owl.Fingerprint("sha256", 1, b"s" * 32)
+    fingerprint = owl.Fingerprint("sha256", 2, b"s" * 32)
     handoff = EncodedStructuralHandoff(
         encoded_view=encoded,
         owner=cast(owl.OntologyView, owner),
         schema_name=ENCODED_SCHEMA_NAME,
         schema_version=ENCODED_SCHEMA_VERSION,
-        model_schema=1,
+        model_schema=2,
         scope=owl.AxiomScope.CLOSURE,
         descriptor=b"descriptor",
         descriptor_digest=ENCODED_DESCRIPTOR_SHA256,
@@ -207,7 +207,7 @@ def test_encoded_factory_uses_one_coarse_call_and_retains_owner_until_close() ->
         ir_major=SCHEMA_MAJOR,
         ir_minor=SCHEMA_MINOR,
     )
-    assert factory.encoded_view_schemas == {ENCODED_SCHEMA_NAME: 1}
+    assert factory.encoded_view_schemas == {ENCODED_SCHEMA_NAME: ENCODED_SCHEMA_VERSION}
     session = factory.create_encoded_session(
         handoff,
         cast(BackendConfig, ReasonerConfig(workers=2, unsupported="error")),
@@ -220,7 +220,7 @@ def test_encoded_factory_uses_one_coarse_call_and_retains_owner_until_close() ->
     assert session.info.compiler_handoff == {
         "buffer_widths": dict(ENCODED_BUFFER_WIDTHS),
         "descriptor_sha256": ENCODED_DESCRIPTOR_SHA256.hex(),
-        "model_schema": 1,
+        "model_schema": 2,
         "schema_name": ENCODED_SCHEMA_NAME,
         "schema_version": ENCODED_SCHEMA_VERSION,
     }
@@ -240,13 +240,13 @@ def test_encoded_factory_preserves_unsupported_and_protocol_error_categories() -
         owner=owner,
         schema_name=ENCODED_SCHEMA_NAME,
         schema_version=ENCODED_SCHEMA_VERSION,
-        model_schema=1,
+        model_schema=2,
         scope=owl.AxiomScope.CLOSURE,
         descriptor=b"descriptor",
         descriptor_digest=b"d" * 32,
         buffers=MappingProxyType({"column": memoryview(b"value")}),
         segments=(),
-        structural_fingerprint=owl.Fingerprint("sha256", 1, b"s" * 32),
+        structural_fingerprint=owl.Fingerprint("sha256", 2, b"s" * 32),
     )
     factory = RustBackendFactory(
         native,
@@ -274,7 +274,7 @@ def test_encoded_factory_preserves_unsupported_and_protocol_error_categories() -
         type(
             "SchemasOnly",
             (),
-            {"encoded_view_schemas": lambda self: {ENCODED_SCHEMA_NAME: 1}},
+            {"encoded_view_schemas": lambda self: {ENCODED_SCHEMA_NAME: ENCODED_SCHEMA_VERSION}},
         )(),
         type(
             "CreateOnly",

@@ -18,9 +18,10 @@ from typing import Any
 import pyowl_core as _core
 
 ENCODED_SCHEMA_NAME = "pyowl-core/structural-columns"
-ENCODED_SCHEMA_VERSION = 1
+ENCODED_SCHEMA_VERSION = 2
+ENCODED_MODEL_SCHEMA = 2
 ENCODED_DESCRIPTOR_SHA256 = bytes.fromhex(
-    "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"
+    "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51"
 )
 ENCODED_BUFFER_WIDTHS: Mapping[str, int] = MappingProxyType(
     {
@@ -180,10 +181,16 @@ def _validate_encoded_view(
     if schema_version != ENCODED_SCHEMA_VERSION:
         raise _protocol_error("schema_version", str(schema_version))
     model_schema = _positive_int(encoded, "model_schema")
-    if model_schema != ontology.capabilities.model_schema:
+    if model_schema != ENCODED_MODEL_SCHEMA:
         raise _protocol_error(
             "model_schema",
-            f"view {model_schema}, owner {ontology.capabilities.model_schema}",
+            f"expected {ENCODED_MODEL_SCHEMA}, received {model_schema}",
+        )
+    if ontology.capabilities.model_schema != ENCODED_MODEL_SCHEMA:
+        raise _protocol_error(
+            "model_schema",
+            f"expected owner model {ENCODED_MODEL_SCHEMA}, "
+            f"received {ontology.capabilities.model_schema}",
         )
     owner = _required_attribute(encoded, "owner")
     if owner is not ontology:
@@ -199,12 +206,17 @@ def _validate_encoded_view(
     if descriptor_digest != ENCODED_DESCRIPTOR_SHA256:
         raise _protocol_error(
             "descriptor",
-            "does not match the frozen pyowl-core structural-columns v1 ledger",
+            "does not match the frozen pyowl-core structural-columns v2 ledger",
         )
 
     raw_fingerprint = _required_attribute(encoded, "structural_fingerprint")
     if not isinstance(raw_fingerprint, _core.Fingerprint):
         raise _protocol_error("structural_fingerprint", type(raw_fingerprint).__name__)
+    if raw_fingerprint.schema != ENCODED_MODEL_SCHEMA:
+        raise _protocol_error(
+            "structural_fingerprint",
+            f"expected schema {ENCODED_MODEL_SCHEMA}, received {raw_fingerprint.schema}",
+        )
 
     raw_scope = getattr(encoded, "scope", scope)
     if raw_scope != scope and raw_scope != scope.value:
@@ -225,7 +237,7 @@ def _validate_encoded_view(
         extra = sorted(set(buffers) - set(ENCODED_BUFFER_WIDTHS))
         raise _protocol_error(
             "buffers",
-            f"schema 1 buffer set differs (missing={missing!r}, extra={extra!r})",
+            f"schema 2 buffer set differs (missing={missing!r}, extra={extra!r})",
         )
     for name, width in ENCODED_BUFFER_WIDTHS.items():
         if buffers[name].nbytes % width:
@@ -314,6 +326,7 @@ def _protocol_error(field: str, detail: str) -> _core.BackendProtocolError:
 __all__ = [
     "ENCODED_BUFFER_WIDTHS",
     "ENCODED_DESCRIPTOR_SHA256",
+    "ENCODED_MODEL_SCHEMA",
     "ENCODED_SCHEMA_NAME",
     "ENCODED_SCHEMA_VERSION",
     "EncodedStructuralHandoff",

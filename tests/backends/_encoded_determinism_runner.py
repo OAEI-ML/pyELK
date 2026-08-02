@@ -41,7 +41,7 @@ def main() -> None:
             backend=owl.BackendPreference.PYTHON,
         ),
     )
-    encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+    encoded = native_views.produce_encoded_structural_view_v2(snapshot)
     compiled = compile_ontology(snapshot, unsupported="ignore")
     scalar = native.create_session(compiled.encode(), 1)
     try:

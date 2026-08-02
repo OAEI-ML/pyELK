@@ -137,9 +137,9 @@ def _direct_encoded_snapshot(source: bytes) -> tuple[Any, Any]:
     import pyowl_core as owl
 
     native_views = pytest.importorskip("pyowl_core.backends.native_views")
-    produce = getattr(native_views, "produce_encoded_structural_view_v1", None)
+    produce = getattr(native_views, "produce_encoded_structural_view_v2", None)
     if not callable(produce):
-        pytest.skip("installed pyowl-core does not provide structural-columns v1")
+        pytest.skip("installed pyowl-core does not provide structural-columns v2")
     options = owl.LoadOptions(backend=owl.BackendPreference.PYTHON)
     document = owl.parse_document(source, format=owl.DocumentFormat.FUNCTIONAL, options=options)
     snapshot = owl.load_snapshot(
@@ -204,7 +204,7 @@ def _noop_overlay_encoded(source: Any, encoded_source: Any) -> tuple[Any, Any]:
 
     _empty_snapshot, empty = _direct_encoded_snapshot(b"Ontology(<urn:encoded-empty>)")
     overlay = owl.apply_delta(source, owl.OntologyDelta())
-    segment = native_views.EncodedStructuralSegmentV1(
+    segment = native_views.EncodedStructuralSegmentV2(
         2,
         encoded_source.owner,
         encoded_source,
@@ -227,7 +227,7 @@ def _noop_overlay_encoded(source: Any, encoded_source: Any) -> tuple[Any, Any]:
         scope=empty.scope,
         document_key=empty.document_key,
     )
-    return overlay, native_views.validate_encoded_structural_view_v1(
+    return overlay, native_views.validate_encoded_structural_view_v2(
         candidate,
         expected_owner=overlay,
         expected_scope=empty.scope,
@@ -249,7 +249,7 @@ def _excluding_overlay_encoded(
     )
     _empty_snapshot, empty = _direct_encoded_snapshot(b"Ontology(<urn:encoded-empty>)")
     root_ids = memoryview(ordinal.to_bytes(4, "little"))
-    segment = native_views.EncodedStructuralSegmentV1(
+    segment = native_views.EncodedStructuralSegmentV2(
         2,
         encoded_source.owner,
         encoded_source,
@@ -272,7 +272,7 @@ def _excluding_overlay_encoded(
         scope=empty.scope,
         document_key=empty.document_key,
     )
-    encoded = native_views.validate_encoded_structural_view_v1(
+    encoded = native_views.validate_encoded_structural_view_v2(
         candidate,
         expected_owner=overlay,
         expected_scope=empty.scope,
@@ -303,7 +303,7 @@ def _delta_overlay_encoded(
         ),
     )
     posting_mode = 2 if removed_ordinals else 0
-    base = native_views.EncodedStructuralSegmentV1(
+    base = native_views.EncodedStructuralSegmentV2(
         2,
         encoded_source.owner,
         encoded_source,
@@ -313,7 +313,7 @@ def _delta_overlay_encoded(
         None,
         encoded_source,
     )
-    delta = native_views.EncodedStructuralSegmentV1(
+    delta = native_views.EncodedStructuralSegmentV2(
         3,
         overlay,
         None,
@@ -336,7 +336,7 @@ def _delta_overlay_encoded(
         scope=encoded_delta.scope,
         document_key=encoded_delta.document_key,
     )
-    return overlay, native_views.validate_encoded_structural_view_v1(
+    return overlay, native_views.validate_encoded_structural_view_v2(
         candidate,
         expected_owner=overlay,
         expected_scope=encoded_delta.scope,
@@ -361,7 +361,7 @@ def _composite_encoded(
     if len(selected_scope_maps) != len(members):
         raise ValueError("scope_maps must align with composite members")
     segments = tuple(
-        native_views.EncodedStructuralSegmentV1(
+        native_views.EncodedStructuralSegmentV2(
             4,
             source.owner,
             source,
@@ -377,7 +377,7 @@ def _composite_encoded(
     )
     if bridge is not None:
         segments += (
-            native_views.EncodedStructuralSegmentV1(
+            native_views.EncodedStructuralSegmentV2(
                 5,
                 owner,
                 None,
@@ -400,7 +400,7 @@ def _composite_encoded(
         scope=local.scope,
         document_key=local.document_key,
     )
-    return native_views.validate_encoded_structural_view_v1(
+    return native_views.validate_encoded_structural_view_v2(
         candidate,
         expected_owner=owner,
         expected_scope=local.scope,
@@ -410,12 +410,12 @@ def _composite_encoded(
 
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
-    assert native_module.implementation_version() == "0.1.1"
+    assert native_module.implementation_version() == "0.2.0"
     assert native_module.ir_version() == (1, 0)
     assert native_module.self_check() is True
     assert issubclass(native_module.NativeUnsupportedFeatureError, ValueError)
     assert native_module.encoded_view_schemas() == {
-        "pyowl-core/structural-columns": 1,
+        "pyowl-core/structural-columns": 2,
     }
     with pytest.raises(ValueError, match=r"IR|payload|header|magic"):
         native_module.create_session(b"not a compiled ontology", 1)
@@ -631,7 +631,7 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
     import pyowl_core as owl
 
     assert native_module.encoded_view_schemas() == {
-        "pyowl-core/structural-columns": 1,
+        "pyowl-core/structural-columns": 2,
     }
     snapshot, _encoded = _direct_encoded_snapshot(
         b"""Prefix(:=<urn:facade#>) Ontology(<urn:facade>
@@ -664,7 +664,7 @@ def test_public_facade_runs_entirely_from_advertised_encoded_native_session(
         assert actual.backend.compiler_handoff == {
             "buffer_widths": dict(ENCODED_BUFFER_WIDTHS),
             "descriptor_sha256": ENCODED_DESCRIPTOR_SHA256.hex(),
-            "model_schema": 1,
+            "model_schema": 2,
             "schema_name": ENCODED_SCHEMA_NAME,
             "schema_version": ENCODED_SCHEMA_VERSION,
         }
@@ -751,7 +751,7 @@ def test_public_advertised_dispatch_covers_mmap_and_recursive_segments(
     import pyowl_core as owl
 
     assert native_module.encoded_view_schemas() == {
-        "pyowl-core/structural-columns": 1,
+        "pyowl-core/structural-columns": 2,
     }
     options = owl.LoadOptions(
         backend=owl.BackendPreference.PYTHON,
@@ -827,7 +827,7 @@ def test_public_advertised_dispatch_covers_mmap_and_recursive_segments(
         for name, candidate in candidates:
             encoded = candidate.view(
                 owl.EncodedStructuralView,
-                schema_version=1,
+                schema_version=2,
                 scope=owl.AxiomScope.CLOSURE,
             )
             if name == "scoped":
@@ -894,7 +894,7 @@ def test_public_advertised_dispatch_fails_closed_before_scalar_compilation(
     from pyelk.exceptions import BackendProtocolError
 
     assert native_module.encoded_view_schemas() == {
-        "pyowl-core/structural-columns": 1,
+        "pyowl-core/structural-columns": 2,
     }
     snapshot, encoded = _direct_encoded_snapshot(
         b"Ontology(Declaration(Class(<urn:public-hostile:A>)))"
@@ -1524,7 +1524,8 @@ def test_hidden_nested_composite_scope_maps_compose_through_segmented_sources(
         assert diagnostics["encoded_buffer_count"] == 44
         assert diagnostics["encoded_zero_copy_buffers"] == 44
         assert diagnostics["encoded_posting_bytes"] == 0
-        assert diagnostics["encoded_staging_copy_bytes"] == 192
+        # Model schema 2 carries the component/occurrence remaps at both composite levels.
+        assert diagnostics["encoded_staging_copy_bytes"] == 576
         assert diagnostics["compiler_digest"] == scalar.diagnostics()["compiler_digest"]
         assert native.debug_snapshot(realize=True) == scalar.debug_snapshot(realize=True)
     finally:
@@ -1855,7 +1856,7 @@ def test_advertised_encoded_feature_corpus_matches_scalar_compiler(
     from pyelk.indexing.compiler import compile_ontology
 
     view = _ontology_feature_view(feature_name)
-    encoded = native_views.produce_encoded_structural_view_v1(view)
+    encoded = native_views.produce_encoded_structural_view_v2(view)
     compiled = compile_ontology(view, unsupported="ignore")
     direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
     scalar = native_module.create_session(compiled.encode(), 1)
@@ -1945,7 +1946,7 @@ def test_hidden_encoded_frozen_elk_corpus_matches_scalar_compiler(
     from pyelk.indexing.compiler import compile_ontology
 
     snapshot = _snapshot(ontology_path)
-    encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+    encoded = native_views.produce_encoded_structural_view_v2(snapshot)
     compiled = compile_ontology(snapshot, unsupported="ignore")
     direct = native_module.create_session_from_encoded(encoded, 1, "ignore")
     scalar = native_module.create_session(compiled.encode(), 1)
@@ -1988,7 +1989,7 @@ def test_hidden_encoded_w3c_cross_syntax_views_have_one_exact_compiler_result(
     )
     for path in _W3C_CORE_FIXTURES:
         snapshot = owl.load_snapshot(path, options=options)
-        encoded = native_views.produce_encoded_structural_view_v1(snapshot)
+        encoded = native_views.produce_encoded_structural_view_v2(snapshot)
         compiled = compile_ontology(snapshot, unsupported="error")
         direct = native_module.create_session_from_encoded(encoded, 1, "error")
         scalar = native_module.create_session(compiled.encode(), 1)
@@ -2029,8 +2030,8 @@ def test_hidden_encoded_mmap_view_matches_direct_and_retains_provider(
     wire_path = tmp_path / "w3c-minimal.pyocore"
     wire_path.write_bytes(owl.encode_snapshot(snapshot))
     mapped = owl.open_snapshot(wire_path, mmap=True, verify=True)
-    direct_encoded = native_views.produce_encoded_structural_view_v1(snapshot)
-    mapped_encoded = native_views.produce_encoded_structural_view_v1(mapped)
+    direct_encoded = native_views.produce_encoded_structural_view_v2(snapshot)
+    mapped_encoded = native_views.produce_encoded_structural_view_v2(mapped)
     compiled = compile_ontology(snapshot, unsupported="error")
     direct = native_module.create_session_from_encoded(direct_encoded, 1, "error")
     mmap_session = native_module.create_session_from_encoded(mapped_encoded, 1, "error")
@@ -2229,6 +2230,32 @@ def test_hidden_encoded_session_rejects_hostile_envelopes_before_publication(
     for candidate in cases:
         with pytest.raises(ValueError, match=r"encoded|descriptor|segment|buffer|fingerprint"):
             native_module.create_session_from_encoded(candidate, 1, "error")
+
+
+def test_hidden_encoded_session_rejects_stale_owner_fingerprint_schema(
+    native_module: ModuleType,
+) -> None:
+    import pyowl_core as owl
+    from pyowl_core.backends import native_views
+
+    _snapshot_value, encoded = _direct_encoded_snapshot(
+        b"Ontology(Declaration(Class(<urn:encoded:stale-owner>)))"
+    )
+    owner = SimpleNamespace(
+        capabilities=encoded.owner.capabilities,
+        logical_fingerprint=owl.Fingerprint("sha256", 1, b"l" * 32),
+        signature_fingerprint=encoded.owner.signature_fingerprint,
+    )
+    segments = (replace(encoded.segments[0], owner=owner),)
+    hostile = _encoded_wrapper(
+        encoded,
+        owner=owner,
+        segments=segments,
+        structural_fingerprint=native_views._fingerprint(encoded.buffers, segments),
+    )
+
+    with pytest.raises(ValueError, match=r"semantic fingerprint schemas|model schema"):
+        native_module.create_session_from_encoded(hostile, 1, "error")
 
 
 def test_hidden_encoded_session_retains_owner_until_close(native_module: ModuleType) -> None:
