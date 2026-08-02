@@ -25,6 +25,8 @@ CPython minor through 3.14.
 Start with the [documentation index](docs/index.md) or the
 [getting-started guide](docs/getting-started.md). The distribution is
 `pyelk-reasoner`; do not install the unrelated `pyelk` graph-layout package.
+Existing 0.1 users should read the [0.2 migration guide](docs/migration-0.2.md)
+before reusing persisted pyowl-core snapshots or custom encoded-view providers.
 
 ## First classification
 
@@ -261,7 +263,7 @@ that regenerate or compare frozen ELK 0.6 oracle data; JARs and class files are 
 release artifacts. The Python fallback also needs no Rust/C/C++ compiler at installation or
 runtime.
 
-Version 0.1 sessions are immutable. Incremental reasoning, proofs/explanations/tracing,
+Version 0.2 sessions are immutable. Incremental reasoning, proofs/explanations/tracing,
 method-for-method OWL API compatibility, datatype reasoning, a CLI, and a Protégé plugin are
 outside scope. Input syntaxes and import retrieval are exactly those supplied by the installed
 compatible pyowl-core. Native availability is platform-wheel dependent; Python remains the

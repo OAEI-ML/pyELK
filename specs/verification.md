@@ -305,7 +305,7 @@ Test artifacts, not the source checkout:
 - offline import and representative reasoning fixture;
 - metadata/type-hint/Python-file equality across wheel variants;
 - no Java archive/class/launcher or unapproved shared dependency;
-- exact `pyowl-core>=0.1,<0.2` metadata, core-version diagnostics, and pure/native core ×
+- exact `pyowl-core>=0.2,<0.3` metadata, core-version diagnostics, and pure/native core ×
   pure/native pyELK combinations where wheels exist;
 - `pip --only-binary` wheel preference from a local simple index containing both variants.
 

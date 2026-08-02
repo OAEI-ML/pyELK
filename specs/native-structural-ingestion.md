@@ -1,9 +1,9 @@
 # Native structural ingestion and compilation
 
-Status: normative successor optimization with a complete repository-owned hidden-path checkpoint
-at pyELK `886f6a3`. Capability promotion and release acceptance remain open. It changes the native
-compilation path, not the ELK `0.6.0` compatibility profile, public results, or complete
-pure-Python fallback.
+Status: normative production optimization. Structural-columns schema 1 shipped on the pyELK
+0.1.x line; pyELK 0.2.0 migrates the same public handoff to pyowl-core model schema 2 and encoded
+schema 2. The migration changes the shared structural identity/version boundary, not the ELK
+`0.6.0` compatibility profile, public results, or complete pure-Python fallback.
 
 ## 1. Objective
 
@@ -144,9 +144,10 @@ and does not infer performance from the existence of Rust code.
 ## 7. Versioning and packaging
 
 Adopting an additive core encoded-view capability does not by itself change ELK semantics or the
-public pyELK API. The implementation PR records the minimum core package/API/adapter and exact
-encoded schema range, updates compiler/cache schema versions when bytes or digest meaning change,
-and invalidates incompatible private caches rather than reinterpreting them.
+public pyELK API. pyELK 0.2.0 requires `pyowl-core>=0.2,<0.3`, API `(0, 2)`, model schema 2,
+wire `(1, >=2)`, adapter protocol 1, and structural-columns schema 2 with its frozen descriptor.
+The exact tested core commit/tree is release-ledger data. Incompatible model/schema fingerprints
+and private cache identities are rejected rather than reinterpreted.
 
 Native and pure artifacts retain the same pyELK version and public features. Pure wheels and the
 compiler-free sdist remain complete on Python 3.10+. No artifact gains Java, Horned-OWL, OWLAPI,
@@ -167,3 +168,11 @@ capability to pyowl-core 0.1.0 commit
 `d3e7893b0609fcd7df390375267a00356f09cb22`. Historical pre-promotion evidence and its original
 blocker wording remain in the [WP14 handoff report](../reports/workpackages/WP14.md), followed by
 the dated production-release disposition.
+
+For 0.2.0, schema 1 remains an explicitly incompatible core capability spelling and is never
+accepted as model-schema-2 data. Capability absence or an older advertised schema selects the
+scalar compiler before any encoded data is acquired; malformed or falsely advertised schema-2
+data remains a protocol error.
+The dependency, descriptor, and exact tested revision are bound together by
+`release/core-compatibility.json`, generated build provenance, installed-artifact tests, and the
+0.2.0 release evidence directory.

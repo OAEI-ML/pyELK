@@ -76,7 +76,7 @@ contain `pyowl-core` and, for a source install, every `[build-system]` requireme
 python -m pip download --dest wheelhouse --only-binary=:all: \
   'setuptools>=77,<84' setuptools-rust==1.13.0 'wheel>=0.45,<0.47'
 python -m pip download --dest wheelhouse --only-binary=:all: \
-  --platform any 'pyowl-core==0.1.1'
+  --platform any 'pyowl-core==0.2.0'
 python tests/packaging/install_artifact.py dist/*.tar.gz \
   --python "$(command -v python)" --wheelhouse wheelhouse \
   --expected-backend python --expected-core-backend python \
@@ -105,7 +105,7 @@ python tests/packaging/check_index_preference.py --index dist
 | More than one `_native` library | Clean the local setuptools build directory and rebuild. |
 | Absolute source/Cargo path in a wheel | Path remapping was lost or stale objects were reused; rebuild cleanly. |
 | Pure/native hash mismatch | Artifacts were not built from the same source tree and version. |
-| `pyowl-core` compatibility error | Install the supported `>=0.1,<0.2` line with matching model/wire/adapter versions. |
+| `pyowl-core` compatibility error | Install the supported `>=0.2,<0.3` line with matching model/wire/adapter versions. |
 
 ## Release policy
 

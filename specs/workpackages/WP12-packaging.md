@@ -45,7 +45,7 @@ completeness/oracle corpus, benchmark thresholds/results.
 2. PyO3 `abi3-py310`, pinned Rust/Python build toolchain, locked release build.
 3. cibuildwheel tier-one matrix and native-hardware tests/audits.
 4. Universal wheel and sdist builds; every native wheel bundles the full fallback.
-5. Runtime metadata pins `pyowl-core>=0.1,<0.2`; installed tests cover compatible core
+5. Runtime metadata pins `pyowl-core>=0.2,<0.3`; installed tests cover compatible core
    pure/native variants and reject incompatible model/wire/adapter versions.
 6. Local simple-index/TestPyPI preference tests with native and pure artifacts together.
 7. Artifact content/metadata/Python-hash/JVM/shared-library/ABI audit tool.

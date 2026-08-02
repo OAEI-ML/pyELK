@@ -14,7 +14,7 @@ OWL syntax parser or writer.
 | `specs/parsing.md` | all |
 | `specs/contracts.md` | §§1–4, 6–7 |
 | `specs/verification.md` | input, hostile-input, packaging, performance gates |
-| pyowl-core 0.1 specification | `parse_document`, `load_snapshot`, `coerce_snapshot`, providers, overlays |
+| pyowl-core 0.2 specification | `parse_document`, `load_snapshot`, `coerce_snapshot`, providers, overlays |
 | pinned ELK parser fixtures | adapter/compiler parity inputs only |
 
 ## Depends on

@@ -11,8 +11,8 @@ The distinct distribution name avoids the unrelated project already published as
 on PyPI without changing the public Python API.
 
 The canonical OWL structural layer is the separate distribution `pyowl-core` / import
-`pyowl_core`. pyELK 0.1.x requires `pyowl-core>=0.1,<0.2`, re-exports its OWL values by
-identity, and accepts its immutable `OntologyView` implementations without reparsing.
+`pyowl_core`. pyELK requires `pyowl-core>=0.2,<0.3`, re-exports its OWL values by identity,
+and accepts its model-schema-2 immutable `OntologyView` implementations without reparsing.
 pyELK owns only ELK-specific compilation, saturation, results, and reasoner lifecycle.
 
 This document is the project constitution. Detailed behaviour is normative in the linked
@@ -278,7 +278,7 @@ availabilities, version/ABI information, and any fallback or selection error. A 
 ## 11. Coding and quality rules
 
 - Python 3.10+, `src/` layout, public type hints, `py.typed` marker.
-- Runtime dependency `pyowl-core>=0.1,<0.2`; no other general OWL model/parser dependency.
+- Runtime dependency `pyowl-core>=0.2,<0.3`; no other general OWL model/parser dependency.
 - `ruff format`, `ruff check`, strict `mypy`, `pytest`, `hypothesis`, and `import-linter`.
 - Immutable slotted dataclasses for public OWL/result values; no module-level mutable
   reasoner state.

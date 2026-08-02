@@ -134,7 +134,7 @@ platform-specific fallback wheel and poison installer caches. Explicit pure mode
 
 The sdist includes Python sources, Cargo workspace, lockfile, licence, and build metadata.
 Without Cargo, its optional build succeeds as a complete Python install. With Cargo, it may
-build the native extension. Project metadata requires `pyowl-core>=0.1,<0.2` in every
+build the native extension. Project metadata requires `pyowl-core>=0.2,<0.3` in every
 artifact. No build step downloads Java, a JVM bridge/JAR, or ontology assets.
 
 ## 6. Published artifacts

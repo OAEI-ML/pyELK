@@ -89,7 +89,7 @@ backend differential sign-off remains a WP13 gate.
 | WP | Assignment | Depends on | Primary owned area |
 |---:|---|---|---|
 | [WP0](WP0-foundation.md) | scaffold, codec, backend contracts, test doubles | — | build scaffold, `indexing/codec.py`, `reasoning/contracts.py` |
-| [WP1](WP1-owl-model.md) | pyowl-core contract and exact public re-exports | WP0, pyowl-core 0.1 | `core.py`, re-export-only `owl/__init__.py` |
+| [WP1](WP1-owl-model.md) | pyowl-core contract and exact public re-exports | WP0, pyowl-core 0.2 | `core.py`, re-export-only `owl/__init__.py` |
 | [WP2](WP2-shared-snapshot-input.md) | standalone/shared snapshot ingestion and Exact-OM handshake | WP1, WP3 | `inputs.py`, input integration tests |
 | [WP3](WP3-completeness-oracle.md) | feature matrix, completeness, Java oracle, frozen corpus | WP0 | completeness, oracle, upstream data |
 | [WP4](WP4-indexing.md) | polarity conversion and deterministic compiled IR | WP1, WP2, WP3 | `src/pyelk/indexing/` except codec |
@@ -105,9 +105,8 @@ backend differential sign-off remains a WP13 gate.
 | [WP14](WP14-native-structural-compiler.md) | direct encoded-view-to-Rust ELK compilation and release evidence | WP13, pyowl-core WP17 | native structural compiler, adapter, differential/performance evidence |
 
 WP14's repository-owned implementation checkpoint and historical external gates are recorded in
-the [WP14 handoff report](../../reports/workpackages/WP14.md). The 0.1.0 release-owner disposition
-in that report closes the release decision and binds the advertised capability to the released
-pyowl-core source revision.
+the [WP14 handoff report](../../reports/workpackages/WP14.md). Its dated release dispositions keep
+the historical schema-1 evidence separate from the pyowl-core 0.2/schema-2 migration ledger.
 
 ## 6. Contract change protocol
 

@@ -3,13 +3,13 @@
 pyELK does not define an OWL object model, ontology document class, parser, import
 resolver, canonical OWL writer, or general-purpose ontology index. Those responsibilities
 belong to the Java-free distribution `pyowl-core` and import package `pyowl_core`.
-pyELK 0.1.x requires `pyowl-core>=0.1,<0.2` and Python 3.10 or later.
+pyELK requires `pyowl-core>=0.2,<0.3` and Python 3.10 or later.
 
-The release integration baseline is pyOWLCore commit
-`6df155e3ef83588352dbfd11bc4b15bdc0fa9c4e`, including canonical parser normalization for
-duplicate-derived singleton intersections/unions and self-disjoint class lists. This is the
-minimum source baseline used by the 124-input frozen parity gate; published dependency
-resolution remains the compatible `>=0.1,<0.2` package range.
+The release integration baseline is the exact pyOWLCore revision recorded in
+`release/core-compatibility.json`, including canonical parser normalization for
+duplicate-derived singleton intersections/unions, self-disjoint class lists, and
+model-schema-2 anonymous identity. Published dependency resolution remains the compatible
+`>=0.2,<0.3` package range.
 
 This document is the normative boundary between the shared structural layer and pyELK's
 private ELK compiler. The OWL 2 Structural Specification remains the language authority;
@@ -238,16 +238,16 @@ ELK `Feature` and ignores/partially indexes it according to `compatibility.md`.
 
 ## 8. Version and wire compatibility
 
-- Packaging requires `pyowl-core>=0.1,<0.2`; dependency resolution, not a best-effort duck
-  type, enforces the initial API line.
+- Packaging requires `pyowl-core>=0.2,<0.3`; dependency resolution, not a best-effort duck
+  type, enforces API `(0, 2)` and model schema 2.
 - Compatibility reads core `API_VERSION` and parses package SemVer; it never compares
   `__version__` strings lexically.
 - A provider/view with missing capabilities or incompatible model/adapter versions fails
   before compilation with core `AdapterCompatibilityError`, reporting expected and actual
   package/API/model/wire/adapter values.
-- Core's independent wire format begins with `PYOCORE\0`. Major mismatch is a hard error;
-  readers may skip unknown optional sections within a compatible major; corrupt or unknown
-  required sections fail closed.
+- Core's independent wire format begins with `PYOCORE\0`. pyELK requires wire `(1, >=2)`;
+  major mismatch or an older minor is a hard error. Readers may skip unknown optional
+  sections within a compatible major; corrupt or unknown required sections fail closed.
 - Shared persistence uses only `pyowl_core.encode_snapshot`, `decode_snapshot`, and
   `open_snapshot(path, mmap=True, verify=True)`; pyELK does not invent aliases or inspect
   private core buffers.
@@ -302,7 +302,7 @@ with Reasoner(snapshot) as reasoner:  # same snapshot object; no parse
    including language-tag case and plain-literal regressions.
 8. Supported and unsupported core constructor coverage is exhaustive and tied to the ELK
    feature manifest; no valid OWL construct is lost during parsing.
-9. Core 0.1 compatibility, wire-major rejection, optional-section skipping, corrupt-cache
+9. Core 0.2 compatibility, wire-major/minor rejection, optional-section skipping, corrupt-cache
    rebuilding, stream ownership, overlay lifetime, and close behavior are tested.
 10. All tests run on CPython 3.10 and 3.12 without Java; Java is used only by an explicitly
     selected development-oracle lane.

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Adopt `pyowl-core>=0.1,<0.2` as pyELK's only public OWL structural model. Replace the
+Adopt `pyowl-core>=0.2,<0.3` as pyELK's only public OWL structural model. Replace the
 planned duplicate OWL values/keys with exact core re-exports, enforce API/adapter/wire
 compatibility, and establish the typed snapshot input boundary. Implement no parser and no
 reasoning semantics.
@@ -14,12 +14,12 @@ reasoning semantics.
 | `specs/parsing.md` | all |
 | `specs/contracts.md` | §§1–4, 7 |
 | `specs/compatibility.md` | §§1–4 |
-| pyowl-core 0.1 specification | public model, snapshots, versions, adapters, ownership |
+| pyowl-core 0.2 specification | public model, snapshots, versions, adapters, ownership |
 | pinned ELK OWL model | compatibility observations only; never a public model template |
 
 ## Depends on
 
-WP0 and a released or workspace-pinned pyowl-core 0.1 contract.
+WP0 and a released or workspace-pinned pyowl-core 0.2 contract.
 
 ## Owned paths
 
@@ -53,7 +53,7 @@ owned dependency/import-linter amendments.
    field-compatible copies.
 6. Removal plan/tests for the prior duplicate value classes, generic unsupported nodes,
    structural keys, and ELK-specific literal identity from the public model.
-7. Project metadata requires `pyowl-core>=0.1,<0.2` and import-linter reflects the revised
+7. Project metadata requires `pyowl-core>=0.2,<0.3` and import-linter reflects the revised
    `SPEC.md` dependency direction.
 
 ## Acceptance criteria
@@ -64,7 +64,7 @@ owned dependency/import-linter amendments.
    Python 3.10 and 3.12.
 3. Core values remain immutable/shareable, and import of `pyelk.owl` performs no parsing,
    native probing, Java/network/filesystem work, or adapter discovery.
-4. Compatible 0.1 views/providers pass; incompatible API/model/wire/adapter contracts
+4. Compatible 0.2 views/providers pass; incompatible API/model/wire/adapter contracts
    fail with expected/actual structured diagnostics.
 5. Core standards-canonical literal identity is unchanged by pyELK. Pinned-ELK quirks are
    absent here and are tested later as compiler compatibility keys in WP4.

@@ -122,11 +122,10 @@ PR to the owner. Same-wave agents do not edit each other's paths.
 
 ## 6. Implemented source-to-verification matrix
 
-This matrix is the release-facing index from the upstream area through its normative
-contract to production code and executable evidence. Baseline rows are implemented; the
-successor encoded-ingestion row records its hidden implementation checkpoint separately because
-capability and release acceptance remain open. Exclusions are confined to the explicit scope
-table in §2.
+This matrix is the release-facing index from the upstream area through its normative contract to
+production code and executable evidence. Baseline rows and the advertised encoded-ingestion path
+are implemented; its historical checkpoint evidence remains separate from the 0.2.0 schema-2
+release ledger. Exclusions are confined to the explicit scope table in §2.
 
 | Area | Normative source/spec | Production implementation | Executable evidence | Status |
 |---|---|---|---|---|
@@ -151,7 +150,7 @@ table in §2.
 | Distribution and Java/compiler exclusion | `native-packaging.md` §§9–11 | build configuration, reproducible-sdist hook, and artifact auditor | byte-rebuilt source/fallback artifacts, pinned external ABI/platform audits, Python 3.10–3.14 installed lanes | implemented |
 | Performance corpus and semantic timing guard | `verification.md` §9 | `benchmarks/`, `tools/benchmark.py` | manifest validation plus Java-free generated and hash-pinned biomedical harness tests | implemented |
 | User examples and attribution | WP13 deliverables 7–8 | `README.md`, `NOTICE.pyelk` | verbatim README execution and artifact notice audit | implemented |
-| Encoded structural ingestion | `native-structural-ingestion.md`, [WP14 report](../reports/workpackages/WP14.md) | `src/pyelk/indexing/encoded.py`, `src/pyelk/backends/`, `rust/pyelk-core/src/encoded.rs`, `rust/pyelk-pyo3/src/lib.rs` | native scalar/encoded compiler and result parity, direct/mmap/overlay/composite, hostile/fuzz/lifecycle suites, experimental benchmark harness, Exact/OAEI handoff | hidden implementation checkpoint; advertised-core and release evidence open |
+| Encoded structural ingestion | `native-structural-ingestion.md`, [WP14 report](../reports/workpackages/WP14.md) | `src/pyelk/indexing/encoded.py`, `src/pyelk/backends/`, `rust/pyelk-core/src/encoded.rs`, `rust/pyelk-pyo3/src/lib.rs` | native scalar/encoded compiler and result parity, direct/mmap/overlay/composite, hostile/fuzz/lifecycle suites, benchmark harness, installed contract, Exact/OAEI handoff | implemented and advertised; schema-2 core identity and release evidence bound for 0.2.0 |
 
 ## 7. Release evidence routing
 

@@ -3,10 +3,9 @@
 **Goal:** replace scalar Python ontology compilation on the optimized Rust path with direct,
 segment-aware compilation from pyowl-core's public `EncodedStructuralView`.
 
-**Status:** repository-owned implementation checkpoint complete on 2026-07-20; capability and
-release acceptance remain open. **Depends on:** WP13 and a released/candidate pyowl-core WP17
-encoded-view contract. The compiler stays unadvertised until that core contract and the required
-performance/release evidence are frozen.
+**Status:** production schema-1 implementation shipped on pyELK 0.1.x; schema-2 consumer migration
+implemented for pyELK 0.2.0. **Depends on:** WP13 and the exact released/candidate pyowl-core
+model-2/encoded-schema-2 contract recorded in the release compatibility ledger.
 
 The exact checkpoint, verification commands, revisions, and blockers are recorded in the
 [WP14 handoff report](../../reports/workpackages/WP14.md).
@@ -84,8 +83,8 @@ diagnostics. The complete frozen constructor ledger is either compiled with scal
 semantics or rejected through the same whole-axiom unsupported policy. Scalar Python and
 scalar-wire behavior remain complete.
 
-This is not WP14 acceptance. Both pyELK and the candidate core continue to advertise no encoded
-schema. The core WP17/WP18 capability and version range, gate-eligible real-producer benchmark
-matrix, labelled time/RSS/Java evidence, installed native-wheel audit matrix, and final consumer
-revision pins remain open. No local test-hook or experimental fallback result may be used to
-promote the capability.
+That historical checkpoint preceded capability promotion. The 0.1.x release dispositions and the
+0.2.0 schema-2 migration addendum in the handoff report supersede its old capability-state wording
+without rewriting the recorded benchmark evidence. The 0.2.0 release boundary is bound to the
+exact final pyowl-core commit/tree in `release/core-compatibility.json`; generated supply-chain
+evidence and installed-artifact gates fail closed if that contract diverges.
