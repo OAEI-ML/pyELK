@@ -1,28 +1,40 @@
 {
-  "schema": "pyelk.core-compatibility/2",
-  "dependency_constraint": "pyowl-core>=0.1,<0.2",
+  "schema": "pyelk.core-compatibility/3",
+  "dependency_constraint": "pyowl-core>=0.2,<0.3",
+  "core_contract": {
+    "package_version": "0.2.0",
+    "api_version": [0, 2],
+    "model_schema": 2,
+    "wire_format": [1, 2],
+    "adapter_protocol": 1
+  },
   "tested_source": {
     "repository": "https://github.com/OAEI-ML/pyOWLCore",
-    "commit": "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19",
-    "tree": "e72fc93248cd363a5c67dac9efffb367a71c2b1d",
-    "version": "0.1.1"
+    "commit": "2fc1004c841ba968183ca0cccdcf7ee298ae4bc7",
+    "tree": "8ef0c1e9714d4b71ae1483ad58162ee1903cdbe6",
+    "version": "0.2.0"
   },
   "native_ontology_redesign": {
-    "commit": "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19",
-    "tree": "e72fc93248cd363a5c67dac9efffb367a71c2b1d",
-    "classification": "behavior-preserving-native-ontology-redesign",
+    "commit": "2fc1004c841ba968183ca0cccdcf7ee298ae4bc7",
+    "tree": "8ef0c1e9714d4b71ae1483ad58162ee1903cdbe6",
+    "classification": "model-schema-2-component-scoped-anonymous-redesign",
     "workpackages": [
       "WP14",
       "WP15",
       "WP16",
       "WP17",
-      "WP18"
+      "WP18",
+      "WP19",
+      "WP20",
+      "WP21",
+      "WP22",
+      "WP23"
     ]
   },
   "encoded_ingestion": {
     "schema_name": "pyowl-core/structural-columns",
-    "schema_version": 1,
-    "descriptor_sha256": "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+    "schema_version": 2,
+    "descriptor_sha256": "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51",
     "capability_state": "advertised",
     "required_ingestion_path": "encoded-native",
     "parity_contract": "wp14-encoded-public-dispatch-short"

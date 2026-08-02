@@ -26,14 +26,38 @@ _LOCAL_MANIFESTS = {
     "pyelk-core": Path("rust/pyelk-core/Cargo.toml"),
     "pyelk-pyo3": Path("rust/pyelk-pyo3/Cargo.toml"),
 }
-_CORE_REQUIREMENT = "pyowl-core>=0.1,<0.2"
-_CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/2"
-_TESTED_CORE_COMMIT = "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19"
-_TESTED_CORE_TREE = "e72fc93248cd363a5c67dac9efffb367a71c2b1d"
+_CORE_REQUIREMENT = "pyowl-core>=0.2,<0.3"
+_CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/3"
+_TESTED_CORE_COMMIT = "2fc1004c841ba968183ca0cccdcf7ee298ae4bc7"
+_TESTED_CORE_TREE = "8ef0c1e9714d4b71ae1483ad58162ee1903cdbe6"
+_CORE_CONTRACT = {
+    "package_version": "0.2.0",
+    "api_version": [0, 2],
+    "model_schema": 2,
+    "wire_format": [1, 2],
+    "adapter_protocol": 1,
+}
+_NATIVE_ONTOLOGY_REDESIGN_CONTRACT = {
+    "commit": _TESTED_CORE_COMMIT,
+    "tree": _TESTED_CORE_TREE,
+    "classification": "model-schema-2-component-scoped-anonymous-redesign",
+    "workpackages": [
+        "WP14",
+        "WP15",
+        "WP16",
+        "WP17",
+        "WP18",
+        "WP19",
+        "WP20",
+        "WP21",
+        "WP22",
+        "WP23",
+    ],
+}
 _ENCODED_INGESTION_CONTRACT = {
     "schema_name": "pyowl-core/structural-columns",
-    "schema_version": 1,
-    "descriptor_sha256": "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+    "schema_version": 2,
+    "descriptor_sha256": "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51",
     "capability_state": "advertised",
     "required_ingestion_path": "encoded-native",
     "parity_contract": "wp14-encoded-public-dispatch-short",
@@ -68,7 +92,7 @@ _BUILD_INPUT_PATHS = (
     "pyelk_build.py",
     "pyproject.toml",
     "release/core-compatibility.json",
-    "release/owner-release-authorization-0.1.1.md",
+    "release/owner-release-authorization-0.2.0.md",
     "rust-toolchain.toml",
     "rust/pyelk-core/Cargo.toml",
     "rust/pyelk-pyo3/Cargo.toml",
@@ -1053,19 +1077,19 @@ def build_provenance(root: Path) -> dict[str, Any]:
     if not isinstance(core_compatibility, dict):
         raise ValueError("build provenance: core compatibility pin is not an object")
     tested_core = core_compatibility.get("tested_source")
+    core_contract = core_compatibility.get("core_contract")
     redesign = core_compatibility.get("native_ontology_redesign")
     encoded_ingestion = core_compatibility.get("encoded_ingestion")
     if (
         core_compatibility.get("schema") != _CORE_COMPATIBILITY_SCHEMA
         or core_compatibility.get("dependency_constraint") != _CORE_REQUIREMENT
+        or core_contract != _CORE_CONTRACT
         or not isinstance(tested_core, dict)
         or tested_core.get("repository") != "https://github.com/OAEI-ML/pyOWLCore"
-        or tested_core.get("version") != "0.1.1"
+        or tested_core.get("version") != "0.2.0"
         or tested_core.get("commit") != _TESTED_CORE_COMMIT
         or tested_core.get("tree") != _TESTED_CORE_TREE
-        or not isinstance(redesign, dict)
-        or redesign.get("commit") != tested_core["commit"]
-        or redesign.get("tree") != tested_core["tree"]
+        or redesign != _NATIVE_ONTOLOGY_REDESIGN_CONTRACT
         or encoded_ingestion != _ENCODED_INGESTION_CONTRACT
     ):
         raise ValueError("build provenance: core compatibility pin is invalid")
@@ -1179,6 +1203,8 @@ def build_provenance(root: Path) -> dict[str, Any]:
         "tested_runtime": {
             "pyowl_core": dict(sorted(tested_core.items())),
         },
+        "core_contract": dict(sorted(core_contract.items())),
+        "native_ontology_redesign": dict(sorted(redesign.items())),
         "encoded_ingestion_contract": dict(sorted(encoded_ingestion.items())),
         "installed_core_backend_contracts": {
             "approved_native_hosted_lanes": "native",

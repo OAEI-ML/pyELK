@@ -58,7 +58,7 @@ def test_reviewed_inventory_matches_the_production_lock_closure() -> None:
     assert len(production) == len(inventory["native_components"]) == 31
     assert "criterion" not in {package.name for package in production}
     assert inventory["python_runtime_dependencies"] == [
-        {"name": "pyowl-core", "requirement": ">=0.1,<0.2"}
+        {"name": "pyowl-core", "requirement": ">=0.2,<0.3"}
     ]
     assert inventory["java_components"] == []
     assert inventory["legal_approval"] is True
@@ -73,13 +73,13 @@ def test_pure_and_native_sboms_are_variant_exact_and_deterministic() -> None:
     assert native == build_cyclonedx(ROOT, "native")
     assert [component["name"] for component in pure["components"]] == ["pyowl-core"]
     assert len(native["components"]) == 32
-    assert native["metadata"]["component"]["version"] == "0.1.1"
+    assert native["metadata"]["component"]["version"] == "0.2.0"
     assert native["dependencies"][0]["dependsOn"] == [
         "pkg:cargo/blake2@0.10.6",
         "pkg:cargo/pyo3@0.29.0",
         "pkg:cargo/rayon@1.12.0",
         "pkg:cargo/sha2@0.10.9",
-        "pkg:pypi/pyowl-core?requirement=%3E%3D0.1%2C%3C0.2",
+        "pkg:pypi/pyowl-core?requirement=%3E%3D0.2%2C%3C0.3",
     ]
     cargo = [
         component
@@ -98,8 +98,8 @@ def test_sbom_validator_rejects_non_spdx_or_unbound_components() -> None:
 
     assert validate_cyclonedx(document, "native") == [
         "sbom: component pkg:cargo/blake2@0.10.6 has an unreviewed SPDX license",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.1?variant=native is not canonical",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.1.1?variant=native "
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.2.0?variant=native is not canonical",
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.2.0?variant=native "
         "names unknown components ['pkg:cargo/unbound@9.9.9']",
     ]
 
@@ -114,19 +114,43 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["tested_runtime"] == {
         "pyowl_core": {
-            "commit": "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19",
+            "commit": "2fc1004c841ba968183ca0cccdcf7ee298ae4bc7",
             "repository": "https://github.com/OAEI-ML/pyOWLCore",
-            "tree": "e72fc93248cd363a5c67dac9efffb367a71c2b1d",
-            "version": "0.1.1",
+            "tree": "8ef0c1e9714d4b71ae1483ad58162ee1903cdbe6",
+            "version": "0.2.0",
         }
+    }
+    assert provenance["core_contract"] == {
+        "adapter_protocol": 1,
+        "api_version": [0, 2],
+        "model_schema": 2,
+        "package_version": "0.2.0",
+        "wire_format": [1, 2],
+    }
+    assert provenance["native_ontology_redesign"] == {
+        "classification": "model-schema-2-component-scoped-anonymous-redesign",
+        "commit": "2fc1004c841ba968183ca0cccdcf7ee298ae4bc7",
+        "tree": "8ef0c1e9714d4b71ae1483ad58162ee1903cdbe6",
+        "workpackages": [
+            "WP14",
+            "WP15",
+            "WP16",
+            "WP17",
+            "WP18",
+            "WP19",
+            "WP20",
+            "WP21",
+            "WP22",
+            "WP23",
+        ],
     }
     assert provenance["encoded_ingestion_contract"] == {
         "capability_state": "advertised",
-        "descriptor_sha256": ("9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5"),
+        "descriptor_sha256": ("c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51"),
         "parity_contract": "wp14-encoded-public-dispatch-short",
         "required_ingestion_path": "encoded-native",
         "schema_name": "pyowl-core/structural-columns",
-        "schema_version": 1,
+        "schema_version": 2,
     }
     assert provenance["installed_core_backend_contracts"] == {
         "approved_native_hosted_lanes": "native",
@@ -277,8 +301,8 @@ def test_build_provenance_rejects_unforced_pure_core_wheelhouse(tmp_path: Path) 
     workflow = tmp_path / ".github/workflows/wheels.yml"
     workflow.write_text(
         workflow.read_text(encoding="utf-8").replace(
-            '--platform any "pyowl-core==0.1.1"',
-            '"pyowl-core==0.1.1"',
+            '--platform any "pyowl-core==0.2.0"',
+            '"pyowl-core==0.2.0"',
             1,
         ),
         encoding="utf-8",
@@ -299,8 +323,8 @@ def test_build_provenance_rejects_unforced_musllinux_core_wheelhouse(
         prefix
         + "  musllinux-supported-cpython:"
         + musllinux.replace(
-            '--platform any "pyowl-core==0.1.1"',
-            '"pyowl-core==0.1.1"',
+            '--platform any "pyowl-core==0.2.0"',
+            '"pyowl-core==0.2.0"',
             1,
         ),
         encoding="utf-8",
@@ -315,7 +339,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     compatibility = tmp_path / "release" / "core-compatibility.json"
     compatibility.write_text(
         compatibility.read_text(encoding="utf-8").replace(
-            "b0d8fd27537b2f177cfe9a5e0fd41f33b9f18f19",
+            "2fc1004c841ba968183ca0cccdcf7ee298ae4bc7",
             "c3e7893b0609fcd7df390375267a00356f09cb22",
         ),
         encoding="utf-8",
@@ -329,17 +353,23 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     ("bound_value", "replacement"),
     [
         (
-            "e72fc93248cd363a5c67dac9efffb367a71c2b1d",
+            "8ef0c1e9714d4b71ae1483ad58162ee1903cdbe6",
             "22cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
         ),
         (
-            "9ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
-            "8ad29db6a7e616f65cea2957bc5ba8d1f9b99ef0eb1fe1432c09be25786267b5",
+            "c51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51",
+            "d51d0eb7ecf6f29ad3495fe7c40a2ea6741cf03a7cf194d51417bb810df90f51",
         ),
+        ('"wire_format": [1, 2]', '"wire_format": [1, 1]'),
+        (
+            "model-schema-2-component-scoped-anonymous-redesign",
+            "behavior-preserving-native-ontology-redesign",
+        ),
+        ('"WP23"', '"WP24"'),
         ("encoded-native", "scalar-wire"),
     ],
 )
-def test_build_provenance_rejects_divergent_core_tree_or_encoded_contract(
+def test_build_provenance_rejects_divergent_core_release_contract(
     tmp_path: Path,
     bound_value: str,
     replacement: str,
