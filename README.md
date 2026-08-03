@@ -23,7 +23,9 @@ module uses the CPython 3.10 limited ABI and is additionally exercised on every 
 CPython minor through 3.14.
 
 Start with the [documentation index](docs/index.md) or the
-[getting-started guide](docs/getting-started.md). The distribution is
+[getting-started guide](docs/getting-started.md); the complete public surface is
+described in the [API reference](docs/api-reference.md) and the internal pipeline
+in the [architecture overview](docs/architecture.md). The distribution is
 `pyelk-reasoner`; do not install the unrelated `pyelk` graph-layout package.
 Existing 0.1 users should read the [0.2 migration guide](docs/migration-0.2.md)
 before reusing persisted pyowl-core snapshots or custom encoded-view providers.
