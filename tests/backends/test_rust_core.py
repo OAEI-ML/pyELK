@@ -2630,6 +2630,60 @@ def test_complex_satisfiability_does_not_classify_or_realize() -> None:
         assert diagnostic["realization_cached"] is False
 
 
+@pytest.mark.parametrize("budget", (0, 80_000, 1_048_576))
+def test_complex_query_cache_eviction_preserves_answers_and_isolation(budget: int) -> None:
+    import pyowl_core as owl
+
+    from tests.unit.indexing._support import load_functional
+
+    snapshot = load_functional(
+        "SubClassOf(:A :B) ClassAssertion(:A :i) "
+        "SubClassOf(:A ObjectSomeValuesFrom(:p :X)) ObjectPropertyRange(:p :R)"
+    )
+    a = owl.Class(owl.IRI("urn:test#A"))
+    expressions = [
+        owl.ObjectIntersectionOf(owl.CanonicalSet((
+            a, owl.Class(owl.IRI(f"urn:test#Fresh{index}")),
+        )))
+        for index in range(12)
+    ]
+    expressions.extend([
+        owl.ObjectSomeValuesFrom(owl.ObjectProperty(owl.IRI("urn:test#freshRole")), a),
+        owl.ObjectSomeValuesFrom(owl.ObjectProperty(owl.IRI("urn:test#p")), a),
+    ])
+    python = Reasoner(snapshot, ReasonerConfig(backend="python", workers=1))
+    rust = Reasoner(snapshot, ReasonerConfig(backend="rust", workers=1, query_cache_bytes=budget))
+    with python, rust:
+        retained = None
+        for expression in expressions + expressions[:1] + list(reversed(expressions)):
+            assert rust.is_satisfiable(expression) == python.is_satisfiable(expression)
+            assert rust.equivalent_classes(expression) == python.equivalent_classes(expression)
+            for direct in (False, True):
+                actual = rust.superclasses(expression, direct=direct)
+                expected = python.superclasses(expression, direct=direct)
+                assert actual == expected
+                if retained is None:
+                    retained = (actual, expected)
+                assert rust.subclasses(expression, direct=direct) == python.subclasses(
+                    expression, direct=direct
+                )
+                assert rust.instances(expression, direct=direct) == python.instances(
+                    expression, direct=direct
+                )
+                assert rust.diagnostics()["class_query_cache_bytes"] <= budget
+        assert retained is not None and retained[0] == retained[1]
+        diagnostics = rust.diagnostics()
+        assert diagnostics["class_query_base_preparations"] == 1
+        assert diagnostics["base_rule_preparations"] == 1
+        if budget < 1_048_576:
+            assert diagnostics["class_query_cache_evictions"] > 0
+        if budget == 0:
+            assert diagnostics["cached_class_queries"] == 0
+            assert diagnostics["class_query_cache_bytes"] == 0
+        else:
+            assert diagnostics["class_query_cache_bytes"] > 0
+
+
 @pytest.mark.parametrize("name", _ENTAILMENT_CASES)
 def test_frozen_entailment_queries_match_python(name: str) -> None:
     expected_rows = _payload(_EXPECTED / "query" / "entailment" / f"{name}.json")["result"][

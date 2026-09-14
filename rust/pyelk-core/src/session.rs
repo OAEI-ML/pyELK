@@ -16,7 +16,10 @@ use crate::query::{
     QueryEvaluation, decide_entailment, named_taxonomy_query, unindexed_result,
     validate_query_entities,
 };
-use crate::reasoning::{ContextSnapshot, PreparedSaturation, SaturationCounters, saturate_roots};
+use crate::query_program::QueryBase;
+use crate::reasoning::{
+    ContextSnapshot, PreparedSaturation, RuleIndices, SaturationCounters, saturate_roots,
+};
 use crate::result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
 use crate::taxonomy::{
     class_taxonomy, named_expressions, object_property_taxonomy, realization, relative_indices,
@@ -35,6 +38,8 @@ pub enum DiagnosticValue {
 pub struct NativeCoreSession {
     ontology: Arc<Ontology>,
     properties: Arc<PropertyClosure>,
+    rule_indices: Arc<RuleIndices>,
+    query_base: Option<Arc<QueryBase>>,
     compiler_digest: [u8; 32],
     compiler_counts: BTreeMap<&'static str, u64>,
     effective_workers: usize,
@@ -48,6 +53,13 @@ pub struct NativeCoreSession {
     query_evaluations: BTreeMap<Vec<u8>, QueryEvaluation>,
     query_results: BTreeMap<(Option<Vec<u8>>, QueryKind, bool), RawQueryResult>,
     entailment_results: BTreeMap<Option<Vec<u8>>, bool>,
+    query_cache_charges: BTreeMap<Option<Vec<u8>>, (usize, u64)>,
+    query_cache_limit: usize,
+    query_cache_bytes: usize,
+    query_cache_clock: u64,
+    query_cache_hits: u64,
+    query_cache_evictions: u64,
+    query_programs_prepared: u64,
 }
 
 impl NativeCoreSession {
@@ -67,6 +79,7 @@ impl NativeCoreSession {
         let compiler_counts = ontology.compiler_section_counts()?;
         let ontology = Arc::new(ontology);
         let properties = Arc::new(PropertyClosure::build(&ontology)?);
+        let rule_indices = Arc::new(RuleIndices::new(&ontology, &properties)?);
         let effective_workers = if workers == 0 {
             std::thread::available_parallelism().map_or(1, usize::from)
         } else {
@@ -91,6 +104,8 @@ impl NativeCoreSession {
         Ok(Self {
             ontology,
             properties,
+            rule_indices,
+            query_base: None,
             compiler_digest,
             compiler_counts,
             effective_workers,
@@ -104,6 +119,13 @@ impl NativeCoreSession {
             query_evaluations: BTreeMap::new(),
             query_results: BTreeMap::new(),
             entailment_results: BTreeMap::new(),
+            query_cache_charges: BTreeMap::new(),
+            query_cache_limit: 64 * 1024 * 1024,
+            query_cache_bytes: 0,
+            query_cache_clock: 0,
+            query_cache_hits: 0,
+            query_cache_evictions: 0,
+            query_programs_prepared: 0,
         })
     }
 
@@ -207,68 +229,183 @@ impl NativeCoreSession {
     ) -> CoreResult<RawQueryResult> {
         let key = encoded.map(<[u8]>::to_vec);
         let cache_key = (key.clone(), kind, direct);
-        if let Some(value) = self.query_results.get(&cache_key) {
-            return Ok(value.clone());
+        if let Some(value) = self.query_results.get(&cache_key).cloned() {
+            self.query_cache_hits = self.query_cache_hits.saturating_add(1);
+            self.touch_query(&key);
+            return Ok(value);
         }
-        let value = if self.is_inconsistent()? {
-            match kind {
-                QueryKind::Satisfiable => RawQueryResult::boolean(kind, false),
-                QueryKind::EquivalentClasses => {
-                    let taxonomy = self.class_taxonomy()?;
-                    RawQueryResult::nodes(kind, vec![taxonomy.nodes[taxonomy.top as usize].clone()])
+        let outcome = (|| {
+            let value = if self.is_inconsistent()? {
+                match kind {
+                    QueryKind::Satisfiable => RawQueryResult::boolean(kind, false),
+                    QueryKind::EquivalentClasses => {
+                        let taxonomy = self.class_taxonomy()?;
+                        RawQueryResult::nodes(
+                            kind,
+                            vec![taxonomy.nodes[taxonomy.top as usize].clone()],
+                        )
+                    }
+                    QueryKind::Instances => {
+                        RawQueryResult::nodes(kind, self.realization()?.instance_nodes)
+                    }
+                    _ => RawQueryResult::nodes(kind, Vec::new()),
                 }
-                QueryKind::Instances => {
-                    RawQueryResult::nodes(kind, self.realization()?.instance_nodes)
+            } else if let Some(payload) = encoded {
+                let query = QueryIr::decode(payload)?;
+                if query.kind != QueryIrKind::ClassExpression {
+                    return Err(CoreError::invalid(
+                        "class query requires CLASS_EXPRESSION mini-IR",
+                    ));
                 }
-                _ => RawQueryResult::nodes(kind, Vec::new()),
-            }
-        } else if let Some(payload) = encoded {
-            let query = QueryIr::decode(payload)?;
-            if query.kind != QueryIrKind::ClassExpression {
-                return Err(CoreError::invalid(
-                    "class query requires CLASS_EXPRESSION mini-IR",
-                ));
-            }
-            validate_query_entities(&self.ontology, &query)?;
-            if let Some(value) = self.existing_named_query(&query, kind, direct)? {
-                value
-            } else {
-                if !self.query_evaluations.contains_key(payload) {
-                    self.query_evaluations.insert(
-                        payload.to_vec(),
-                        QueryEvaluation::new(&self.ontology, query)?,
-                    );
-                }
-                if kind == QueryKind::Satisfiable {
-                    RawQueryResult::boolean(
-                        kind,
+                validate_query_entities(&self.ontology, &query)?;
+                if let Some(value) = self.existing_named_query(&query, kind, direct)? {
+                    value
+                } else {
+                    if !self.query_evaluations.contains_key(payload) {
+                        self.query_programs_prepared =
+                            self.query_programs_prepared.saturating_add(1);
+                        self.query_evaluations.insert(
+                            payload.to_vec(),
+                            QueryEvaluation::new(
+                                Arc::clone(self.query_base.get_or_insert_with(|| {
+                                    Arc::new(QueryBase::new(
+                                        Arc::clone(&self.ontology),
+                                        Arc::clone(&self.properties),
+                                        Arc::clone(&self.rule_indices),
+                                    ))
+                                })),
+                                query,
+                            )?,
+                        );
+                    }
+                    if kind == QueryKind::Satisfiable {
+                        RawQueryResult::boolean(
+                            kind,
+                            self.query_evaluations
+                                .get_mut(payload)
+                                .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
+                                .is_satisfiable()?,
+                        )
+                    } else {
+                        let taxonomy = self.class_taxonomy()?;
+                        let realized = if kind == QueryKind::Instances {
+                            Some(self.realization()?)
+                        } else {
+                            None
+                        };
                         self.query_evaluations
                             .get_mut(payload)
                             .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
-                            .is_satisfiable()?,
-                    )
-                } else {
-                    let taxonomy = self.class_taxonomy()?;
-                    let realized = if kind == QueryKind::Instances {
-                        Some(self.realization()?)
-                    } else {
-                        None
-                    };
-                    self.query_evaluations
-                        .get_mut(payload)
-                        .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
-                        .select(&self.ontology, &taxonomy, realized.as_ref(), kind, direct)?
+                            .select(&self.ontology, &taxonomy, realized.as_ref(), kind, direct)?
+                    }
+                }
+            } else if kind == QueryKind::Satisfiable {
+                RawQueryResult::boolean(kind, true)
+            } else if direct && matches!(kind, QueryKind::Subclasses | QueryKind::Superclasses) {
+                unindexed_result(kind, direct, &self.class_taxonomy()?)
+            } else {
+                RawQueryResult::nodes(kind, Vec::new())
+            };
+            self.query_results.insert(cache_key, value.clone());
+            Ok(value)
+        })();
+        self.charge_query(key);
+        outcome
+    }
+
+    /// Bound class-expression state and results; oversized entries execute uncached.
+    pub fn set_query_cache_bytes(&mut self, limit: usize) {
+        self.query_cache_limit = limit;
+        self.evict_queries();
+    }
+
+    fn touch_query(&mut self, key: &Option<Vec<u8>>) {
+        self.query_cache_clock = self.query_cache_clock.saturating_add(1);
+        if let Some((_, stamp)) = self.query_cache_charges.get_mut(key) {
+            *stamp = self.query_cache_clock;
+        }
+    }
+
+    fn charge_query(&mut self, key: Option<Vec<u8>>) {
+        let previous = self
+            .query_cache_charges
+            .remove(&key)
+            .map_or(0, |(bytes, _)| bytes);
+        let mut bytes = 64 + 12 * std::mem::size_of::<(Option<Vec<u8>>, (usize, u64))>();
+        let key_bytes = key.as_ref().map_or(0, Vec::len);
+        bytes += key_bytes;
+        if let Some(query) = key
+            .as_ref()
+            .and_then(|payload| self.query_evaluations.get(payload))
+        {
+            bytes += query.retained_bytes()
+                + key_bytes
+                + 64
+                + 12 * std::mem::size_of::<(Vec<u8>, QueryEvaluation)>();
+        }
+        for kind in [
+            QueryKind::Satisfiable,
+            QueryKind::EquivalentClasses,
+            QueryKind::Subclasses,
+            QueryKind::Superclasses,
+            QueryKind::Instances,
+        ] {
+            for direct in [false, true] {
+                if let Some(result) = self.query_results.get(&(key.clone(), kind, direct)) {
+                    bytes += 64
+                        + 12 * std::mem::size_of::<(
+                            (Option<Vec<u8>>, QueryKind, bool),
+                            RawQueryResult,
+                        )>()
+                        + key_bytes
+                        + result.nodes.capacity() * std::mem::size_of::<Vec<u32>>()
+                        + result
+                            .nodes
+                            .iter()
+                            .map(|node| node.capacity() * 4)
+                            .sum::<usize>();
                 }
             }
-        } else if kind == QueryKind::Satisfiable {
-            RawQueryResult::boolean(kind, true)
-        } else if direct && matches!(kind, QueryKind::Subclasses | QueryKind::Superclasses) {
-            unindexed_result(kind, direct, &self.class_taxonomy()?)
-        } else {
-            RawQueryResult::nodes(kind, Vec::new())
-        };
-        self.query_results.insert(cache_key, value.clone());
-        Ok(value)
+        }
+        self.query_cache_clock = self.query_cache_clock.saturating_add(1);
+        self.query_cache_charges
+            .insert(key, (bytes, self.query_cache_clock));
+        self.query_cache_bytes = self
+            .query_cache_bytes
+            .saturating_sub(previous)
+            .saturating_add(bytes);
+        self.evict_queries();
+    }
+
+    fn evict_queries(&mut self) {
+        while self.query_cache_bytes > self.query_cache_limit {
+            let Some(key) = self
+                .query_cache_charges
+                .iter()
+                .min_by_key(|(_, (_, stamp))| stamp)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            if let Some((bytes, _)) = self.query_cache_charges.remove(&key) {
+                self.query_cache_bytes = self.query_cache_bytes.saturating_sub(bytes);
+            }
+            if let Some(payload) = &key {
+                self.query_evaluations.remove(payload);
+            }
+            for kind in [
+                QueryKind::Satisfiable,
+                QueryKind::EquivalentClasses,
+                QueryKind::Subclasses,
+                QueryKind::Superclasses,
+                QueryKind::Instances,
+            ] {
+                for direct in [false, true] {
+                    self.query_results.remove(&(key.clone(), kind, direct));
+                }
+            }
+            self.query_cache_evictions = self.query_cache_evictions.saturating_add(1);
+        }
     }
 
     /// Use committed class contexts/taxonomy for ordinary dual-polarity named queries.
@@ -517,6 +654,26 @@ impl NativeCoreSession {
             "compiler_source_fingerprint".to_owned(),
             DiagnosticValue::Text(hex_digest(&self.ontology.source_fingerprint)),
         );
+        for (name, count) in [
+            ("class_query_cache_bytes", self.query_cache_bytes as u64),
+            (
+                "class_query_cache_limit_bytes",
+                self.query_cache_limit as u64,
+            ),
+            ("class_query_cache_hits", self.query_cache_hits),
+            ("class_query_cache_evictions", self.query_cache_evictions),
+            (
+                "class_query_programs_prepared",
+                self.query_programs_prepared,
+            ),
+            (
+                "class_query_base_preparations",
+                u64::from(self.query_base.is_some()),
+            ),
+            ("base_rule_preparations", 1),
+        ] {
+            diagnostics.insert(name.to_owned(), DiagnosticValue::Integer(count));
+        }
         for (name, count) in &self.compiler_counts {
             diagnostics.insert(
                 format!("compiler_{name}_count"),
@@ -546,7 +703,11 @@ impl NativeCoreSession {
         }
         let ontology = Arc::clone(&self.ontology);
         let properties = Arc::clone(&self.properties);
-        let prepared = PreparedSaturation::new(&ontology, &properties)?;
+        let prepared = PreparedSaturation::with_indices(
+            &*ontology,
+            &properties,
+            Arc::clone(&self.rule_indices),
+        );
         let outcomes = if let Some(pool) = &self.pool {
             pool.install(|| {
                 missing

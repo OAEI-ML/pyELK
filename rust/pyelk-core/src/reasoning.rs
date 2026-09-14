@@ -1,9 +1,11 @@
 //! Iterative occurrence-aware class saturation over one demanded root.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::ops::{Deref, Index, IndexMut};
+use std::sync::Arc;
 
 use crate::error::{CoreError, CoreResult};
-use crate::ir::{ExpressionTag, OWL_NOTHING_IRI, OWL_THING_IRI, Ontology};
+use crate::ir::{Expression, ExpressionTag, OWL_NOTHING_IRI, OWL_THING_IRI, Occurrence, Ontology};
 use crate::properties::PropertyClosure;
 
 /// Structural conclusion identities used for duplicate suppression.
@@ -138,6 +140,31 @@ pub struct ContextSnapshot {
 }
 
 impl ContextSnapshot {
+    /// Charge worst-case sparse B-tree node occupancy rather than only logical payload bytes.
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let set_entries = self.composed_subsumers.len()
+            + self.decomposed_subsumers.len()
+            + self.initialized_subcontexts.len();
+        let maps = [
+            &self.forward_links,
+            &self.backward_links,
+            &self.propagations,
+            &self.disjoint_positions,
+        ];
+        64 + 12 * std::mem::size_of::<(u32, Self)>()
+            + set_entries * (64 + 12 * std::mem::size_of::<u32>())
+            + maps
+                .iter()
+                .map(|map| {
+                    map.len() * (64 + 12 * std::mem::size_of::<(u32, BTreeSet<u32>)>())
+                        + map
+                            .values()
+                            .map(|set| set.len() * (64 + 12 * std::mem::size_of::<u32>()))
+                            .sum::<usize>()
+                })
+                .sum::<usize>()
+    }
+
     fn from_context(context: Context) -> Self {
         Self {
             root: context.root,
@@ -172,55 +199,133 @@ pub struct SaturationCounters {
     pub product_candidates: u64,
 }
 
-struct RuleDispatcher<'a> {
-    ontology: &'a Ontology,
-    properties: &'a PropertyClosure,
+/// Dense immutable base rows with copy-on-write changes only for touched query rows.
+#[derive(Clone, Debug)]
+struct RuleRows<T> {
+    base: Arc<Vec<Vec<T>>>,
+    changed: BTreeMap<usize, Vec<T>>,
+    empty: Vec<T>,
+}
+
+impl<T: Clone + Ord> RuleRows<T> {
+    fn new(count: usize) -> Self {
+        Self {
+            base: Arc::new(vec![Vec::new(); count]),
+            changed: BTreeMap::new(),
+            empty: Vec::new(),
+        }
+    }
+
+    fn owned_bytes(&self) -> usize {
+        self.changed
+            .values()
+            .map(|row| {
+                64 + 12 * std::mem::size_of::<(usize, Vec<T>)>()
+                    + row.capacity() * std::mem::size_of::<T>()
+            })
+            .sum()
+    }
+
+    fn sort_dedup(&mut self) {
+        if let Some(base) = Arc::get_mut(&mut self.base) {
+            for row in base {
+                row.sort();
+                row.dedup();
+            }
+        }
+        for row in self.changed.values_mut() {
+            row.sort();
+            row.dedup();
+        }
+    }
+}
+
+impl<T> Index<usize> for RuleRows<T> {
+    type Output = Vec<T>;
+    fn index(&self, index: usize) -> &Self::Output {
+        self.changed
+            .get(&index)
+            .or_else(|| self.base.get(index))
+            .unwrap_or(&self.empty)
+    }
+}
+
+impl<T: Clone> IndexMut<usize> for RuleRows<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        if Arc::strong_count(&self.base) == 1 && index < self.base.len() {
+            return &mut Arc::get_mut(&mut self.base).expect("exclusive rule rows")[index];
+        }
+        self.changed
+            .entry(index)
+            .or_insert_with(|| self.base.get(index).cloned().unwrap_or_default())
+    }
+}
+
+/// Minimal immutable expression access used by the native scheduler.
+pub(crate) trait ExpressionSource: Sync {
+    fn expression(&self, id: usize) -> &Expression;
+    fn occurrence(&self, id: usize) -> Occurrence;
+    fn expression_count(&self) -> usize;
+}
+
+impl ExpressionSource for Ontology {
+    fn expression(&self, id: usize) -> &Expression {
+        &self.expressions[id]
+    }
+    fn occurrence(&self, id: usize) -> Occurrence {
+        self.expression_occurrences[id]
+    }
+    fn expression_count(&self) -> usize {
+        self.expressions.len()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RuleIndices {
     owl_thing: u32,
     owl_nothing: u32,
     introduce_thing: bool,
     decompose_nothing: bool,
-    subclasses: Vec<Vec<u32>>,
-    definitions_by_class: Vec<Vec<u32>>,
-    classes_by_definition: Vec<Vec<u32>>,
-    equivalent_first: Vec<Vec<u32>>,
-    equivalent_second: Vec<Vec<u32>>,
-    intersections_by_first: Vec<Vec<(u32, u32)>>,
-    intersections_by_second: Vec<Vec<(u32, u32)>>,
-    unions_by_disjunct: Vec<Vec<(u32, u32)>>,
-    existentials_by_filler: Vec<Vec<(u32, u32)>>,
-    complements_by_negated: Vec<Vec<u32>>,
-    positive_complements: Vec<Vec<u32>>,
-    disjoint_by_member: Vec<Vec<(u32, u32)>>,
-    told_super_properties: BTreeMap<u32, Vec<u32>>,
+    subclasses: RuleRows<u32>,
+    definitions_by_class: RuleRows<u32>,
+    classes_by_definition: RuleRows<u32>,
+    equivalent_first: RuleRows<u32>,
+    equivalent_second: RuleRows<u32>,
+    intersections_by_first: RuleRows<(u32, u32)>,
+    intersections_by_second: RuleRows<(u32, u32)>,
+    unions_by_disjunct: RuleRows<(u32, u32)>,
+    existentials_by_filler: RuleRows<(u32, u32)>,
+    complements_by_negated: RuleRows<u32>,
+    positive_complements: RuleRows<u32>,
+    disjoint_by_member: RuleRows<(u32, u32)>,
+    told_super_properties: Arc<BTreeMap<u32, Vec<u32>>>,
 }
 
-impl<'a> RuleDispatcher<'a> {
-    fn new(ontology: &'a Ontology, properties: &'a PropertyClosure) -> CoreResult<Self> {
+impl RuleIndices {
+    pub(crate) fn new(ontology: &Ontology, properties: &PropertyClosure) -> CoreResult<Self> {
         let expression_count = ontology.expressions.len();
         let class_thing = ontology.entity_id(crate::ir::EntityKind::Class, OWL_THING_IRI)?;
         let class_nothing = ontology.entity_id(crate::ir::EntityKind::Class, OWL_NOTHING_IRI)?;
         let owl_thing = ontology.named_expression(ExpressionTag::Class, class_thing)?;
         let owl_nothing = ontology.named_expression(ExpressionTag::Class, class_nothing)?;
         let mut result = Self {
-            ontology,
-            properties,
             owl_thing,
             owl_nothing,
             introduce_thing: ontology.expression_occurrences[owl_thing as usize].negative > 0,
             decompose_nothing: ontology.expression_occurrences[owl_nothing as usize].positive > 0,
-            subclasses: vec![Vec::new(); expression_count],
-            definitions_by_class: vec![Vec::new(); expression_count],
-            classes_by_definition: vec![Vec::new(); expression_count],
-            equivalent_first: vec![Vec::new(); expression_count],
-            equivalent_second: vec![Vec::new(); expression_count],
-            intersections_by_first: vec![Vec::new(); expression_count],
-            intersections_by_second: vec![Vec::new(); expression_count],
-            unions_by_disjunct: vec![Vec::new(); expression_count],
-            existentials_by_filler: vec![Vec::new(); expression_count],
-            complements_by_negated: vec![Vec::new(); expression_count],
-            positive_complements: vec![Vec::new(); expression_count],
-            disjoint_by_member: vec![Vec::new(); expression_count],
-            told_super_properties: BTreeMap::new(),
+            subclasses: RuleRows::new(expression_count),
+            definitions_by_class: RuleRows::new(expression_count),
+            classes_by_definition: RuleRows::new(expression_count),
+            equivalent_first: RuleRows::new(expression_count),
+            equivalent_second: RuleRows::new(expression_count),
+            intersections_by_first: RuleRows::new(expression_count),
+            intersections_by_second: RuleRows::new(expression_count),
+            unions_by_disjunct: RuleRows::new(expression_count),
+            existentials_by_filler: RuleRows::new(expression_count),
+            complements_by_negated: RuleRows::new(expression_count),
+            positive_complements: RuleRows::new(expression_count),
+            disjoint_by_member: RuleRows::new(expression_count),
+            told_super_properties: Arc::new(BTreeMap::new()),
         };
         for &(sub, super_expression) in &ontology.subclass_axioms {
             result.subclasses[sub as usize].push(super_expression);
@@ -235,32 +340,12 @@ impl<'a> RuleDispatcher<'a> {
             }
         }
         for (expression_index, expression) in ontology.expressions.iter().enumerate() {
-            let expression_id = expression_index as u32;
-            let occurrence = ontology.expression_occurrences[expression_index];
-            match expression.tag {
-                ExpressionTag::ObjectIntersectionOf if occurrence.negative > 0 => {
-                    result.intersections_by_first[expression.arguments[0] as usize]
-                        .push((expression.arguments[1], expression_id));
-                    result.intersections_by_second[expression.arguments[1] as usize]
-                        .push((expression.arguments[0], expression_id));
-                }
-                ExpressionTag::ObjectUnionOf if occurrence.negative > 0 => {
-                    for (position, &argument) in expression.arguments.iter().enumerate() {
-                        result.unions_by_disjunct[argument as usize]
-                            .push((expression_id, position as u32));
-                    }
-                }
-                ExpressionTag::ObjectSomeValuesFrom if occurrence.negative > 0 => {
-                    result.existentials_by_filler[expression.arguments[1] as usize]
-                        .push((expression_id, expression.arguments[0]));
-                }
-                ExpressionTag::ObjectComplementOf if occurrence.positive > 0 => {
-                    let negated = expression.arguments[0];
-                    result.complements_by_negated[negated as usize].push(expression_id);
-                    result.positive_complements[expression_id as usize].push(negated);
-                }
-                _ => {}
-            }
+            result.register_expression(
+                expression_index as u32,
+                expression,
+                Occurrence::default(),
+                ontology.expression_occurrences[expression_index],
+            );
         }
         for (group, members) in ontology.disjoint_groups.iter().enumerate() {
             for (position, &member) in members.iter().enumerate() {
@@ -269,8 +354,8 @@ impl<'a> RuleDispatcher<'a> {
         }
         for &(compiled_chain, super_property) in &ontology.subproperty_axioms {
             let local_chain = properties.compiled_chain(compiled_chain)?;
-            result
-                .told_super_properties
+            Arc::get_mut(&mut result.told_super_properties)
+                .expect("new rule map")
                 .entry(local_chain)
                 .or_default()
                 .push(super_property);
@@ -279,31 +364,118 @@ impl<'a> RuleDispatcher<'a> {
         Ok(result)
     }
 
-    fn sort_indices(&mut self) {
-        fn sort_dedup<T: Ord>(rows: &mut [Vec<T>]) {
-            for row in rows {
-                row.sort();
-                row.dedup();
+    fn register_expression(
+        &mut self,
+        expression_id: u32,
+        expression: &Expression,
+        previous: Occurrence,
+        occurrence: Occurrence,
+    ) {
+        match expression.tag {
+            ExpressionTag::ObjectIntersectionOf
+                if occurrence.negative > 0 && previous.negative == 0 =>
+            {
+                self.intersections_by_first[expression.arguments[0] as usize]
+                    .push((expression.arguments[1], expression_id));
+                self.intersections_by_second[expression.arguments[1] as usize]
+                    .push((expression.arguments[0], expression_id));
             }
-        }
-        sort_dedup(&mut self.subclasses);
-        sort_dedup(&mut self.definitions_by_class);
-        sort_dedup(&mut self.classes_by_definition);
-        sort_dedup(&mut self.equivalent_first);
-        sort_dedup(&mut self.equivalent_second);
-        sort_dedup(&mut self.intersections_by_first);
-        sort_dedup(&mut self.intersections_by_second);
-        sort_dedup(&mut self.unions_by_disjunct);
-        sort_dedup(&mut self.existentials_by_filler);
-        sort_dedup(&mut self.complements_by_negated);
-        sort_dedup(&mut self.positive_complements);
-        sort_dedup(&mut self.disjoint_by_member);
-        for values in self.told_super_properties.values_mut() {
-            values.sort_unstable();
-            values.dedup();
+            ExpressionTag::ObjectUnionOf if occurrence.negative > 0 && previous.negative == 0 => {
+                for (position, &argument) in expression.arguments.iter().enumerate() {
+                    self.unions_by_disjunct[argument as usize]
+                        .push((expression_id, position as u32));
+                }
+            }
+            ExpressionTag::ObjectSomeValuesFrom
+                if occurrence.negative > 0 && previous.negative == 0 =>
+            {
+                self.existentials_by_filler[expression.arguments[1] as usize]
+                    .push((expression_id, expression.arguments[0]));
+            }
+            ExpressionTag::ObjectComplementOf
+                if occurrence.positive > 0 && previous.positive == 0 =>
+            {
+                let negated = expression.arguments[0];
+                self.complements_by_negated[negated as usize].push(expression_id);
+                self.positive_complements[expression_id as usize].push(negated);
+            }
+            _ => {}
         }
     }
 
+    pub(crate) fn query_owned_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.subclasses.owned_bytes()
+            + self.definitions_by_class.owned_bytes()
+            + self.classes_by_definition.owned_bytes()
+            + self.equivalent_first.owned_bytes()
+            + self.equivalent_second.owned_bytes()
+            + self.intersections_by_first.owned_bytes()
+            + self.intersections_by_second.owned_bytes()
+            + self.unions_by_disjunct.owned_bytes()
+            + self.existentials_by_filler.owned_bytes()
+            + self.complements_by_negated.owned_bytes()
+            + self.positive_complements.owned_bytes()
+            + self.disjoint_by_member.owned_bytes()
+    }
+
+    pub(crate) fn with_query(
+        &self,
+        expressions: &dyn ExpressionSource,
+        changed: &BTreeMap<usize, Occurrence>,
+    ) -> Self {
+        let mut result = self.clone();
+        for (&id, &previous) in changed {
+            result.register_expression(
+                id as u32,
+                expressions.expression(id),
+                previous,
+                expressions.occurrence(id),
+            );
+        }
+        result.introduce_thing = expressions.occurrence(self.owl_thing as usize).negative > 0;
+        result.decompose_nothing = expressions.occurrence(self.owl_nothing as usize).positive > 0;
+        result.sort_indices();
+        result
+    }
+
+    fn sort_indices(&mut self) {
+        self.subclasses.sort_dedup();
+        self.definitions_by_class.sort_dedup();
+        self.classes_by_definition.sort_dedup();
+        self.equivalent_first.sort_dedup();
+        self.equivalent_second.sort_dedup();
+        self.intersections_by_first.sort_dedup();
+        self.intersections_by_second.sort_dedup();
+        self.unions_by_disjunct.sort_dedup();
+        self.existentials_by_filler.sort_dedup();
+        self.complements_by_negated.sort_dedup();
+        self.positive_complements.sort_dedup();
+        self.disjoint_by_member.sort_dedup();
+        if let Some(rows) = Arc::get_mut(&mut self.told_super_properties) {
+            for values in rows.values_mut() {
+                values.sort_unstable();
+                values.dedup();
+            }
+        }
+    }
+}
+
+struct RuleDispatcher<'a> {
+    ontology: &'a dyn ExpressionSource,
+    properties: &'a PropertyClosure,
+    indices: Arc<RuleIndices>,
+}
+
+impl Deref for RuleDispatcher<'_> {
+    type Target = RuleIndices;
+
+    fn deref(&self) -> &Self::Target {
+        &self.indices
+    }
+}
+
+impl RuleDispatcher<'_> {
     fn dispatch(
         &self,
         state: &Context,
@@ -428,8 +600,8 @@ impl<'a> RuleDispatcher<'a> {
                 subsumer: definition,
             });
         }
-        let expression = &self.ontology.expressions[subsumer as usize];
-        let occurrence = self.ontology.expression_occurrences[subsumer as usize];
+        let expression = self.ontology.expression(subsumer as usize);
+        let occurrence = self.ontology.occurrence(subsumer as usize);
         match expression.tag {
             ExpressionTag::ObjectIntersectionOf if occurrence.positive > 0 => {
                 for &argument in &expression.arguments {
@@ -592,7 +764,7 @@ impl<'a> RuleDispatcher<'a> {
         target: u32,
         products: &mut Vec<Conclusion>,
     ) -> CoreResult<()> {
-        let record = self.properties.chains[chain as usize];
+        let record = self.properties.chain(chain);
         if record.suffix_chain.is_some() {
             if let Some(super_properties) = self.told_super_properties.get(&chain) {
                 for &super_property in super_properties {
@@ -684,7 +856,7 @@ impl<'a> RuleDispatcher<'a> {
         result_chain: u32,
         products: &mut Vec<Conclusion>,
     ) -> CoreResult<()> {
-        let result = self.properties.chains[result_chain as usize];
+        let result = self.properties.chain(result_chain);
         if result.suffix_chain.is_none() {
             return Err(CoreError::internal(
                 "property composition produced a singleton chain",
@@ -723,9 +895,25 @@ impl<'ontology> PreparedSaturation<'ontology> {
         ontology: &'ontology Ontology,
         properties: &'ontology PropertyClosure,
     ) -> CoreResult<Self> {
-        Ok(Self {
-            dispatcher: RuleDispatcher::new(ontology, properties)?,
-        })
+        Ok(Self::with_indices(
+            ontology,
+            properties,
+            Arc::new(RuleIndices::new(ontology, properties)?),
+        ))
+    }
+
+    pub(crate) fn with_indices(
+        ontology: &'ontology dyn ExpressionSource,
+        properties: &'ontology PropertyClosure,
+        indices: Arc<RuleIndices>,
+    ) -> Self {
+        Self {
+            dispatcher: RuleDispatcher {
+                ontology,
+                properties,
+                indices,
+            },
+        }
     }
 
     pub(crate) fn saturate_roots(
@@ -776,7 +964,7 @@ impl<'dispatcher, 'ontology> SaturationWorkspace<'dispatcher, 'ontology> {
     }
 
     fn ensure_context(&mut self, root: u32) -> CoreResult<()> {
-        if root as usize >= self.dispatcher.ontology.expressions.len() {
+        if root as usize >= self.dispatcher.ontology.expression_count() {
             return Err(CoreError::invalid(format!(
                 "context root {root} is out of range"
             )));

@@ -732,6 +732,13 @@ impl NativeSession {
 
 #[pymethods]
 impl NativeSession {
+    fn set_query_cache_bytes(&self, py: Python<'_>, limit: usize) -> PyResult<()> {
+        self.detached(py, "set_query_cache_bytes", move |session| {
+            session.set_query_cache_bytes(limit);
+            Ok(())
+        })
+    }
+
     fn compiler_metadata(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let encoded = self.detached(py, "compiler_metadata", |session| {
             encode_compiler_metadata(session.ontology())

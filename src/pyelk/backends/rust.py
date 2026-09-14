@@ -110,6 +110,7 @@ class RustBackendFactory:
             raise
         except Exception as error:
             raise InternalReasonerError("create_session", "rust", str(error)) from error
+        _configure_query_cache(native_session, config)
         return RustBackendSession(
             native_session,
             abi=self._abi,
@@ -177,6 +178,7 @@ class RustBackendFactory:
                 "rust",
                 str(error),
             ) from error
+        _configure_query_cache(native_session, config)
         return RustBackendSession(
             native_session,
             abi=self._abi,
@@ -187,6 +189,15 @@ class RustBackendFactory:
             ingestion_path="encoded-native",
             encoded_owner=handoff,
         )
+
+
+def _configure_query_cache(native_session: object, config: BackendConfig) -> None:
+    limit = getattr(config, "query_cache_bytes", 64 * 1024 * 1024)
+    configure = getattr(native_session, "set_query_cache_bytes", None)
+    if callable(configure):
+        configure(limit)
+    elif limit != 64 * 1024 * 1024:
+        raise BackendProtocolError("native support for query_cache_bytes", native_session)
 
 
 class RustBackendSession:

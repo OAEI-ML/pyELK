@@ -15,6 +15,7 @@ class ReasonerConfig:
     allow_fresh_entities: bool = True
     unsupported: Literal["ignore", "error"] = "ignore"
     allow_incomplete_imports: bool = False
+    query_cache_bytes: int = 64 * 1024 * 1024
 
     def __post_init__(self) -> None:
         if not isinstance(self.backend, str) or self.backend not in {"auto", "python", "rust"}:
@@ -27,6 +28,10 @@ class ReasonerConfig:
             raise TypeError("allow_fresh_entities must be a boolean")
         if not isinstance(self.unsupported, str) or self.unsupported not in {"ignore", "error"}:
             raise ValueError("unsupported must be 'ignore' or 'error'")
+        if isinstance(self.query_cache_bytes, bool) or not isinstance(self.query_cache_bytes, int):
+            raise TypeError("query_cache_bytes must be an integer")
+        if self.query_cache_bytes < 0:
+            raise ValueError("query_cache_bytes must be nonnegative")
         if not isinstance(self.allow_incomplete_imports, bool):
             raise TypeError("allow_incomplete_imports must be a boolean")
 

@@ -2,6 +2,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::sync::Arc;
 
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{
@@ -9,7 +10,8 @@ use crate::ir::{
     U32_RESERVED,
 };
 use crate::properties::PropertyClosure;
-use crate::reasoning::{ContextSnapshot, saturate_root};
+use crate::query_program::{QueryBase, QueryProgram};
+use crate::reasoning::{ContextSnapshot, PreparedSaturation, saturate_root};
 use crate::result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
 use crate::taxonomy::{
     direct_type_indices, relative_indices, strict_super_closure, taxonomy_node_index,
@@ -454,30 +456,46 @@ fn add_occurrence(target: &mut Occurrence, value: Occurrence) -> CoreResult<()> 
 #[derive(Debug)]
 pub struct QueryEvaluation {
     query: QueryIr,
-    installed: InstalledQuery,
+    installed: QueryProgram,
     root: u32,
-    properties: PropertyClosure,
+    retained_bytes: usize,
     contexts: BTreeMap<u32, ContextSnapshot>,
 }
 
 impl QueryEvaluation {
-    pub fn new(base: &Ontology, query: QueryIr) -> CoreResult<Self> {
+    pub(crate) fn new(base: Arc<QueryBase>, query: QueryIr) -> CoreResult<Self> {
         if query.kind != QueryIrKind::ClassExpression {
             return Err(CoreError::invalid(
                 "class query requires CLASS_EXPRESSION mini-IR",
             ));
         }
-        let installed = install_query(base, &query)?;
+        let installed = QueryProgram::new(base, &query)?;
         let local_root = query
             .root_expression
             .ok_or_else(|| CoreError::internal("class query lost its root"))?;
-        let root = installed.query_expression_ids[local_root as usize];
-        let properties = PropertyClosure::build(&installed.overlay)?;
+        let root = installed.expression_ids[local_root as usize];
+        let retained_bytes = std::mem::size_of::<Self>()
+            + installed.owned_bytes()
+            + query.entities.capacity() * std::mem::size_of::<crate::ir::QueryEntity>()
+            + query
+                .entities
+                .iter()
+                .map(|record| record.entity.iri.capacity())
+                .sum::<usize>()
+            + query.expressions.capacity() * std::mem::size_of::<Expression>()
+            + query
+                .expressions
+                .iter()
+                .map(|e| e.arguments.capacity() * 4 + e.payload.capacity())
+                .sum::<usize>()
+            + (query.expression_occurrences.capacity() + query.property_occurrences.capacity())
+                * std::mem::size_of::<Occurrence>()
+            + query.subsumption_obligations.capacity() * 8;
         Ok(Self {
             query,
             installed,
             root,
-            properties,
+            retained_bytes,
             contexts: BTreeMap::new(),
         })
     }
@@ -490,12 +508,22 @@ impl QueryEvaluation {
             .into_iter()
             .filter(|root| !self.contexts.contains_key(root))
             .collect::<BTreeSet<_>>();
+        let prepared = PreparedSaturation::with_indices(
+            &self.installed,
+            &self.installed.properties,
+            Arc::clone(&self.installed.rules),
+        );
+        let mut workspace = prepared.workspace();
         for root in requested {
-            let (context, _counters) =
-                saturate_root(&self.installed.overlay, &self.properties, root)?;
+            let (context, _counters) = workspace.run_root(root)?;
+            self.retained_bytes = self.retained_bytes.saturating_add(context.retained_bytes());
             self.contexts.insert(root, context);
         }
         Ok(())
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.retained_bytes
     }
 
     /// Satisfiability needs only the query root, not a taxonomy or realization.
@@ -522,10 +550,8 @@ impl QueryEvaluation {
             .iter()
             .enumerate()
             .filter_map(|(index, expression)| {
-                (expression.tag == ExpressionTag::Class).then_some((
-                    expression.arguments[0],
-                    self.installed.ontology_expression_ids[index],
-                ))
+                (expression.tag == ExpressionTag::Class)
+                    .then_some((expression.arguments[0], index as u32))
             })
             .collect::<BTreeMap<_, _>>();
         let expression_to_node = taxonomy
@@ -698,10 +724,8 @@ impl QueryEvaluation {
                 .iter()
                 .enumerate()
                 .filter_map(|(index, expression)| {
-                    (expression.tag == ExpressionTag::Individual).then_some((
-                        expression.arguments[0],
-                        self.installed.ontology_expression_ids[index],
-                    ))
+                    (expression.tag == ExpressionTag::Individual)
+                        .then_some((expression.arguments[0], index as u32))
                 })
                 .collect::<BTreeMap<_, _>>();
             self.ensure_contexts(individual_expressions.values().copied())?;
@@ -761,7 +785,7 @@ impl QueryEvaluation {
                     .copied()
                     .map(|result_id| NodeCandidate {
                         members: vec![result_id],
-                        expression: self.installed.query_expression_ids[index],
+                        expression: self.installed.expression_ids[index],
                         taxonomy_index: None,
                     })
             })

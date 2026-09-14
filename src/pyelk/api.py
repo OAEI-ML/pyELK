@@ -139,6 +139,7 @@ class Reasoner:
             allow_fresh_entities=supplied.allow_fresh_entities,
             unsupported=supplied.unsupported,
             allow_incomplete_imports=supplied.allow_incomplete_imports,
+            query_cache_bytes=supplied.query_cache_bytes,
         )
         self._lock = RLock()
         self._closed = False

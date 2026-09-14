@@ -7,6 +7,7 @@ pub mod error;
 pub mod ir;
 pub mod properties;
 pub mod query;
+mod query_program;
 pub mod reasoning;
 pub mod result;
 pub mod session;

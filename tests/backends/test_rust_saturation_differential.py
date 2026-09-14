@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import struct
 import sys
@@ -31,6 +32,12 @@ from tests.integration.test_pure_reasoner import (
 
 
 def _native_library() -> Path:
+    override = os.environ.get("PYELK_NATIVE_LIBRARY")
+    if override:
+        candidate = Path(override).resolve()
+        if not candidate.is_file():
+            pytest.fail(f"PYELK_NATIVE_LIBRARY is not a built library: {candidate}")
+        return candidate
     root = Path(__file__).parents[2]
     installed = importlib.util.find_spec("pyelk._native")
     if installed is not None and installed.origin is not None:

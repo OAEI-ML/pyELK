@@ -209,6 +209,20 @@ controls:
 - `PYELK_PURE_PYTHON=1` forces Python and prevents even probing `_native`;
 - an explicit Rust request fails with `BackendUnavailableError` rather than falling back.
 
+Native class-expression queries share the immutable ontology, property closure and rule
+indexes. Each expression owns only new expressions, changed occurrence/index rows and its
+saturation contexts. Named-class queries reuse base contexts/taxonomy, and satisfiability or
+hierarchy queries do not initialize realization. Fresh role identity closure is query-local.
+
+`ReasonerConfig(query_cache_bytes=64 * 1024 * 1024)` bounds retained native class-query
+state and results using conservative allocation charges (including sparse tree-node
+occupancy). Entries are evicted in least-recently-used expression order across query tasks;
+zero disables retention, and an oversized entry completes uncached. This limit excludes
+the one shared base, committed taxonomy/realization, active query workspace and the separate
+Boolean entailment cache. It does not alter Python backend caching. Diagnostics expose
+`class_query_cache_bytes`, `class_query_cache_limit_bytes`, hits, evictions and program/base
+preparation counts. Eviction changes neither returned results nor session semantics.
+
 <!-- pyelk-readme-example -->
 ```python
 import pyowl_core as owl

@@ -49,3 +49,15 @@ def test_boolean_flags_require_exact_booleans(field: str) -> None:
 def test_unsupported_policy_is_validated(unsupported: object) -> None:
     with pytest.raises(ValueError):
         ReasonerConfig(unsupported=unsupported)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", [True, 1.5, "100"])
+def test_query_cache_requires_integer_bytes(value: object) -> None:
+    with pytest.raises(TypeError, match="query_cache_bytes"):
+        ReasonerConfig(query_cache_bytes=value)  # type: ignore[arg-type]
+
+
+def test_query_cache_accepts_zero_and_rejects_negative_bytes() -> None:
+    assert ReasonerConfig(query_cache_bytes=0).query_cache_bytes == 0
+    with pytest.raises(ValueError, match="query_cache_bytes"):
+        ReasonerConfig(query_cache_bytes=-1)

@@ -1,6 +1,7 @@
 //! Deterministic object-property hierarchy, range, and composition closure.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{EntityKind, ExpressionTag, OWL_THING_IRI, Ontology, U32_RESERVED};
@@ -15,17 +16,18 @@ pub struct ChainRecord {
 /// Immutable property closure shared by every native saturation engine.
 #[derive(Clone, Debug)]
 pub struct PropertyClosure {
-    pub chains: Vec<ChainRecord>,
-    pub compiled_chain_ids: Vec<u32>,
-    pub reflexive_properties: Vec<u32>,
-    subchains_by_super: Vec<Vec<u32>>,
-    superchains_by_sub: Vec<Vec<u32>>,
-    ranges_by_property: BTreeMap<u32, Vec<u32>>,
-    non_redundant_by_right: BTreeMap<u32, BTreeMap<u32, Vec<u32>>>,
-    redundant_by_right: BTreeMap<u32, BTreeMap<u32, Vec<u32>>>,
-    non_redundant_by_left: BTreeMap<u32, BTreeMap<u32, Vec<u32>>>,
-    redundant_by_left: BTreeMap<u32, BTreeMap<u32, Vec<u32>>>,
-    singleton_chains: BTreeMap<u32, u32>,
+    pub chains: Arc<Vec<ChainRecord>>,
+    pub compiled_chain_ids: Arc<Vec<u32>>,
+    pub reflexive_properties: Arc<Vec<u32>>,
+    subchains_by_super: Arc<Vec<Vec<u32>>>,
+    superchains_by_sub: Arc<Vec<Vec<u32>>>,
+    ranges_by_property: Arc<BTreeMap<u32, Vec<u32>>>,
+    non_redundant_by_right: Arc<BTreeMap<u32, BTreeMap<u32, Vec<u32>>>>,
+    redundant_by_right: Arc<BTreeMap<u32, BTreeMap<u32, Vec<u32>>>>,
+    non_redundant_by_left: Arc<BTreeMap<u32, BTreeMap<u32, Vec<u32>>>>,
+    redundant_by_left: Arc<BTreeMap<u32, BTreeMap<u32, Vec<u32>>>>,
+    singleton_chains: Arc<BTreeMap<u32, u32>>,
+    fresh_chains: Vec<(u32, ChainRecord)>,
 }
 
 impl PropertyClosure {
@@ -98,24 +100,60 @@ impl PropertyClosure {
         let (redundant_by_right, redundant_by_left) = composition_indices(&redundant);
         let reflexive_properties = reflexive_properties(ontology)?;
         Ok(Self {
-            chains: universe.records,
-            compiled_chain_ids: universe.compiled_ids,
-            reflexive_properties,
+            chains: universe.records.into(),
+            compiled_chain_ids: universe.compiled_ids.into(),
+            reflexive_properties: reflexive_properties.into(),
             subchains_by_super: subchains_by_super
                 .into_iter()
                 .map(|values| values.into_iter().collect())
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
             superchains_by_sub: superchains_by_sub
                 .into_iter()
                 .map(|values| values.into_iter().collect())
-                .collect(),
-            ranges_by_property,
-            non_redundant_by_right,
-            redundant_by_right,
-            non_redundant_by_left,
-            redundant_by_left,
-            singleton_chains: universe.singleton_ids,
+                .collect::<Vec<_>>()
+                .into(),
+            ranges_by_property: ranges_by_property.into(),
+            non_redundant_by_right: non_redundant_by_right.into(),
+            redundant_by_right: redundant_by_right.into(),
+            non_redundant_by_left: non_redundant_by_left.into(),
+            redundant_by_left: redundant_by_left.into(),
+            singleton_chains: universe.singleton_ids.into(),
+            fresh_chains: Vec::new(),
         })
+    }
+
+    /// Fresh query roles have identity closure only; retain all committed property data.
+    pub(crate) fn with_fresh_properties(&self, properties: &[u32]) -> CoreResult<Self> {
+        let mut result = self.clone();
+        for &property in properties {
+            let index = result
+                .chains
+                .len()
+                .checked_add(result.fresh_chains.len())
+                .filter(|&index| index < U32_RESERVED as usize)
+                .ok_or_else(|| CoreError::capacity("derived property-chain namespace exhausted"))?;
+            result.fresh_chains.push((
+                index as u32,
+                ChainRecord {
+                    first_property: property,
+                    suffix_chain: None,
+                },
+            ));
+        }
+        Ok(result)
+    }
+
+    pub(crate) fn query_owned_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.fresh_chains.capacity() * std::mem::size_of::<(u32, ChainRecord)>()
+    }
+
+    pub(crate) fn chain(&self, id: u32) -> ChainRecord {
+        self.chains
+            .get(id as usize)
+            .copied()
+            .unwrap_or_else(|| self.fresh_chains[id as usize - self.chains.len()].1)
     }
 
     pub fn compiled_chain(&self, compiled_id: u32) -> CoreResult<u32> {
@@ -126,6 +164,12 @@ impl PropertyClosure {
     }
 
     pub fn singleton_chain(&self, property: u32) -> CoreResult<u32> {
+        if let Ok(index) = self
+            .fresh_chains
+            .binary_search_by_key(&property, |(_, chain)| chain.first_property)
+        {
+            return Ok(self.fresh_chains[index].0);
+        }
         self.singleton_chains
             .get(&property)
             .copied()
@@ -135,12 +179,24 @@ impl PropertyClosure {
     }
 
     pub fn sub_chains(&self, super_chain: u32) -> &[u32] {
+        if let Some(index) = (super_chain as usize)
+            .checked_sub(self.chains.len())
+            .and_then(|i| self.fresh_chains.get(i))
+        {
+            return std::slice::from_ref(&index.0);
+        }
         self.subchains_by_super
             .get(super_chain as usize)
             .map_or(&[], Vec::as_slice)
     }
 
     pub fn super_chains(&self, sub_chain: u32) -> &[u32] {
+        if let Some(index) = (sub_chain as usize)
+            .checked_sub(self.chains.len())
+            .and_then(|i| self.fresh_chains.get(i))
+        {
+            return std::slice::from_ref(&index.0);
+        }
         self.superchains_by_sub
             .get(sub_chain as usize)
             .map_or(&[], Vec::as_slice)
@@ -150,7 +206,7 @@ impl PropertyClosure {
         self.sub_chains(super_chain)
             .iter()
             .filter_map(|&chain| {
-                let record = self.chains[chain as usize];
+                let record = self.chain(chain);
                 record
                     .suffix_chain
                     .is_none()
