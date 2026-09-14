@@ -24,16 +24,14 @@ pub struct InstalledQuery {
     pub fresh_result_ids: BTreeMap<u32, u32>,
 }
 
-/// Install query occurrences into a private overlay without changing base enumeration.
-pub fn install_query(base: &Ontology, query: &QueryIr) -> CoreResult<InstalledQuery> {
-    let base_lookup = base
-        .entities
-        .iter()
-        .enumerate()
-        .map(|(index, entity)| (entity.clone(), index as u32))
-        .collect::<BTreeMap<_, _>>();
+/// Validate session references without rebuilding an ontology-sized symbol map.
+pub(crate) fn validate_query_entities(base: &Ontology, query: &QueryIr) -> CoreResult<()> {
     for record in &query.entities {
-        let actual = base_lookup.get(&record.entity).copied();
+        let actual = base
+            .entities
+            .binary_search(&record.entity)
+            .ok()
+            .map(|id| id as u32);
         match record.ontology_id {
             None if actual.is_some() => {
                 return Err(CoreError::invalid(
@@ -48,6 +46,12 @@ pub fn install_query(base: &Ontology, query: &QueryIr) -> CoreResult<InstalledQu
             _ => {}
         }
     }
+    Ok(())
+}
+
+/// Install query occurrences into a private overlay without changing base enumeration.
+pub fn install_query(base: &Ontology, query: &QueryIr) -> CoreResult<InstalledQuery> {
+    validate_query_entities(base, query)?;
 
     let mut entities = base.entities.iter().cloned().collect::<BTreeSet<_>>();
     entities.extend(query.entities.iter().map(|record| record.entity.clone()));
@@ -494,11 +498,17 @@ impl QueryEvaluation {
         Ok(())
     }
 
+    /// Satisfiability needs only the query root, not a taxonomy or realization.
+    pub fn is_satisfiable(&mut self) -> CoreResult<bool> {
+        self.ensure_contexts([self.root])?;
+        Ok(!self.contexts[&self.root].inconsistent)
+    }
+
     pub fn select(
         &mut self,
         base: &Ontology,
         taxonomy: &RawTaxonomy,
-        realized: &RawRealization,
+        realized: Option<&RawRealization>,
         kind: QueryKind,
         direct: bool,
     ) -> CoreResult<RawQueryResult> {
@@ -661,6 +671,8 @@ impl QueryEvaluation {
         if kind != QueryKind::Instances {
             return Err(CoreError::internal("unhandled query kind"));
         }
+        let realized =
+            realized.ok_or_else(|| CoreError::internal("instance query requires realization"))?;
         let selected = if let Some(equivalent) = equivalent_index {
             let mut matching_class_nodes = BTreeSet::from([equivalent]);
             matching_class_nodes.extend(

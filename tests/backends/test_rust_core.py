@@ -84,6 +84,12 @@ _SCALAR_ENCODED_COUNTERS: Mapping[str, int | bool] = MappingProxyType(
 
 
 def _native_library() -> Path:
+    override = os.environ.get("PYELK_NATIVE_LIBRARY")
+    if override:
+        candidate = Path(override).resolve()
+        if not candidate.is_file():
+            pytest.fail(f"PYELK_NATIVE_LIBRARY is not a built library: {candidate}")
+        return candidate
     root = Path(__file__).parents[2]
     installed = importlib.util.find_spec("pyelk._native")
     if installed is not None and installed.origin is not None:
@@ -2557,6 +2563,71 @@ def test_frozen_class_queries_match_python_for_direct_and_transitive(name: str) 
                 assert rust.instances(expression, direct=direct) == python.instances(
                     expression, direct=direct
                 )
+
+
+@pytest.mark.parametrize("reverse", (False, True))
+def test_named_queries_reuse_base_without_overlays_or_realization(reverse: bool) -> None:
+    import pyowl_core as owl
+
+    from tests.unit.indexing._support import load_functional
+
+    snapshot = load_functional(
+        "SubClassOf(:A :B) EquivalentClasses(:A :Alias) "
+        "SubClassOf(:C <http://www.w3.org/2002/07/owl#Nothing>) ClassAssertion(:A :i) "
+        "Declaration(Class(:Disconnected))"
+    )
+    names = ["A", "Alias", "B", "C", "Disconnected"]
+    classes = [owl.Class(owl.IRI(f"urn:test#{name}")) for name in names]
+    classes.extend([
+        owl.Class(owl.IRI("http://www.w3.org/2002/07/owl#Thing")),
+        owl.Class(owl.IRI("http://www.w3.org/2002/07/owl#Nothing")),
+    ])
+    if reverse:
+        classes.reverse()
+    python, rust = _reasoners(snapshot)
+    with python, rust:
+        for expression in classes + classes[:1]:
+            assert rust.is_satisfiable(expression) == python.is_satisfiable(expression)
+        diagnostic = rust.diagnostics()
+        assert diagnostic["cached_class_queries"] == 0
+        assert diagnostic["class_taxonomy_cached"] is False
+        assert diagnostic["realization_cached"] is False
+        for expression in classes + classes[:1]:
+            assert rust.equivalent_classes(expression) == python.equivalent_classes(expression)
+            for direct in (False, True):
+                assert rust.subclasses(expression, direct=direct) == python.subclasses(
+                    expression, direct=direct
+                )
+                assert rust.superclasses(expression, direct=direct) == python.superclasses(
+                    expression, direct=direct
+                )
+        assert rust.diagnostics()["cached_class_queries"] == 0
+        assert rust.diagnostics()["realization_cached"] is False
+        for expression in classes:
+            for direct in (False, True):
+                assert rust.instances(expression, direct=direct) == python.instances(
+                    expression, direct=direct
+                )
+        assert rust.diagnostics()["cached_class_queries"] == 0
+        assert rust.diagnostics()["realization_cached"] is True
+
+
+def test_complex_satisfiability_does_not_classify_or_realize() -> None:
+    import pyowl_core as owl
+
+    from tests.unit.indexing._support import load_functional
+
+    snapshot = load_functional("SubClassOf(:A :B) ClassAssertion(:A :i)")
+    expression = owl.ObjectIntersectionOf(owl.CanonicalSet((
+        owl.Class(owl.IRI("urn:test#A")), owl.Class(owl.IRI("urn:test#B")),
+    )))
+    python, rust = _reasoners(snapshot)
+    with python, rust:
+        assert rust.is_satisfiable(expression) == python.is_satisfiable(expression)
+        diagnostic = rust.diagnostics()
+        assert diagnostic["cached_class_queries"] == 1
+        assert diagnostic["class_taxonomy_cached"] is False
+        assert diagnostic["realization_cached"] is False
 
 
 @pytest.mark.parametrize("name", _ENTAILMENT_CASES)

@@ -9,13 +9,19 @@ use rayon::prelude::*;
 use crate::error::{CoreError, CoreResult};
 use crate::ir::{
     EntityKind, ExpressionTag, OWL_BOTTOM_OBJECT_PROPERTY_IRI, OWL_THING_IRI,
-    OWL_TOP_OBJECT_PROPERTY_IRI, Ontology, QueryIr,
+    OWL_TOP_OBJECT_PROPERTY_IRI, Occurrence, Ontology, QueryIr, QueryIrKind,
 };
 use crate::properties::PropertyClosure;
-use crate::query::{QueryEvaluation, decide_entailment, inconsistent_result, unindexed_result};
+use crate::query::{
+    QueryEvaluation, decide_entailment, named_taxonomy_query, unindexed_result,
+    validate_query_entities,
+};
 use crate::reasoning::{ContextSnapshot, PreparedSaturation, SaturationCounters, saturate_roots};
 use crate::result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
-use crate::taxonomy::{class_taxonomy, named_expressions, object_property_taxonomy, realization};
+use crate::taxonomy::{
+    class_taxonomy, named_expressions, object_property_taxonomy, realization, relative_indices,
+    taxonomy_node_index,
+};
 
 /// Scalar diagnostics value kept independent of Python objects.
 #[derive(Clone, Debug, PartialEq)]
@@ -204,27 +210,128 @@ impl NativeCoreSession {
         if let Some(value) = self.query_results.get(&cache_key) {
             return Ok(value.clone());
         }
-        let taxonomy = self.class_taxonomy()?;
-        let realized = self.realization()?;
         let value = if self.is_inconsistent()? {
-            inconsistent_result(kind, &taxonomy, &realized)
-        } else if let Some(payload) = encoded {
-            if !self.query_evaluations.contains_key(payload) {
-                let query = QueryIr::decode(payload)?;
-                self.query_evaluations.insert(
-                    payload.to_vec(),
-                    QueryEvaluation::new(&self.ontology, query)?,
-                );
+            match kind {
+                QueryKind::Satisfiable => RawQueryResult::boolean(kind, false),
+                QueryKind::EquivalentClasses => {
+                    let taxonomy = self.class_taxonomy()?;
+                    RawQueryResult::nodes(kind, vec![taxonomy.nodes[taxonomy.top as usize].clone()])
+                }
+                QueryKind::Instances => {
+                    RawQueryResult::nodes(kind, self.realization()?.instance_nodes)
+                }
+                _ => RawQueryResult::nodes(kind, Vec::new()),
             }
-            self.query_evaluations
-                .get_mut(payload)
-                .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
-                .select(&self.ontology, &taxonomy, &realized, kind, direct)?
+        } else if let Some(payload) = encoded {
+            let query = QueryIr::decode(payload)?;
+            if query.kind != QueryIrKind::ClassExpression {
+                return Err(CoreError::invalid(
+                    "class query requires CLASS_EXPRESSION mini-IR",
+                ));
+            }
+            validate_query_entities(&self.ontology, &query)?;
+            if let Some(value) = self.existing_named_query(&query, kind, direct)? {
+                value
+            } else {
+                if !self.query_evaluations.contains_key(payload) {
+                    self.query_evaluations.insert(
+                        payload.to_vec(),
+                        QueryEvaluation::new(&self.ontology, query)?,
+                    );
+                }
+                if kind == QueryKind::Satisfiable {
+                    RawQueryResult::boolean(
+                        kind,
+                        self.query_evaluations
+                            .get_mut(payload)
+                            .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
+                            .is_satisfiable()?,
+                    )
+                } else {
+                    let taxonomy = self.class_taxonomy()?;
+                    let realized = if kind == QueryKind::Instances {
+                        Some(self.realization()?)
+                    } else {
+                        None
+                    };
+                    self.query_evaluations
+                        .get_mut(payload)
+                        .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
+                        .select(&self.ontology, &taxonomy, realized.as_ref(), kind, direct)?
+                }
+            }
+        } else if kind == QueryKind::Satisfiable {
+            RawQueryResult::boolean(kind, true)
+        } else if direct && matches!(kind, QueryKind::Subclasses | QueryKind::Superclasses) {
+            unindexed_result(kind, direct, &self.class_taxonomy()?)
         } else {
-            unindexed_result(kind, direct, &taxonomy)
+            RawQueryResult::nodes(kind, Vec::new())
         };
         self.query_results.insert(cache_key, value.clone());
         Ok(value)
+    }
+
+    /// Use committed class contexts/taxonomy for ordinary dual-polarity named queries.
+    fn existing_named_query(
+        &mut self,
+        query: &QueryIr,
+        kind: QueryKind,
+        direct: bool,
+    ) -> CoreResult<Option<RawQueryResult>> {
+        if query.expressions.len() != 1
+            || query.entities.len() != 1
+            || query.root_expression != Some(0)
+            || query.expressions[0].tag != ExpressionTag::Class
+            || query.expression_occurrences
+                != [Occurrence {
+                    negative: 1,
+                    positive: 1,
+                }]
+        {
+            return Ok(None);
+        }
+        let Some(entity) = query.entities[0].ontology_id else {
+            return Ok(None);
+        };
+        let root = self
+            .ontology
+            .named_expression(ExpressionTag::Class, entity)?;
+        let occurrence = self.ontology.expression_occurrences[root as usize];
+        if occurrence.negative.checked_add(1).is_none()
+            || occurrence.positive.checked_add(1).is_none()
+        {
+            return Ok(None); // Preserve the full compiler's overflow rejection.
+        }
+        if kind == QueryKind::Satisfiable {
+            self.ensure_contexts([root])?;
+            return Ok(Some(RawQueryResult::boolean(
+                kind,
+                !self.contexts[&root].inconsistent,
+            )));
+        }
+        let taxonomy = self.class_taxonomy()?;
+        if kind != QueryKind::Instances {
+            return named_taxonomy_query(&taxonomy, entity, kind, direct).map(Some);
+        }
+        let node = taxonomy_node_index(&taxonomy, entity)
+            .ok_or_else(|| CoreError::internal("named class missing from taxonomy"))?;
+        let mut types = BTreeSet::from([node]);
+        if !direct {
+            types.extend(relative_indices(&taxonomy, node, false, false)?);
+        }
+        let realized = self.realization()?;
+        let selected = realized
+            .direct_types
+            .iter()
+            .filter_map(|&(instance, class)| types.contains(&class).then_some(instance))
+            .collect::<BTreeSet<_>>();
+        Ok(Some(RawQueryResult::nodes(
+            kind,
+            selected
+                .into_iter()
+                .map(|index| realized.instance_nodes[index as usize].clone())
+                .collect(),
+        )))
     }
 
     /// Decide one normalized entailment query; unsupported `None` is always false.
