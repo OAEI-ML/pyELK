@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from math import isfinite
 from threading import RLock
 from time import perf_counter
 from types import MappingProxyType
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 
 import pyowl_core as owl
 
-from pyelk.backends import create_backend_session, try_create_encoded_backend_session
+from pyelk.backends import (
+    _validate_native_pipeline_policy,
+    create_backend_session,
+    require_native_pipeline_support,
+    try_create_encoded_backend_session,
+)
 from pyelk.config import ReasonerConfig
 from pyelk.exceptions import BackendProtocolError, FreshEntityError, ReasonerClosedError
 from pyelk.indexing.codec import SCHEMA_MAJOR
@@ -33,6 +39,7 @@ from pyelk.indexing.ir import (
 from pyelk.indexing.metadata import (
     CompilerMetadata,
     CompilerSymbolTable,
+    NativeCompilerMetadata,
     metadata_from_compiled,
 )
 from pyelk.indexing.summary import compiler_digest
@@ -140,9 +147,19 @@ class Reasoner:
             unsupported=supplied.unsupported,
             allow_incomplete_imports=supplied.allow_incomplete_imports,
             query_cache_bytes=supplied.query_cache_bytes,
+            require_native_pipeline=supplied.require_native_pipeline,
         )
         self._lock = RLock()
         self._closed = False
+        if self._config.require_native_pipeline:
+            _validate_native_pipeline_policy(self._config)
+            require_native_pipeline_support()
+            if load_options is not None and load_options.backend is owl.BackendPreference.PYTHON:
+                raise ValueError("require_native_pipeline rejects the Python document loader")
+            if not isinstance(ontology, owl.OntologyView):
+                load_options = replace(
+                    load_options or owl.LoadOptions(), backend=owl.BackendPreference.NATIVE
+                )
         ontology, imports = _acquire_input(
             ontology,
             document_iri=document_iri,
@@ -541,6 +558,20 @@ class Reasoner:
                 entity_id = fresh_id
                 if not inconsistent and not self._config.allow_fresh_entities:
                     raise FreshEntityError((individual,))
+            if self._config.require_native_pipeline:
+                method = cast(Any, self._require_session()).named_query
+                raw = method(
+                    int(IREntityKind.NAMED_INDIVIDUAL),
+                    individual.iri.value,
+                    QueryKind.SUPERCLASSES,
+                    direct,
+                )
+                nodes = self._native_nodes(self._native_payload(raw), IREntityKind.CLASS)
+                return self._result(
+                    ReasoningTask.REALIZATION,
+                    cast(tuple[EntityNode[owl.Class], ...], nodes),
+                    inconsistent=inconsistent,
+                )
             raw_nodes = raw_types(
                 self._raw_realization(),
                 entity_id,
@@ -631,6 +662,22 @@ class Reasoner:
             record = EntityRecord(IREntityKind.OBJECT_PROPERTY, prop.iri.value)
             entity_id = self._entity_id(record)
             fresh_id: int | None = None
+            if self._config.require_native_pipeline:
+                if entity_id is None and not inconsistent and not self._config.allow_fresh_entities:
+                    raise FreshEntityError((prop,))
+                method = cast(Any, self._require_session()).named_query
+                raw = method(int(IREntityKind.OBJECT_PROPERTY), prop.iri.value, kind, direct)
+                query = CompiledQuery(
+                    encoded=None,
+                    feature_counts=_EMPTY_FEATURE_COUNTS,
+                    fresh_entities=(record,) if entity_id is None else (),
+                )
+                nodes = self._query_nodes(raw, query, prop, IREntityKind.OBJECT_PROPERTY)
+                return self._result(
+                    ReasoningTask.OBJECT_PROPERTY_TAXONOMY,
+                    cast(tuple[EntityNode[owl.ObjectProperty], ...], nodes),
+                    inconsistent=inconsistent,
+                )
             taxonomy = self._raw_object_taxonomy()
             if inconsistent:
                 raw_node_rows = (
@@ -682,6 +729,11 @@ class Reasoner:
         raw = self._require_session().query_class_expression(query.encoded, kind, direct)
         if not isinstance(raw, RawQueryResult):
             raise BackendProtocolError("RawQueryResult from backend", raw)
+        if self._config.require_native_pipeline:
+            self._native_payload(raw)
+            if raw.kind is not kind:
+                raise BackendProtocolError(f"query kind {kind.name}", raw.kind)
+            return raw
         try:
             validated = RawQueryResult(kind=raw.kind, boolean=raw.boolean, nodes=raw.nodes)
         except (TypeError, ValueError) as error:
@@ -747,6 +799,10 @@ class Reasoner:
             value = self._require_session().realization()
             if not isinstance(value, RawRealization):
                 raise BackendProtocolError("RawRealization from backend", value)
+            if self._config.require_native_pipeline:
+                self._native_payload(value)
+                self._raw_realization_value = value
+                return value
             try:
                 value = RawRealization(
                     class_taxonomy=value.class_taxonomy,
@@ -785,6 +841,19 @@ class Reasoner:
         if self._realization_value is None:
             raw = self._raw_realization()
             class_taxonomy = self._class_taxonomy()
+            if self._config.require_native_pipeline:
+                _, instance_rows, type_rows = self._native_payload(raw)
+                instances = self._native_nodes(instance_rows, IREntityKind.NAMED_INDIVIDUAL)
+                value = object.__new__(InstanceTaxonomy)
+                object.__setattr__(value, "class_taxonomy", class_taxonomy)
+                object.__setattr__(value, "instances", instances)
+                object.__setattr__(
+                    value,
+                    "direct_types",
+                    tuple((instances[i], class_taxonomy.nodes[c]) for i, c in type_rows),
+                )
+                self._realization_value = value
+                return value
             instances = self._ordinary_nodes(
                 raw.instance_nodes,
                 IREntityKind.NAMED_INDIVIDUAL,
@@ -824,6 +893,18 @@ class Reasoner:
         return self._realization_value
 
     def _public_taxonomy(self, raw: RawTaxonomy, kind: IREntityKind) -> Taxonomy[owl.Entity]:
+        if self._config.require_native_pipeline:
+            rows, pairs, top, bottom = self._native_payload(raw)
+            nodes = self._native_nodes(rows, kind)
+            result = object.__new__(Taxonomy)
+            for name, value in (
+                ("nodes", nodes),
+                ("direct_edges", tuple((nodes[a], nodes[b]) for a, b in pairs)),
+                ("top", nodes[top]),
+                ("bottom", nodes[bottom]),
+            ):
+                object.__setattr__(result, name, value)
+            return result
         try:
             raw_nodes = tuple(
                 EntityNode(tuple(self._entity_for_id(member, kind) for member in node))
@@ -833,6 +914,24 @@ class Reasoner:
             return Taxonomy(raw_nodes, edges, raw_nodes[raw.top], raw_nodes[raw.bottom])
         except (TypeError, ValueError, IndexError, KeyError) as error:
             raise BackendProtocolError(f"canonical {kind.name} taxonomy", str(error)) from error
+
+    def _native_payload(self, value: object) -> tuple[Any, ...]:
+        method = getattr(self._require_session(), "native_payload", None)
+        if not callable(method):
+            raise BackendProtocolError("native result validation service", method)
+        return cast(tuple[Any, ...], method(value))
+
+    @staticmethod
+    def _native_node(members: tuple[owl.Entity, ...]) -> EntityNode[owl.Entity]:
+        node = object.__new__(EntityNode)
+        object.__setattr__(node, "members", members)
+        return node
+
+    def _native_nodes(self, rows: Any, kind: IREntityKind) -> tuple[EntityNode[owl.Entity], ...]:
+        return tuple(
+            self._native_node(tuple(self._entity_for_id(member, kind) for member in row))
+            for row in rows
+        )
 
     def _ordinary_nodes(
         self,
@@ -874,6 +973,11 @@ class Reasoner:
                 raise ValueError("query result contains an entity of the wrong kind")
             return source_entities.get(record, self._entity_from_record(record))
 
+        if self._config.require_native_pipeline:
+            return tuple(
+                self._native_node(tuple(resolve(member) for member in node))
+                for node in self._native_payload(raw)
+            )
         try:
             nodes = tuple(
                 EntityNode(tuple(resolve(member) for member in node)) for node in raw.nodes
@@ -887,6 +991,9 @@ class Reasoner:
     def _validate_taxonomy(self, value: object, kind: IREntityKind) -> RawTaxonomy:
         if not isinstance(value, RawTaxonomy):
             raise BackendProtocolError("RawTaxonomy from backend", value)
+        if self._config.require_native_pipeline:
+            self._native_payload(value)
+            return value
         try:
             canonical = RawTaxonomy(
                 nodes=value.nodes,
@@ -959,6 +1066,8 @@ class Reasoner:
     def _entities(self, kind: IREntityKind) -> tuple[owl.Entity, ...]:
         self._ensure_open()
         metadata = self._require_metadata()
+        if isinstance(metadata, NativeCompilerMetadata):
+            return tuple(self._entity_for_id(index, kind) for index in metadata.ids(kind))
         return tuple(
             self._entity_for_id(index, kind)
             for index, record in enumerate(metadata.entities)

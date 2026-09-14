@@ -66,6 +66,27 @@ class EncodedBackendSelection:
             raise ValueError("compiler_digest must be a lowercase 32-byte digest or None")
 
 
+def _validate_native_pipeline_policy(config: ReasonerConfig) -> None:
+    environment_backend, pure = _environment()
+    requested = config.backend if config.backend != "auto" else environment_backend
+    if _apply_pure_mode(requested, pure) == "python":
+        raise BackendUnavailableError(
+            "rust", "native pipeline conflicts with Python environment policy"
+        )
+
+
+def require_native_pipeline_support() -> None:
+    """Reject incompatible binaries before parsing; owner receipt checks remain mandatory."""
+    import pyowl_core as owl
+
+    probe = _probe_native()
+    if probe.module is None or getattr(probe.module, "NATIVE_SERVICE_API_VERSION", None) != 1:
+        raise BackendUnavailableError("rust", "native service API v1 is required")
+    capability = getattr(owl, "native_validation_available", None)
+    if not callable(capability) or not capability():
+        raise BackendUnavailableError("rust", "native pyowl-core validation receipts are required")
+
+
 def try_create_encoded_backend_session(
     ontology: owl.OntologyView,
     config: ReasonerConfig,
@@ -86,6 +107,12 @@ def try_create_encoded_backend_session(
     environment_backend, pure = _environment()
     requested = config.backend if config.backend != "auto" else environment_backend
     effective = _apply_pure_mode(requested, pure)
+    if config.require_native_pipeline:
+        if effective == "python":
+            raise BackendUnavailableError(
+                "rust", "native pipeline conflicts with Python environment policy"
+            )
+        require_native_pipeline_support()
     if effective == "python":
         return None
 
@@ -94,9 +121,15 @@ def try_create_encoded_backend_session(
         return None
     factory = cast(Any, _rust_factory(probe))
     publication_started = perf_counter()
-    negotiation = factory.negotiate_encoded_input(ontology)
+    negotiation = factory.negotiate_encoded_input(
+        ontology, **({"require_native_validation": True} if config.require_native_pipeline else {})
+    )
     publication_seconds = perf_counter() - publication_started
     if negotiation.handoff is None:
+        if config.require_native_pipeline:
+            raise BackendUnavailableError(
+                "rust", negotiation.reason or "native columns unavailable"
+            )
         return None
 
     compile_started = perf_counter()

@@ -65,6 +65,29 @@ An explicit `rust` request fails if acceleration is unavailable; it never
 silently falls back. `PYELK_PURE_PYTHON=1` prevents native probing for
 compiler-free or diagnostic deployments.
 
+## Require the native pipeline
+
+For workloads that must reject Python preprocessing and bulk result handling, opt in:
+
+```python
+from pyelk import ReasonerConfig, require_native_pipeline_support
+
+require_native_pipeline_support()  # bounded binary/core capability check before parsing
+strict = ReasonerConfig(require_native_pipeline=True)
+with Reasoner(ontology, strict) as reasoner:
+    result = reasoner.classify()
+```
+
+This requires native document loading, an owner/scope-bound `pyowl-core` validation
+receipt, detached native compilation, lazy native symbols, and native result
+validation/canonical ordering. Python creates only requested public result objects.
+Existing decoded, mmap, overlay, and composite owners currently fail strict receipt
+admission; they retain their ordinary behavior when the option is false. Explicit
+Python loader/backend settings and conflicting Python environment policy fail early.
+Diagnostics separate symbol rows materialized, symbol lookups, native result
+publications, and live result envelopes (at most five). No full Python metadata
+domain is copied. The option defaults to false and does not alter default behavior.
+
 ## Load once, reason many times
 
 Applications with multiple ontology consumers should load through `pyowl-core`

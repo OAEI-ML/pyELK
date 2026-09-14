@@ -24,7 +24,11 @@ from pyelk.indexing.encoded import (
     negotiate_encoded_structural_view,
 )
 from pyelk.indexing.ir import CompiledOntology
-from pyelk.indexing.metadata import CompilerMetadata, decode_compiler_metadata
+from pyelk.indexing.metadata import (
+    CompilerMetadata,
+    NativeCompilerMetadata,
+    decode_compiler_metadata,
+)
 from pyelk.reasoning.contracts import (
     BackendConfig,
     BackendInfo,
@@ -86,6 +90,7 @@ class RustBackendFactory:
         ontology: owl.OntologyView,
         *,
         scope: owl.AxiomScope = owl.AxiomScope.CLOSURE,
+        require_native_validation: bool = False,
     ) -> EncodedViewNegotiation:
         """Acquire core columns only if this exact native build can consume them."""
 
@@ -99,7 +104,9 @@ class RustBackendFactory:
                 advertised_schema=advertised,
                 reason="native extension does not advertise the pyowl-core structural schema",
             )
-        return negotiate_encoded_structural_view(ontology, scope=scope)
+        return negotiate_encoded_structural_view(
+            ontology, scope=scope, require_native_validation=require_native_validation
+        )
 
     def create_session(
         self, compiled: CompiledOntology, config: BackendConfig
@@ -155,6 +162,11 @@ class RustBackendFactory:
                 handoff.encoded_view,
                 config.workers,
                 unsupported,
+                **(
+                    {"require_native_pipeline": True}
+                    if getattr(config, "require_native_pipeline", False)
+                    else {}
+                ),
             )
         except (MemoryError, KeyboardInterrupt, SystemExit):
             raise
@@ -188,6 +200,9 @@ class RustBackendFactory:
             requested_workers=config.workers,
             ingestion_path="encoded-native",
             encoded_owner=handoff,
+            require_native_pipeline=getattr(config, "require_native_pipeline", False),
+            native_symbols_type=getattr(self._native, "_NativeServiceSymbols", None),
+            native_result_type=getattr(self._native, "_NativeServiceResult", None),
         )
 
 
@@ -211,6 +226,11 @@ class RustBackendSession:
         "_info",
         "_ingestion_path",
         "_native",
+        "_native_result_publications",
+        "_native_result_type",
+        "_native_results",
+        "_native_symbols_type",
+        "_require_native_pipeline",
     )
 
     def __init__(
@@ -224,7 +244,15 @@ class RustBackendSession:
         requested_workers: int,
         ingestion_path: str,
         encoded_owner: EncodedStructuralHandoff | None = None,
+        require_native_pipeline: bool = False,
+        native_symbols_type: type | None = None,
+        native_result_type: type | None = None,
     ) -> None:
+        self._require_native_pipeline = require_native_pipeline
+        self._native_symbols_type = native_symbols_type
+        self._native_result_type = native_result_type
+        self._native_result_publications = 0
+        self._native_results: dict[str, tuple[Any, Any, int | None]] = {}
         self._native: Any = native_session
         self._abi = abi
         self._closed = False
@@ -270,6 +298,7 @@ class RustBackendSession:
             self._call("close")
         finally:
             self._closed = True
+            self._native_results.clear()
             self._native = None
             self._compiler_metadata = None
             self._encoded_owner = None
@@ -278,7 +307,16 @@ class RustBackendSession:
         """Decode the bounded native facade ledger lazily and at most once."""
 
         if self._compiler_metadata is None:
-            self._compiler_metadata = decode_compiler_metadata(self._payload("compiler_metadata"))
+            if self._require_native_pipeline:
+                if self._native_symbols_type is None:
+                    raise BackendProtocolError("native service symbol type", None)
+                self._compiler_metadata = NativeCompilerMetadata(
+                    self._call("service_symbols"), self._native_symbols_type
+                )
+            else:
+                self._compiler_metadata = decode_compiler_metadata(
+                    self._payload("compiler_metadata")
+                )
         return self._compiler_metadata
 
     def is_inconsistent(self) -> bool:
@@ -288,17 +326,30 @@ class RustBackendSession:
         return value
 
     def class_taxonomy(self) -> RawTaxonomy:
+        if self._require_native_pipeline:
+            return cast(RawTaxonomy, self._service_result("class", "service_taxonomy", 0))
         return decode_raw_taxonomy(self._payload("class_taxonomy"))
 
     def object_property_taxonomy(self) -> RawTaxonomy:
+        if self._require_native_pipeline:
+            return cast(RawTaxonomy, self._service_result("object", "service_taxonomy", 2))
         return decode_raw_taxonomy(self._payload("object_property_taxonomy"))
 
     def realization(self) -> RawRealization:
+        if self._require_native_pipeline:
+            return cast(RawRealization, self._service_result("realization", "service_realization"))
         return decode_raw_realization(self._payload("realization"))
 
     def query_class_expression(
         self, encoded_expression: bytes | None, kind: QueryKind, direct: bool
     ) -> RawQueryResult:
+        if self._require_native_pipeline:
+            return cast(
+                RawQueryResult,
+                self._service_result(
+                    "query", "service_query", encoded_expression, int(kind), direct
+                ),
+            )
         value = decode_raw_query_result(
             self._payload(
                 "query_class_expression",
@@ -310,6 +361,66 @@ class RustBackendSession:
         if value.kind is not kind:
             raise BackendProtocolError(f"query kind {kind.name}", value.kind.name)
         return value
+
+    def named_query(
+        self, entity_kind: int, iri: str, kind: QueryKind, direct: bool
+    ) -> RawQueryResult:
+        return cast(
+            RawQueryResult,
+            self._service_result(
+                "query", "service_named_query", entity_kind, iri, int(kind), direct
+            ),
+        )
+
+    def _service_result(self, key: str, stage: str, *args: object) -> object:
+        proof = self._call(stage, *args)
+        if self._native_result_type is None or type(proof) is not self._native_result_type:
+            raise BackendProtocolError("native-issued result envelope", proof)
+        proof = cast(Any, proof)
+        raw, _public = proof.payloads(self._native)
+        if key in {"class", "object"}:
+            result: Any = _native_value(RawTaxonomy, raw)
+        elif key == "realization":
+            taxonomy = _native_value(RawTaxonomy, raw[0])
+            self._native_results["realization_class"] = (taxonomy, proof, 0)
+            result = _native_value(RawRealization, (taxonomy, raw[1], raw[2]))
+        else:
+            result = _native_value(RawQueryResult, (QueryKind(raw[0]), raw[1], raw[2]))
+        # Three persistent base outputs and the last requested query, bounded independently
+        # of the number of queries. The opaque native owner retains the immutable payload.
+        self._native_results[key] = (result, proof, None)
+        self._native_result_publications += 1
+        return result
+
+    def native_payload(self, value: object) -> tuple[Any, ...]:
+        self._ensure_open()
+        for candidate, proof, index in self._native_results.values():
+            if candidate is not value:
+                continue
+            raw, public = proof.payloads(self._native)
+            if index is not None:
+                raw, public = raw[index], public[index]
+            if isinstance(value, RawTaxonomy):
+                valid = (
+                    value.nodes is raw[0]
+                    and value.direct_edges is raw[1]
+                    and value.top == raw[2]
+                    and value.bottom == raw[3]
+                )
+            elif isinstance(value, RawRealization):
+                self.native_payload(value.class_taxonomy)
+                valid = value.instance_nodes is raw[1] and value.direct_types is raw[2]
+            else:
+                valid = (
+                    isinstance(value, RawQueryResult)
+                    and int(value.kind) == raw[0]
+                    and value.boolean is raw[1]
+                    and value.nodes is raw[2]
+                )
+            if not valid:
+                raise BackendProtocolError("unchanged native result payload", value)
+            return cast(tuple[Any, ...], public)
+        raise BackendProtocolError("a result issued by this native session", value)
 
     def entails(self, encoded_axiom: bytes | None) -> bool:
         value = self._call("entails", encoded_axiom)
@@ -327,6 +438,20 @@ class RustBackendSession:
                 raise BackendProtocolError("string-to-scalar native diagnostics", value)
             result[key] = item
         result["ingestion_path"] = self._ingestion_path
+        if self._require_native_pipeline:
+            result["native_pipeline_required"] = True
+            result["native_core_receipt_validated"] = True
+            result["native_metadata_validation"] = True
+            result["native_result_validation"] = True
+            result["native_metadata_domain_copies"] = 0
+            metadata = self.compiler_metadata()
+            if not isinstance(metadata, NativeCompilerMetadata):
+                raise BackendProtocolError("native metadata in strict session", metadata)
+            records, lookups = metadata.native_owner.metrics()
+            result["native_symbol_rows_materialized"] = records
+            result["native_symbol_lookups"] = lookups
+            result["native_result_publications"] = self._native_result_publications
+            result["native_live_result_envelopes"] = len(self._native_results)
         if self._abi is not None:
             result["native_abi_version"] = self._abi
         return MappingProxyType(dict(sorted(result.items())))
@@ -398,3 +523,16 @@ def _encoded_view_schemas(native: object) -> Mapping[str, int]:
 
 
 __all__ = ["NativeModule", "RustBackendFactory", "RustBackendSession"]
+
+
+def _native_value(cls: type, values: tuple[Any, ...]) -> Any:
+    """Construct the existing raw value only after native type/owner validation."""
+    fields = {
+        RawTaxonomy: ("nodes", "direct_edges", "top", "bottom"),
+        RawRealization: ("class_taxonomy", "instance_nodes", "direct_types"),
+        RawQueryResult: ("kind", "boolean", "nodes"),
+    }[cls]
+    result: Any = object.__new__(cls)
+    for name, value in zip(fields, values, strict=True):
+        object.__setattr__(result, name, value)
+    return result

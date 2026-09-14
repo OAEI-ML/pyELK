@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Any, cast, overload
 
 from pyelk.exceptions import BackendProtocolError
 from pyelk.indexing.codec import (
@@ -90,6 +92,54 @@ class CompilerMetadata:
             )
 
 
+class _NativeEntityRecords(Sequence[EntityRecord]):
+    """Requested rows only; native binary search never materializes the domain."""
+
+    def __init__(self, owner: Any, size: int) -> None:
+        self.owner, self.size = owner, size
+
+    def __len__(self) -> int:
+        return self.size
+
+    @overload
+    def __getitem__(self, index: int) -> EntityRecord: ...
+    @overload
+    def __getitem__(self, index: slice) -> tuple[EntityRecord, ...]: ...
+    def __getitem__(self, index: int | slice) -> EntityRecord | tuple[EntityRecord, ...]:
+        if isinstance(index, slice):
+            return tuple(self[i] for i in range(*index.indices(self.size)))
+        if index < 0:
+            index += self.size
+        if not 0 <= index < self.size:
+            raise IndexError(index)
+        kind, iri = self.owner.record(index)
+        return EntityRecord(EntityKind(kind), iri)
+
+
+class NativeCompilerMetadata(CompilerMetadata):
+    """Facade projection of an opaque, native-validated session symbol handle."""
+
+    __slots__ = ("native_owner",)
+    native_owner: Any
+
+    def __init__(self, owner: Any, expected_type: type) -> None:
+        if type(owner) is not expected_type:
+            raise BackendProtocolError("native-issued service symbols", owner)
+        owner = cast(Any, owner)
+        object.__setattr__(self, "native_owner", owner)
+        count, features, fingerprint = owner.summary()
+        object.__setattr__(self, "entities", _NativeEntityRecords(owner, count))
+        object.__setattr__(self, "feature_counts", tuple(features))
+        object.__setattr__(self, "source_fingerprint", fingerprint)
+
+    def ids(self, kind: EntityKind) -> range:
+        return range(*self.native_owner.range(int(kind)))
+
+    def find(self, entity: EntityRecord) -> EntityId | None:
+        value = self.native_owner.find(int(entity.kind), entity.iri)
+        return None if value is None else EntityId(value)
+
+
 class CompilerSymbolTable:
     """Immutable binary-search lookup over native or scalar facade metadata."""
 
@@ -107,6 +157,8 @@ class CompilerSymbolTable:
     def lookup_entity(self, entity: EntityRecord) -> EntityId | None:
         if not isinstance(entity, EntityRecord):
             raise TypeError("entity must be EntityRecord")
+        if isinstance(self._metadata, NativeCompilerMetadata):
+            return self._metadata.find(entity)
         needle = (int(entity.kind), entity.iri.encode("utf-8"))
         lower = 0
         upper = len(self._metadata.entities)

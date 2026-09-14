@@ -33,7 +33,7 @@ from pyelk.result import (
 
 if TYPE_CHECKING:
     from pyelk.api import Reasoner
-    from pyelk.backends import backend_report
+    from pyelk.backends import backend_report, require_native_pipeline_support
 
 __all__ = [
     "API_VERSION",
@@ -56,6 +56,7 @@ __all__ = [
     "SnapshotProvider",
     "Taxonomy",
     "backend_report",
+    "require_native_pipeline_support",
     "load_snapshot",
     *_OWL_ALL,
 ]
@@ -69,6 +70,11 @@ def __getattr__(name: str) -> object:
 
         globals()[name] = Reasoner
         return Reasoner
+    if name == "require_native_pipeline_support":
+        from pyelk.backends import require_native_pipeline_support
+
+        globals()[name] = require_native_pipeline_support
+        return require_native_pipeline_support
     if name == "backend_report":
         from pyelk.backends import backend_report
 

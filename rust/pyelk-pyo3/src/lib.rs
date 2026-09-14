@@ -2,6 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+mod service;
+mod service_results;
+
 use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -732,6 +735,187 @@ impl NativeSession {
 
 #[pymethods]
 impl NativeSession {
+    fn service_symbols(&self, py: Python<'_>) -> PyResult<service::NativeServiceSymbols> {
+        self.detached(py, "service_symbols", |session| {
+            service::validate_metadata(session.ontology())
+        })?;
+        Ok(service::NativeServiceSymbols {
+            records: std::sync::atomic::AtomicU64::new(0),
+            lookups: std::sync::atomic::AtomicU64::new(0),
+            session: NativeSession {
+                inner: Arc::clone(&self.inner),
+                creator_pid: self.creator_pid,
+            },
+        })
+    }
+
+    fn service_taxonomy(
+        &self,
+        py: Python<'_>,
+        kind: u8,
+    ) -> PyResult<service_results::NativeServiceResult> {
+        let value = self.detached(py, "service_taxonomy", move |session| {
+            let kind = pyelk_core::ir::EntityKind::try_from(kind)?;
+            let raw = match kind {
+                pyelk_core::ir::EntityKind::Class => session.class_taxonomy()?,
+                pyelk_core::ir::EntityKind::ObjectProperty => session.object_property_taxonomy()?,
+                _ => return Err(CoreError::invalid("invalid native taxonomy kind")),
+            };
+            service_results::ValidatedResult::taxonomy(session.ontology(), raw, kind)
+        })?;
+        service_results::NativeServiceResult::publish(py, self, value)
+    }
+    fn service_realization(
+        &self,
+        py: Python<'_>,
+    ) -> PyResult<service_results::NativeServiceResult> {
+        let value = self.detached(py, "service_realization", |session| {
+            let raw = session.realization()?;
+            if raw.class_taxonomy != session.class_taxonomy()? {
+                return Err(CoreError::internal(
+                    "realization taxonomy differs from classification",
+                ));
+            }
+            service_results::ValidatedResult::realization(session.ontology(), raw)
+        })?;
+        service_results::NativeServiceResult::publish(py, self, value)
+    }
+    fn service_query(
+        &self,
+        py: Python<'_>,
+        query_ir: Option<&Bound<'_, PyBytes>>,
+        kind: u8,
+        direct: bool,
+    ) -> PyResult<service_results::NativeServiceResult> {
+        let payload = query_ir.map(|v| v.as_bytes().to_vec());
+        let kind = QueryKind::try_from(kind).map_err(core_error)?;
+        let value = self.detached(py, "service_query", move |session| {
+            let raw = session.query_class_expression(payload.as_deref(), kind, direct)?;
+            let fresh = payload
+                .as_ref()
+                .map(|p| pyelk_core::QueryIr::decode(p))
+                .transpose()?
+                .map(|q| {
+                    q.entities
+                        .into_iter()
+                        .filter(|e| e.ontology_id.is_none())
+                        .map(|e| e.entity)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let entity_kind = if kind == QueryKind::Instances {
+                pyelk_core::ir::EntityKind::NamedIndividual
+            } else {
+                pyelk_core::ir::EntityKind::Class
+            };
+            if raw.kind != kind {
+                return Err(CoreError::internal("query result kind mismatch"));
+            }
+            service_results::ValidatedResult::query(session.ontology(), raw, &fresh, entity_kind)
+        })?;
+        service_results::NativeServiceResult::publish(py, self, value)
+    }
+    fn service_named_query(
+        &self,
+        py: Python<'_>,
+        entity_kind: u8,
+        iri: String,
+        kind: u8,
+        direct: bool,
+    ) -> PyResult<service_results::NativeServiceResult> {
+        let kind = QueryKind::try_from(kind).map_err(core_error)?;
+        let value = self.detached(py, "service_named_query", move |session| {
+            use pyelk_core::RawQueryResult;
+            use pyelk_core::ir::{Entity, EntityKind};
+            let entity_kind = EntityKind::try_from(entity_kind)?;
+            let record = Entity {
+                kind: entity_kind,
+                iri,
+            };
+            let id = session
+                .ontology()
+                .entities
+                .binary_search(&record)
+                .ok()
+                .map(|x| x as u32);
+            let fresh = if id.is_none() { vec![record] } else { vec![] };
+            let fresh_id = u32::try_from(session.ontology().entities.len())
+                .map_err(|_| CoreError::capacity("fresh entity ID overflow"))?;
+            let (raw, output_kind) = match entity_kind {
+                EntityKind::ObjectProperty => {
+                    let t = session.object_property_taxonomy()?;
+                    let raw = if session.is_inconsistent()? {
+                        RawQueryResult::nodes(
+                            kind,
+                            if kind == QueryKind::EquivalentClasses {
+                                vec![t.nodes[t.top as usize].clone()]
+                            } else {
+                                vec![]
+                            },
+                        )
+                    } else if let Some(id) = id {
+                        pyelk_core::query::named_taxonomy_query(&t, id, kind, direct)?
+                    } else {
+                        RawQueryResult::nodes(
+                            kind,
+                            if kind == QueryKind::EquivalentClasses {
+                                vec![vec![fresh_id]]
+                            } else {
+                                vec![
+                                    t.nodes[if kind == QueryKind::Superclasses {
+                                        t.top
+                                    } else {
+                                        t.bottom
+                                    } as usize]
+                                        .clone(),
+                                ]
+                            },
+                        )
+                    };
+                    (raw, EntityKind::ObjectProperty)
+                }
+                EntityKind::NamedIndividual => {
+                    let r = session.realization()?;
+                    let selected = if let Some(id) = id {
+                        let index = r
+                            .instance_nodes
+                            .iter()
+                            .position(|n| n.binary_search(&id).is_ok())
+                            .ok_or_else(|| {
+                                CoreError::internal("realization lacks known individual")
+                            })?;
+                        let mut nodes: BTreeSet<_> = r
+                            .direct_types
+                            .iter()
+                            .filter(|(i, _)| *i as usize == index)
+                            .map(|(_, c)| *c)
+                            .collect();
+                        if !direct {
+                            for start in nodes.clone() {
+                                nodes.extend(pyelk_core::taxonomy::relative_indices(
+                                    &r.class_taxonomy,
+                                    start,
+                                    true,
+                                    false,
+                                )?);
+                            }
+                        }
+                        nodes
+                            .into_iter()
+                            .map(|i| r.class_taxonomy.nodes[i as usize].clone())
+                            .collect()
+                    } else {
+                        vec![r.class_taxonomy.nodes[r.class_taxonomy.top as usize].clone()]
+                    };
+                    (RawQueryResult::nodes(kind, selected), EntityKind::Class)
+                }
+                _ => return Err(CoreError::invalid("invalid named service query kind")),
+            };
+            service_results::ValidatedResult::query(session.ontology(), raw, &fresh, output_kind)
+        })?;
+        service_results::NativeServiceResult::publish(py, self, value)
+    }
+
     fn set_query_cache_bytes(&self, py: Python<'_>, limit: usize) -> PyResult<()> {
         self.detached(py, "set_query_cache_bytes", move |session| {
             session.set_query_cache_bytes(limit);
@@ -933,11 +1117,13 @@ fn encoded_view_schemas(py: Python<'_>) -> PyResult<Py<PyDict>> {
 /// composite sources, including mmap exporters and anonymous-scope remapping, without
 /// flattening them.
 #[pyfunction]
+#[pyo3(signature = (encoded_view, workers, unsupported, *, require_native_pipeline=false))]
 fn create_session_from_encoded(
     py: Python<'_>,
     encoded_view: &Bound<'_, PyAny>,
     workers: isize,
     unsupported: &str,
+    require_native_pipeline: bool,
 ) -> PyResult<NativeSession> {
     if workers < 0 {
         return Err(PyValueError::new_err(
@@ -961,6 +1147,11 @@ fn create_session_from_encoded(
         let validation_started = Instant::now();
         let input = validate_encoded_input(encoded_view)?;
         let detached_simple = input.detached_simple()?;
+        if require_native_pipeline && detached_simple.is_none() {
+            return Err(CoreError::protocol(
+                "strict native pipeline requires detached native buffers",
+            ));
+        }
         let validation_seconds = validation_started.elapsed().as_secs_f64();
         let compiler_started = Instant::now();
         let (mut compilation, mut metrics) = if let Some(detached) = detached_simple {
@@ -2752,6 +2943,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module.py().get_type::<NativeUnsupportedFeatureError>(),
     )?;
     module.add_class::<NativeSession>()?;
+    module.add_class::<service::NativeServiceSymbols>()?;
+    module.add_class::<service_results::NativeServiceResult>()?;
+    module.add("NATIVE_SERVICE_API_VERSION", 1)?;
     module.add_function(wrap_pyfunction!(implementation_version, module)?)?;
     module.add_function(wrap_pyfunction!(ir_version, module)?)?;
     module.add_function(wrap_pyfunction!(abi_version, module)?)?;

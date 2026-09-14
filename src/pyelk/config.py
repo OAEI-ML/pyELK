@@ -16,8 +16,13 @@ class ReasonerConfig:
     unsupported: Literal["ignore", "error"] = "ignore"
     allow_incomplete_imports: bool = False
     query_cache_bytes: int = 64 * 1024 * 1024
+    require_native_pipeline: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.require_native_pipeline, bool):
+            raise TypeError("require_native_pipeline must be a boolean")
+        if self.require_native_pipeline and self.backend == "python":
+            raise ValueError("require_native_pipeline cannot use the Python backend")
         if not isinstance(self.backend, str) or self.backend not in {"auto", "python", "rust"}:
             raise ValueError("backend must be 'auto', 'python', or 'rust'")
         if isinstance(self.workers, bool) or not isinstance(self.workers, int):

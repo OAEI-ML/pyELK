@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 import pyowl_core as _core
 
@@ -106,6 +106,7 @@ def negotiate_encoded_structural_view(
     ontology: _core.OntologyView,
     *,
     scope: _core.AxiomScope = _core.AxiomScope.CLOSURE,
+    require_native_validation: bool = False,
 ) -> EncodedViewNegotiation:
     """Request and validate structural columns without scalar ontology traversal.
 
@@ -148,7 +149,16 @@ def negotiate_encoded_structural_view(
             encoded_type,
             schema_version=ENCODED_SCHEMA_VERSION,
             scope=scope,
+            **({"require_native_validation": True} if require_native_validation else {}),
         )
+        if require_native_validation:
+            encoded = _core.validate_encoded_structural_view_v2(
+                encoded,
+                expected_owner=ontology,
+                expected_scope=scope,
+                expected_document_key=None,
+                require_native_validation=True,
+            )
     except (MemoryError, KeyboardInterrupt, SystemExit):
         raise
     except Exception as error:
@@ -293,7 +303,7 @@ def _positive_int(value: object, name: str) -> int:
     result = _required_attribute(value, name)
     if isinstance(result, bool) or not isinstance(result, int) or result < 1:
         raise _protocol_error(name, f"expected a positive integer, received {result!r}")
-    return result
+    return cast(int, result)
 
 
 def _required_attribute(value: object, name: str) -> Any:
