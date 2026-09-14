@@ -531,6 +531,96 @@ pub fn strict_super_closure(taxonomy: &RawTaxonomy) -> CoreResult<Vec<BTreeSet<u
     Ok(result)
 }
 
+/// One immutable adjacency/symbol index for repeated class-query traversal.
+#[derive(Debug)]
+pub(crate) struct IndexedTaxonomy {
+    raw: RawTaxonomy,
+    parents: Vec<Vec<u32>>,
+    children: Vec<Vec<u32>>,
+    entity_nodes: BTreeMap<u32, u32>,
+    neighbor_visits: std::sync::atomic::AtomicU64,
+    traversals: std::sync::atomic::AtomicU64,
+}
+
+impl std::ops::Deref for IndexedTaxonomy {
+    type Target = RawTaxonomy;
+    fn deref(&self) -> &RawTaxonomy {
+        &self.raw
+    }
+}
+
+impl IndexedTaxonomy {
+    pub(crate) fn new(raw: RawTaxonomy) -> CoreResult<Self> {
+        let mut parents = vec![Vec::new(); raw.nodes.len()];
+        let mut children = vec![Vec::new(); raw.nodes.len()];
+        for &(sub, super_node) in &raw.direct_edges {
+            if sub as usize >= raw.nodes.len() || super_node as usize >= raw.nodes.len() {
+                return Err(CoreError::internal("taxonomy edge index is out of range"));
+            }
+            parents[sub as usize].push(super_node);
+            children[super_node as usize].push(sub);
+        }
+        let entity_nodes = raw
+            .nodes
+            .iter()
+            .enumerate()
+            .flat_map(|(node, members)| members.iter().map(move |&entity| (entity, node as u32)))
+            .collect();
+        Ok(Self {
+            raw,
+            parents,
+            children,
+            entity_nodes,
+            neighbor_visits: std::sync::atomic::AtomicU64::new(0),
+            traversals: std::sync::atomic::AtomicU64::new(0),
+        })
+    }
+
+    pub(crate) fn counters(&self) -> (u64, u64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        (
+            self.traversals.load(Relaxed),
+            self.neighbor_visits.load(Relaxed),
+        )
+    }
+
+    pub(crate) fn node(&self, entity: u32) -> Option<u32> {
+        self.entity_nodes.get(&entity).copied()
+    }
+
+    pub(crate) fn relatives(&self, start: u32, supers: bool, direct: bool) -> CoreResult<Vec<u32>> {
+        if start as usize >= self.raw.nodes.len() {
+            return Err(CoreError::invalid("taxonomy start node is out of range"));
+        }
+        let adjacency = if supers {
+            &self.parents
+        } else {
+            &self.children
+        };
+        let mut neighbor_visits = adjacency[start as usize].len() as u64;
+        let mut reached = adjacency[start as usize]
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if !direct {
+            let mut pending = reached.iter().copied().collect::<Vec<_>>();
+            while let Some(node) = pending.pop() {
+                neighbor_visits =
+                    neighbor_visits.saturating_add(adjacency[node as usize].len() as u64);
+                for &target in &adjacency[node as usize] {
+                    if reached.insert(target) {
+                        pending.push(target);
+                    }
+                }
+            }
+        }
+        use std::sync::atomic::Ordering::Relaxed;
+        self.traversals.fetch_add(1, Relaxed);
+        self.neighbor_visits.fetch_add(neighbor_visits, Relaxed);
+        Ok(reached.into_iter().collect())
+    }
+}
+
 /// Strict direct/transitive node relatives in either taxonomy direction.
 pub fn relative_indices(
     taxonomy: &RawTaxonomy,
@@ -624,6 +714,34 @@ mod tests {
     use std::collections::{BTreeSet, VecDeque};
 
     use super::transitive_reduction;
+
+    #[test]
+    fn indexed_relatives_preserve_order_and_visit_only_demanded_adjacency() {
+        use super::{IndexedTaxonomy, RawTaxonomy, relative_indices};
+        let raw = RawTaxonomy {
+            nodes: (0..128).map(|node| vec![node]).collect(),
+            direct_edges: (0..126).map(|node| (node, node + 1)).collect(),
+            top: 126,
+            bottom: 0,
+        };
+        let index = IndexedTaxonomy::new(raw.clone()).unwrap();
+        assert_eq!(index.counters(), (0, 0));
+        assert_eq!(index.relatives(0, true, true).unwrap(), vec![1]);
+        assert_eq!(index.counters(), (1, 1));
+        for start in [0, 1, 63, 126, 127] {
+            for supers in [false, true] {
+                for direct in [false, true] {
+                    assert_eq!(
+                        index.relatives(start, supers, direct).unwrap(),
+                        relative_indices(&raw, start, supers, direct).unwrap()
+                    );
+                }
+            }
+        }
+        assert_eq!(index.node(127), Some(127));
+        assert_eq!(index.node(128), None);
+        assert!(index.relatives(128, true, false).is_err());
+    }
 
     #[test]
     fn dense_transitive_closure_reduces_to_deep_chain() {

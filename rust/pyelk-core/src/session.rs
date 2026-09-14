@@ -12,18 +12,14 @@ use crate::ir::{
     OWL_TOP_OBJECT_PROPERTY_IRI, Occurrence, Ontology, QueryIr, QueryIrKind,
 };
 use crate::properties::PropertyClosure;
-use crate::query::{
-    QueryEvaluation, decide_entailment, named_taxonomy_query, unindexed_result,
-    validate_query_entities,
-};
+use crate::query::{QueryEvaluation, decide_entailment, unindexed_result, validate_query_entities};
 use crate::query_program::QueryBase;
 use crate::reasoning::{
     ContextSnapshot, PreparedSaturation, RuleIndices, SaturationCounters, saturate_roots,
 };
 use crate::result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
 use crate::taxonomy::{
-    class_taxonomy, named_expressions, object_property_taxonomy, realization, relative_indices,
-    taxonomy_node_index,
+    IndexedTaxonomy, class_taxonomy, named_expressions, object_property_taxonomy, realization,
 };
 
 /// Scalar diagnostics value kept independent of Python objects.
@@ -47,9 +43,10 @@ pub struct NativeCoreSession {
     contexts: BTreeMap<u32, ContextSnapshot>,
     counters: SaturationCounters,
     inconsistent: Option<bool>,
-    class_taxonomy: Option<RawTaxonomy>,
+    class_taxonomy: Option<Arc<IndexedTaxonomy>>,
+    named_class_expressions: Arc<BTreeMap<u32, u32>>,
     object_taxonomy: Option<RawTaxonomy>,
-    realization: Option<RawRealization>,
+    realization: Option<Arc<RawRealization>>,
     query_evaluations: BTreeMap<Vec<u8>, QueryEvaluation>,
     query_results: BTreeMap<(Option<Vec<u8>>, QueryKind, bool), RawQueryResult>,
     entailment_results: BTreeMap<Option<Vec<u8>>, bool>,
@@ -77,6 +74,7 @@ impl NativeCoreSession {
     pub fn from_ontology(ontology: Ontology, workers: usize) -> CoreResult<Self> {
         let compiler_digest = ontology.compiler_digest()?;
         let compiler_counts = ontology.compiler_section_counts()?;
+        let named_class_expressions = Arc::new(named_expressions(&ontology, ExpressionTag::Class));
         let ontology = Arc::new(ontology);
         let properties = Arc::new(PropertyClosure::build(&ontology)?);
         let rule_indices = Arc::new(RuleIndices::new(&ontology, &properties)?);
@@ -114,6 +112,7 @@ impl NativeCoreSession {
             counters: SaturationCounters::default(),
             inconsistent: None,
             class_taxonomy: None,
+            named_class_expressions,
             object_taxonomy: None,
             realization: None,
             query_evaluations: BTreeMap::new(),
@@ -180,15 +179,25 @@ impl NativeCoreSession {
 
     /// Classify all committed named classes.
     pub fn class_taxonomy(&mut self) -> CoreResult<RawTaxonomy> {
+        self.shared_class_taxonomy().map(|value| (**value).clone())
+    }
+
+    fn shared_class_taxonomy(&mut self) -> CoreResult<Arc<IndexedTaxonomy>> {
         if let Some(value) = &self.class_taxonomy {
             return Ok(value.clone());
         }
         let inconsistent = self.is_inconsistent()?;
-        let roots = named_expressions(&self.ontology, ExpressionTag::Class)
-            .into_values()
+        let roots = self
+            .named_class_expressions
+            .values()
+            .copied()
             .collect::<Vec<_>>();
         self.ensure_contexts(roots)?;
-        let value = class_taxonomy(&self.ontology, &self.contexts, inconsistent)?;
+        let value = Arc::new(IndexedTaxonomy::new(class_taxonomy(
+            &self.ontology,
+            &self.contexts,
+            inconsistent,
+        )?)?);
         self.class_taxonomy = Some(value.clone());
         Ok(value)
     }
@@ -206,16 +215,25 @@ impl NativeCoreSession {
 
     /// Realize all committed named individuals.
     pub fn realization(&mut self) -> CoreResult<RawRealization> {
+        self.shared_realization().map(|value| (*value).clone())
+    }
+
+    fn shared_realization(&mut self) -> CoreResult<Arc<RawRealization>> {
         if let Some(value) = &self.realization {
             return Ok(value.clone());
         }
         let inconsistent = self.is_inconsistent()?;
-        let taxonomy = self.class_taxonomy()?;
+        let taxonomy = self.shared_class_taxonomy()?;
         let roots = named_expressions(&self.ontology, ExpressionTag::Individual)
             .into_values()
             .collect::<Vec<_>>();
         self.ensure_contexts(roots)?;
-        let value = realization(&self.ontology, &self.contexts, &taxonomy, inconsistent)?;
+        let value = Arc::new(realization(
+            &self.ontology,
+            &self.contexts,
+            &taxonomy,
+            inconsistent,
+        )?);
         self.realization = Some(value.clone());
         Ok(value)
     }
@@ -239,15 +257,16 @@ impl NativeCoreSession {
                 match kind {
                     QueryKind::Satisfiable => RawQueryResult::boolean(kind, false),
                     QueryKind::EquivalentClasses => {
-                        let taxonomy = self.class_taxonomy()?;
+                        let taxonomy = self.shared_class_taxonomy()?;
                         RawQueryResult::nodes(
                             kind,
                             vec![taxonomy.nodes[taxonomy.top as usize].clone()],
                         )
                     }
-                    QueryKind::Instances => {
-                        RawQueryResult::nodes(kind, self.realization()?.instance_nodes)
-                    }
+                    QueryKind::Instances => RawQueryResult::nodes(
+                        kind,
+                        self.shared_realization()?.instance_nodes.clone(),
+                    ),
                     _ => RawQueryResult::nodes(kind, Vec::new()),
                 }
             } else if let Some(payload) = encoded {
@@ -272,6 +291,7 @@ impl NativeCoreSession {
                                         Arc::clone(&self.ontology),
                                         Arc::clone(&self.properties),
                                         Arc::clone(&self.rule_indices),
+                                        Arc::clone(&self.named_class_expressions),
                                     ))
                                 })),
                                 query,
@@ -287,22 +307,22 @@ impl NativeCoreSession {
                                 .is_satisfiable()?,
                         )
                     } else {
-                        let taxonomy = self.class_taxonomy()?;
+                        let taxonomy = self.shared_class_taxonomy()?;
                         let realized = if kind == QueryKind::Instances {
-                            Some(self.realization()?)
+                            Some(self.shared_realization()?)
                         } else {
                             None
                         };
                         self.query_evaluations
                             .get_mut(payload)
                             .ok_or_else(|| CoreError::internal("query cache insertion failed"))?
-                            .select(&self.ontology, &taxonomy, realized.as_ref(), kind, direct)?
+                            .select(&self.ontology, &taxonomy, realized.as_deref(), kind, direct)?
                     }
                 }
             } else if kind == QueryKind::Satisfiable {
                 RawQueryResult::boolean(kind, true)
             } else if direct && matches!(kind, QueryKind::Subclasses | QueryKind::Superclasses) {
-                unindexed_result(kind, direct, &self.class_taxonomy()?)
+                unindexed_result(kind, direct, &**self.shared_class_taxonomy()?)
             } else {
                 RawQueryResult::nodes(kind, Vec::new())
             };
@@ -430,9 +450,10 @@ impl NativeCoreSession {
         let Some(entity) = query.entities[0].ontology_id else {
             return Ok(None);
         };
-        let root = self
-            .ontology
-            .named_expression(ExpressionTag::Class, entity)?;
+        let root = *self
+            .named_class_expressions
+            .get(&entity)
+            .ok_or_else(|| CoreError::internal("named class missing from expression index"))?;
         let occurrence = self.ontology.expression_occurrences[root as usize];
         if occurrence.negative.checked_add(1).is_none()
             || occurrence.positive.checked_add(1).is_none()
@@ -446,17 +467,27 @@ impl NativeCoreSession {
                 !self.contexts[&root].inconsistent,
             )));
         }
-        let taxonomy = self.class_taxonomy()?;
-        if kind != QueryKind::Instances {
-            return named_taxonomy_query(&taxonomy, entity, kind, direct).map(Some);
-        }
-        let node = taxonomy_node_index(&taxonomy, entity)
+        let taxonomy = self.shared_class_taxonomy()?;
+        let node = taxonomy
+            .node(entity)
             .ok_or_else(|| CoreError::internal("named class missing from taxonomy"))?;
+        if kind != QueryKind::Instances {
+            let nodes = if kind == QueryKind::EquivalentClasses {
+                vec![taxonomy.nodes[node as usize].clone()]
+            } else {
+                taxonomy
+                    .relatives(node, kind == QueryKind::Superclasses, direct)?
+                    .into_iter()
+                    .map(|id| taxonomy.nodes[id as usize].clone())
+                    .collect()
+            };
+            return Ok(Some(RawQueryResult::nodes(kind, nodes)));
+        }
         let mut types = BTreeSet::from([node]);
         if !direct {
-            types.extend(relative_indices(&taxonomy, node, false, false)?);
+            types.extend(taxonomy.relatives(node, false, false)?);
         }
-        let realized = self.realization()?;
+        let realized = self.shared_realization()?;
         let selected = realized
             .direct_types
             .iter()
@@ -654,7 +685,17 @@ impl NativeCoreSession {
             "compiler_source_fingerprint".to_owned(),
             DiagnosticValue::Text(hex_digest(&self.ontology.source_fingerprint)),
         );
+        let (traversals, neighbor_visits) = self
+            .class_taxonomy
+            .as_ref()
+            .map_or((0, 0), |taxonomy| taxonomy.counters());
         for (name, count) in [
+            ("class_query_taxonomy_traversals", traversals),
+            ("class_query_taxonomy_neighbor_visits", neighbor_visits),
+            (
+                "class_query_taxonomy_index_builds",
+                u64::from(self.class_taxonomy.is_some()),
+            ),
             ("class_query_cache_bytes", self.query_cache_bytes as u64),
             (
                 "class_query_cache_limit_bytes",

@@ -16,6 +16,8 @@ pub(crate) struct QueryBase {
     pub ontology: Arc<Ontology>,
     pub properties: Arc<PropertyClosure>,
     pub rules: Arc<RuleIndices>,
+    pub named_classes: Arc<BTreeMap<u32, u32>>,
+    pub named_individuals: BTreeMap<u32, u32>,
     expressions: HashMap<Expression, u32>,
     property_start: usize,
 }
@@ -25,6 +27,7 @@ impl QueryBase {
         ontology: Arc<Ontology>,
         properties: Arc<PropertyClosure>,
         rules: Arc<RuleIndices>,
+        named_classes: Arc<BTreeMap<u32, u32>>,
     ) -> Self {
         let expressions = ontology
             .expressions
@@ -36,10 +39,14 @@ impl QueryBase {
         let property_start = ontology
             .entities
             .partition_point(|entity| entity.kind < EntityKind::ObjectProperty);
+        let named_individuals =
+            crate::taxonomy::named_expressions(&ontology, ExpressionTag::Individual);
         Self {
             ontology,
             properties,
             rules,
+            named_classes,
+            named_individuals,
             expressions,
             property_start,
         }
@@ -284,7 +291,11 @@ mod tests {
         });
         let properties = Arc::new(PropertyClosure::build(&ontology).unwrap());
         let rules = Arc::new(RuleIndices::new(&ontology, &properties).unwrap());
-        Arc::new(QueryBase::new(ontology, properties, rules))
+        let classes = Arc::new(crate::taxonomy::named_expressions(
+            &ontology,
+            ExpressionTag::Class,
+        ));
+        Arc::new(QueryBase::new(ontology, properties, rules, classes))
     }
 
     #[test]

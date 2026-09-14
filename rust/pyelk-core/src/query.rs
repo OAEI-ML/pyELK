@@ -14,7 +14,7 @@ use crate::query_program::{QueryBase, QueryProgram};
 use crate::reasoning::{ContextSnapshot, PreparedSaturation, saturate_root};
 use crate::result::{QueryKind, RawQueryResult, RawRealization, RawTaxonomy};
 use crate::taxonomy::{
-    direct_type_indices, relative_indices, strict_super_closure, taxonomy_node_index,
+    IndexedTaxonomy, direct_type_indices, relative_indices, taxonomy_node_index,
 };
 
 /// Private canonical overlay and both source-to-overlay expression maps.
@@ -532,10 +532,10 @@ impl QueryEvaluation {
         Ok(!self.contexts[&self.root].inconsistent)
     }
 
-    pub fn select(
+    pub(crate) fn select(
         &mut self,
         base: &Ontology,
-        taxonomy: &RawTaxonomy,
+        taxonomy: &IndexedTaxonomy,
         realized: Option<&RawRealization>,
         kind: QueryKind,
         direct: bool,
@@ -545,31 +545,9 @@ impl QueryEvaluation {
         if kind == QueryKind::Satisfiable {
             return Ok(RawQueryResult::boolean(kind, !root_context.inconsistent));
         }
-        let class_expressions = base
-            .expressions
-            .iter()
-            .enumerate()
-            .filter_map(|(index, expression)| {
-                (expression.tag == ExpressionTag::Class)
-                    .then_some((expression.arguments[0], index as u32))
-            })
-            .collect::<BTreeMap<_, _>>();
-        let expression_to_node = taxonomy
-            .nodes
-            .iter()
-            .enumerate()
-            .flat_map(|(node, members)| {
-                let class_expressions = &class_expressions;
-                members.iter().filter_map(move |entity| {
-                    class_expressions
-                        .get(entity)
-                        .copied()
-                        .map(|expression| (expression, node as u32))
-                })
-            })
-            .collect::<BTreeMap<_, _>>();
+        let query_base = Arc::clone(&self.installed.base);
+        let class_expressions = &query_base.named_classes;
         let root_subsumers = root_context.subsumers();
-        let strict_supers = strict_super_closure(taxonomy)?;
         let fresh_classes = self.fresh_class_candidates();
         let mut possible_equivalents = taxonomy
             .nodes
@@ -628,7 +606,8 @@ impl QueryEvaluation {
                 )?;
             }
             let mut ontology_candidates = if let Some(index) = equivalent_index {
-                relative_indices(taxonomy, index, supers, false)?
+                taxonomy
+                    .relatives(index, supers, false)?
                     .into_iter()
                     .collect::<BTreeSet<_>>()
             } else if supers {
@@ -636,7 +615,9 @@ impl QueryEvaluation {
                 values.extend(
                     root_subsumers
                         .iter()
-                        .filter_map(|expression| expression_to_node.get(expression).copied()),
+                        .filter_map(|&expression| base.expressions.get(expression as usize))
+                        .filter(|expression| expression.tag == ExpressionTag::Class)
+                        .filter_map(|expression| taxonomy.node(expression.arguments[0])),
                 );
                 values
             } else {
@@ -676,13 +657,7 @@ impl QueryEvaluation {
             }));
             if direct {
                 self.ensure_contexts(candidates.iter().map(|candidate| candidate.expression))?;
-                candidates = direct_candidates(
-                    &candidates,
-                    supers,
-                    &self.contexts,
-                    taxonomy,
-                    &strict_supers,
-                );
+                candidates = direct_candidates(&candidates, supers, &self.contexts, taxonomy)?;
             }
             let mut nodes = candidates
                 .into_iter()
@@ -701,10 +676,7 @@ impl QueryEvaluation {
             realized.ok_or_else(|| CoreError::internal("instance query requires realization"))?;
         let selected = if let Some(equivalent) = equivalent_index {
             let mut matching_class_nodes = BTreeSet::from([equivalent]);
-            matching_class_nodes.extend(
-                (0..taxonomy.nodes.len() as u32)
-                    .filter(|node| strict_supers[*node as usize].contains(&equivalent)),
-            );
+            matching_class_nodes.extend(taxonomy.relatives(equivalent, false, false)?);
             (0..realized.instance_nodes.len() as u32)
                 .filter(|instance| {
                     direct_type_indices(realized, *instance)
@@ -719,15 +691,7 @@ impl QueryEvaluation {
                 })
                 .collect::<BTreeSet<_>>()
         } else {
-            let individual_expressions = base
-                .expressions
-                .iter()
-                .enumerate()
-                .filter_map(|(index, expression)| {
-                    (expression.tag == ExpressionTag::Individual)
-                        .then_some((expression.arguments[0], index as u32))
-                })
-                .collect::<BTreeMap<_, _>>();
+            let individual_expressions = &query_base.named_individuals;
             self.ensure_contexts(individual_expressions.values().copied())?;
             let mut selected = realized
                 .instance_nodes
@@ -804,50 +768,64 @@ fn direct_candidates(
     candidates: &[NodeCandidate],
     supers: bool,
     contexts: &BTreeMap<u32, ContextSnapshot>,
-    taxonomy: &RawTaxonomy,
-    strict_supers: &[BTreeSet<u32>],
-) -> Vec<NodeCandidate> {
-    candidates
-        .iter()
-        .filter(|candidate| {
-            !candidates.iter().any(|other| {
-                if other == *candidate {
-                    return false;
-                }
-                let (sub, super_candidate) = if supers {
-                    (other, *candidate)
-                } else {
-                    (*candidate, other)
-                };
-                candidate_subsumes(sub, super_candidate, contexts, taxonomy, strict_supers)
-            })
-        })
-        .cloned()
-        .collect()
+    taxonomy: &IndexedTaxonomy,
+) -> CoreResult<Vec<NodeCandidate>> {
+    let mut result = Vec::new();
+    // Only roots actually compared by this direct-answer request need reachability.
+    let mut strict_supers = BTreeMap::<u32, BTreeSet<u32>>::new();
+    for candidate in candidates {
+        let mut covered = false;
+        for other in candidates {
+            if other == candidate {
+                continue;
+            }
+            let (sub, super_candidate) = if supers {
+                (other, candidate)
+            } else {
+                (candidate, other)
+            };
+            if candidate_subsumes(sub, super_candidate, contexts, taxonomy, &mut strict_supers)? {
+                covered = true;
+                break;
+            }
+        }
+        if !covered {
+            result.push(candidate.clone());
+        }
+    }
+    Ok(result)
 }
 
 fn candidate_subsumes(
     sub: &NodeCandidate,
     super_candidate: &NodeCandidate,
     contexts: &BTreeMap<u32, ContextSnapshot>,
-    taxonomy: &RawTaxonomy,
-    strict_supers: &[BTreeSet<u32>],
-) -> bool {
+    taxonomy: &IndexedTaxonomy,
+    strict_supers: &mut BTreeMap<u32, BTreeSet<u32>>,
+) -> CoreResult<bool> {
     if sub.expression == super_candidate.expression {
-        return false;
+        return Ok(false);
     }
     if let (Some(sub_index), Some(super_index)) =
         (sub.taxonomy_index, super_candidate.taxonomy_index)
     {
-        return strict_supers[sub_index as usize].contains(&super_index);
+        if let std::collections::btree_map::Entry::Vacant(entry) = strict_supers.entry(sub_index) {
+            entry.insert(
+                taxonomy
+                    .relatives(sub_index, true, false)?
+                    .into_iter()
+                    .collect(),
+            );
+        }
+        return Ok(strict_supers[&sub_index].contains(&super_index));
     }
     if sub.taxonomy_index == Some(taxonomy.bottom)
         || super_candidate.taxonomy_index == Some(taxonomy.top)
     {
-        return true;
+        return Ok(true);
     }
     let context = &contexts[&sub.expression];
-    context.inconsistent || context.subsumers().contains(&super_candidate.expression)
+    Ok(context.inconsistent || context.subsumers().contains(&super_candidate.expression))
 }
 
 /// Pinned unindexed-query fallback.
