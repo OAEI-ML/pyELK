@@ -56,7 +56,7 @@
     },
     "release/core-compatibility.json": {
       "bytes": 1221,
-      "sha256": "f402d44de91b085667c81d743da8c63618599667865f05aeed48db4ce99bf4f6"
+      "sha256": "0b309f6dec0ba0eaca5b3c630b36912982361dff9236a2b05f5fd50ff3b5a1e0"
     },
     "release/owner-release-authorization-0.2.1.md": {
       "bytes": 780,
@@ -112,7 +112,7 @@
     },
     "tools/supply_chain.py": {
       "bytes": 53056,
-      "sha256": "bc091cbcc449d2542b420a6ab15f228826d5bf9da8a477d60a102f74ad610dc0"
+      "sha256": "a0538fc75a835a856fa752ebbf5c5d1dc98d3840d0bb491a8c93861abc323790"
     }
   },
   "installed_core_backend_contracts": {
@@ -139,8 +139,8 @@
   ],
   "native_ontology_redesign": {
     "classification": "model-schema-2-component-scoped-anonymous-redesign",
-    "commit": "11649ea0cf17b09f0d476f2141b827786b71b4b3",
-    "tree": "015128b3715940272a8bba16974a97bf38518737",
+    "commit": "6efc2db1ff19679892f36a4d1b50876f7f72440a",
+    "tree": "ade9ed1f078ba14caf24739b31c854b6f5a067b0",
     "workpackages": [
       "WP14",
       "WP15",
@@ -161,9 +161,9 @@
   },
   "tested_runtime": {
     "pyowl_core": {
-      "commit": "11649ea0cf17b09f0d476f2141b827786b71b4b3",
+      "commit": "6efc2db1ff19679892f36a4d1b50876f7f72440a",
       "repository": "https://github.com/OAEI-ML/pyOWLCore",
-      "tree": "015128b3715940272a8bba16974a97bf38518737",
+      "tree": "ade9ed1f078ba14caf24739b31c854b6f5a067b0",
       "version": "0.2.1"
     }
   },
