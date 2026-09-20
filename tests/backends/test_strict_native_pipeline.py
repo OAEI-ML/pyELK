@@ -58,6 +58,7 @@ def test_strict_symbols_are_lazy_native_and_keep_punning():
             owner.record(0)
 
 
+@pytest.mark.usefixtures("native_core")
 def test_strict_rejects_python_owner_before_consumer_compilation():
     view = owl.load_snapshot(SOURCE, options=owl.LoadOptions(backend=owl.BackendPreference.PYTHON))
     with (
@@ -82,9 +83,22 @@ def test_preflight_rejects_old_binary_and_runs_before_loader(request):
             Reasoner(SOURCE, ReasonerConfig(require_native_pipeline=True))
 
 
-def test_strict_config_and_loader_reject_python():
+def test_preflight_rejects_unavailable_core_before_loader():
+    with (
+        patch.object(owl, "native_validation_available", return_value=False),
+        patch("pyelk.api._acquire_input", side_effect=AssertionError("parsed")),
+        pytest.raises(BackendUnavailableError, match="native pyowl-core validation receipts"),
+    ):
+        Reasoner(SOURCE, ReasonerConfig(require_native_pipeline=True))
+
+
+def test_strict_config_rejects_python():
     with pytest.raises(ValueError, match="Python"):
         ReasonerConfig(require_native_pipeline=True, backend="python")
+
+
+@pytest.mark.usefixtures("native_core")
+def test_strict_loader_rejects_python():
     with pytest.raises(ValueError, match="Python document loader"):
         Reasoner(
             SOURCE,
