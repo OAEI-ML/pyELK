@@ -28,8 +28,8 @@ _LOCAL_MANIFESTS = {
 }
 _CORE_REQUIREMENT = "pyowl-core>=0.2.1,<0.3"
 _CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/3"
-_TESTED_CORE_COMMIT = "649e270bc3aa4becbf59bc4b9fb134542161f586"
-_TESTED_CORE_TREE = "d22703b022e6940d813aeda58ce04b37e415724b"
+_TESTED_CORE_COMMIT = "adef8e54b35412b245223eb312a68dbd000ad01a"
+_TESTED_CORE_TREE = "452e4e34e8707b5ed83d6cac683a9eb065876247"
 _CORE_CONTRACT = {
     "package_version": "0.2.1",
     "api_version": [0, 2],
