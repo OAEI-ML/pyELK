@@ -164,12 +164,13 @@ def test_compatible_patch_prerelease_and_wire_minor_are_accepted() -> None:
     "versions",
     [
         CoreVersionInfo("0.1.99", (0, 2), 2, (1, 2), 1),
+        CoreVersionInfo("0.2.0", (0, 2), 2, (1, 2), 1),
         CoreVersionInfo("not-semver", (0, 2), 2, (1, 2), 1),
-        CoreVersionInfo("0.2.0", (0, 1), 2, (1, 2), 1),
-        CoreVersionInfo("0.2.0", (0, 2), 1, (1, 2), 1),
-        CoreVersionInfo("0.2.0", (0, 2), 2, (2, 0), 1),
-        CoreVersionInfo("0.2.0", (0, 2), 2, (1, 1), 1),
-        CoreVersionInfo("0.2.0", (0, 2), 2, (1, 2), 2),
+        CoreVersionInfo("0.2.1", (0, 1), 2, (1, 2), 1),
+        CoreVersionInfo("0.2.1", (0, 2), 1, (1, 2), 1),
+        CoreVersionInfo("0.2.1", (0, 2), 2, (2, 0), 1),
+        CoreVersionInfo("0.2.1", (0, 2), 2, (1, 1), 1),
+        CoreVersionInfo("0.2.1", (0, 2), 2, (1, 2), 2),
     ],
 )
 def test_incompatible_core_contract_has_structured_expected_actual_diagnostics(

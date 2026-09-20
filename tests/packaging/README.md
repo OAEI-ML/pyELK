@@ -105,7 +105,7 @@ python tests/packaging/check_index_preference.py --index dist
 | More than one `_native` library | Clean the local setuptools build directory and rebuild. |
 | Absolute source/Cargo path in a wheel | Path remapping was lost or stale objects were reused; rebuild cleanly. |
 | Pure/native hash mismatch | Artifacts were not built from the same source tree and version. |
-| `pyowl-core` compatibility error | Install the supported `>=0.2,<0.3` line with matching model/wire/adapter versions. |
+| `pyowl-core` compatibility error | Install the supported `>=0.2.1,<0.3` line with matching model/wire/adapter versions. |
 
 ## Release policy
 

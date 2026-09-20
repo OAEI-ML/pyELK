@@ -26,12 +26,12 @@ _LOCAL_MANIFESTS = {
     "pyelk-core": Path("rust/pyelk-core/Cargo.toml"),
     "pyelk-pyo3": Path("rust/pyelk-pyo3/Cargo.toml"),
 }
-_CORE_REQUIREMENT = "pyowl-core>=0.2,<0.3"
+_CORE_REQUIREMENT = "pyowl-core>=0.2.1,<0.3"
 _CORE_COMPATIBILITY_SCHEMA = "pyelk.core-compatibility/3"
-_TESTED_CORE_COMMIT = "d39fe9c9bb9513db8c14fe2bc6d4864377901ad1"
-_TESTED_CORE_TREE = "d29bbcc65684c5a246b5d952a91d8a62e07e1b35"
+_TESTED_CORE_COMMIT = "649e270bc3aa4becbf59bc4b9fb134542161f586"
+_TESTED_CORE_TREE = "d22703b022e6940d813aeda58ce04b37e415724b"
 _CORE_CONTRACT = {
-    "package_version": "0.2.0",
+    "package_version": "0.2.1",
     "api_version": [0, 2],
     "model_schema": 2,
     "wire_format": [1, 2],
@@ -92,7 +92,7 @@ _BUILD_INPUT_PATHS = (
     "pyelk_build.py",
     "pyproject.toml",
     "release/core-compatibility.json",
-    "release/owner-release-authorization-0.2.0.md",
+    "release/owner-release-authorization-0.2.1.md",
     "rust-toolchain.toml",
     "rust/pyelk-core/Cargo.toml",
     "rust/pyelk-pyo3/Cargo.toml",
@@ -1086,7 +1086,7 @@ def build_provenance(root: Path) -> dict[str, Any]:
         or core_contract != _CORE_CONTRACT
         or not isinstance(tested_core, dict)
         or tested_core.get("repository") != "https://github.com/OAEI-ML/pyOWLCore"
-        or tested_core.get("version") != "0.2.0"
+        or tested_core.get("version") != "0.2.1"
         or tested_core.get("commit") != _TESTED_CORE_COMMIT
         or tested_core.get("tree") != _TESTED_CORE_TREE
         or redesign != _NATIVE_ONTOLOGY_REDESIGN_CONTRACT

@@ -416,7 +416,7 @@ def _composite_encoded(
 
 def test_native_handshake_and_defensive_decoder(native_module: ModuleType) -> None:
     assert native_module.abi_version() == "abi3-py310"
-    assert native_module.implementation_version() == "0.2.0"
+    assert native_module.implementation_version() == "0.2.1"
     assert native_module.ir_version() == (1, 0)
     assert native_module.self_check() is True
     assert issubclass(native_module.NativeUnsupportedFeatureError, ValueError)
@@ -2578,10 +2578,12 @@ def test_named_queries_reuse_base_without_overlays_or_realization(reverse: bool)
     )
     names = ["A", "Alias", "B", "C", "Disconnected"]
     classes = [owl.Class(owl.IRI(f"urn:test#{name}")) for name in names]
-    classes.extend([
-        owl.Class(owl.IRI("http://www.w3.org/2002/07/owl#Thing")),
-        owl.Class(owl.IRI("http://www.w3.org/2002/07/owl#Nothing")),
-    ])
+    classes.extend(
+        [
+            owl.Class(owl.IRI("http://www.w3.org/2002/07/owl#Thing")),
+            owl.Class(owl.IRI("http://www.w3.org/2002/07/owl#Nothing")),
+        ]
+    )
     if reverse:
         classes.reverse()
     python, rust = _reasoners(snapshot)
@@ -2618,9 +2620,14 @@ def test_complex_satisfiability_does_not_classify_or_realize() -> None:
     from tests.unit.indexing._support import load_functional
 
     snapshot = load_functional("SubClassOf(:A :B) ClassAssertion(:A :i)")
-    expression = owl.ObjectIntersectionOf(owl.CanonicalSet((
-        owl.Class(owl.IRI("urn:test#A")), owl.Class(owl.IRI("urn:test#B")),
-    )))
+    expression = owl.ObjectIntersectionOf(
+        owl.CanonicalSet(
+            (
+                owl.Class(owl.IRI("urn:test#A")),
+                owl.Class(owl.IRI("urn:test#B")),
+            )
+        )
+    )
     python, rust = _reasoners(snapshot)
     with python, rust:
         assert rust.is_satisfiable(expression) == python.is_satisfiable(expression)
@@ -2642,15 +2649,22 @@ def test_complex_query_cache_eviction_preserves_answers_and_isolation(budget: in
     )
     a = owl.Class(owl.IRI("urn:test#A"))
     expressions = [
-        owl.ObjectIntersectionOf(owl.CanonicalSet((
-            a, owl.Class(owl.IRI(f"urn:test#Fresh{index}")),
-        )))
+        owl.ObjectIntersectionOf(
+            owl.CanonicalSet(
+                (
+                    a,
+                    owl.Class(owl.IRI(f"urn:test#Fresh{index}")),
+                )
+            )
+        )
         for index in range(12)
     ]
-    expressions.extend([
-        owl.ObjectSomeValuesFrom(owl.ObjectProperty(owl.IRI("urn:test#freshRole")), a),
-        owl.ObjectSomeValuesFrom(owl.ObjectProperty(owl.IRI("urn:test#p")), a),
-    ])
+    expressions.extend(
+        [
+            owl.ObjectSomeValuesFrom(owl.ObjectProperty(owl.IRI("urn:test#freshRole")), a),
+            owl.ObjectSomeValuesFrom(owl.ObjectProperty(owl.IRI("urn:test#p")), a),
+        ]
+    )
     python = Reasoner(snapshot, ReasonerConfig(backend="python", workers=1))
     rust = Reasoner(snapshot, ReasonerConfig(backend="rust", workers=1, query_cache_bytes=budget))
     with python, rust:

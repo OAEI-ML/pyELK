@@ -1,9 +1,9 @@
 # Migrating to pyELK 0.2
 
-pyELK 0.2 requires `pyowl-core>=0.2,<0.3`. Upgrade both packages together:
+pyELK 0.2.1 requires `pyowl-core>=0.2.1,<0.3`. Upgrade both packages together:
 
 ```bash
-python -m pip install --upgrade "pyelk-reasoner>=0.2,<0.3" "pyowl-core>=0.2,<0.3"
+python -m pip install --upgrade "pyelk-reasoner>=0.2.1,<0.3" "pyowl-core>=0.2.1,<0.3"
 ```
 
 The `Reasoner`, `ReasonerConfig`, result, and query APIs are unchanged. The compatibility

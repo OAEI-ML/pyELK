@@ -47,7 +47,7 @@ from pyowl_core import (
     load_snapshot,
 )
 
-EXPECTED_PACKAGE_RANGE = ">=0.2,<0.3"
+EXPECTED_PACKAGE_RANGE = ">=0.2.1,<0.3"
 EXPECTED_API_VERSION = (0, 2)
 EXPECTED_MODEL_SCHEMA_VERSION = 2
 EXPECTED_WIRE_MAJOR = 1
@@ -186,8 +186,8 @@ def require_core_compatibility(
             versions.package_version,
             versions=versions,
         )
-    major, minor, _patch = (int(value) for value in match.groups())
-    if (major, minor) != EXPECTED_API_VERSION:
+    major, minor, patch = (int(value) for value in match.groups())
+    if (major, minor) != EXPECTED_API_VERSION or patch < 1:
         raise _compatibility_error(
             "package_version",
             EXPECTED_PACKAGE_RANGE,

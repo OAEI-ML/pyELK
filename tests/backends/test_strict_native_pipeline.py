@@ -19,10 +19,16 @@ SOURCE = b"""Ontology(<urn:strict>
 )"""
 
 
+@pytest.fixture
+def native_core():
+    pytest.importorskip("pyowl_core._native", reason="requires the native core wheel")
+
+
 def native_snapshot():
     return owl.load_snapshot(SOURCE, options=owl.LoadOptions(backend=owl.BackendPreference.NATIVE))
 
 
+@pytest.mark.usefixtures("native_core")
 def test_strict_symbols_are_lazy_native_and_keep_punning():
     view = native_snapshot()
     with (
@@ -112,6 +118,7 @@ def _answers(reasoner):
     )
 
 
+@pytest.mark.usefixtures("native_core")
 def test_strict_results_match_public_values_without_python_bulk_validation():
     from contextlib import ExitStack
 
@@ -150,6 +157,7 @@ def test_strict_results_match_public_values_without_python_bulk_validation():
             assert diagnostics["native_live_result_envelopes"] <= 5
 
 
+@pytest.mark.usefixtures("native_core")
 def test_native_result_owner_and_immutable_payload_reject_substitution():
     from pyelk.exceptions import BackendProtocolError
 
@@ -185,6 +193,7 @@ def test_native_result_owner_and_immutable_payload_reject_substitution():
         b"SubObjectPropertyOf(<urn:p> <urn:longer-property>)",
     ],
 )
+@pytest.mark.usefixtures("native_core")
 def test_strict_result_parity_across_equivalence_inconsistency_and_unicode(extra):
     view = owl.load_snapshot(
         SOURCE.rstrip()[:-1] + extra + b")",
@@ -214,6 +223,7 @@ def test_strict_environment_conflict_rejects_before_parse(monkeypatch):
         Reasoner(SOURCE, ReasonerConfig(require_native_pipeline=True))
 
 
+@pytest.mark.usefixtures("native_core")
 def test_strict_import_closure_keeps_imported_classes_and_origin_owner():
     imported = (
         b"Ontology(<urn:imported> Declaration(Class(<urn:import-only>)) "

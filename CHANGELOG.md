@@ -2,6 +2,14 @@
 
 All notable changes to pyELK are documented here.
 
+## 0.2.1 — 2026-09-20
+
+- Reuse the native query program, named-class state, taxonomy adjacency and bounded
+  expression cache; compute only the reasoning stages requested by each task.
+- Add strict native-pipeline admission that requires native ontology validation and
+  rejects unsupported execution controls instead of silently taking a scalar path.
+- Require pyowl-core 0.2.1 and retain deterministic Python/native result parity checks.
+
 ## 0.2.0 — 2026-08-02
 
 - Migrate the shared ontology contract to `pyowl-core>=0.2,<0.3`, API `(0, 2)`, model

@@ -58,7 +58,7 @@ def test_reviewed_inventory_matches_the_production_lock_closure() -> None:
     assert len(production) == len(inventory["native_components"]) == 31
     assert "criterion" not in {package.name for package in production}
     assert inventory["python_runtime_dependencies"] == [
-        {"name": "pyowl-core", "requirement": ">=0.2,<0.3"}
+        {"name": "pyowl-core", "requirement": ">=0.2.1,<0.3"}
     ]
     assert inventory["java_components"] == []
     assert inventory["legal_approval"] is True
@@ -73,13 +73,13 @@ def test_pure_and_native_sboms_are_variant_exact_and_deterministic() -> None:
     assert native == build_cyclonedx(ROOT, "native")
     assert [component["name"] for component in pure["components"]] == ["pyowl-core"]
     assert len(native["components"]) == 32
-    assert native["metadata"]["component"]["version"] == "0.2.0"
+    assert native["metadata"]["component"]["version"] == "0.2.1"
     assert native["dependencies"][0]["dependsOn"] == [
         "pkg:cargo/blake2@0.10.6",
         "pkg:cargo/pyo3@0.29.0",
         "pkg:cargo/rayon@1.12.0",
         "pkg:cargo/sha2@0.10.9",
-        "pkg:pypi/pyowl-core?requirement=%3E%3D0.2%2C%3C0.3",
+        "pkg:pypi/pyowl-core?requirement=%3E%3D0.2.1%2C%3C0.3",
     ]
     cargo = [
         component
@@ -98,8 +98,8 @@ def test_sbom_validator_rejects_non_spdx_or_unbound_components() -> None:
 
     assert validate_cyclonedx(document, "native") == [
         "sbom: component pkg:cargo/blake2@0.10.6 has an unreviewed SPDX license",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.2.0?variant=native is not canonical",
-        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.2.0?variant=native "
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.2.1?variant=native is not canonical",
+        "sbom: dependency row pkg:pypi/pyelk-reasoner@0.2.1?variant=native "
         "names unknown components ['pkg:cargo/unbound@9.9.9']",
     ]
 
@@ -114,23 +114,23 @@ def test_build_provenance_binds_toolchain_auditors_and_build_inputs() -> None:
     }
     assert provenance["tested_runtime"] == {
         "pyowl_core": {
-            "commit": "d39fe9c9bb9513db8c14fe2bc6d4864377901ad1",
+            "commit": "649e270bc3aa4becbf59bc4b9fb134542161f586",
             "repository": "https://github.com/OAEI-ML/pyOWLCore",
-            "tree": "d29bbcc65684c5a246b5d952a91d8a62e07e1b35",
-            "version": "0.2.0",
+            "tree": "d22703b022e6940d813aeda58ce04b37e415724b",
+            "version": "0.2.1",
         }
     }
     assert provenance["core_contract"] == {
         "adapter_protocol": 1,
         "api_version": [0, 2],
         "model_schema": 2,
-        "package_version": "0.2.0",
+        "package_version": "0.2.1",
         "wire_format": [1, 2],
     }
     assert provenance["native_ontology_redesign"] == {
         "classification": "model-schema-2-component-scoped-anonymous-redesign",
-        "commit": "d39fe9c9bb9513db8c14fe2bc6d4864377901ad1",
-        "tree": "d29bbcc65684c5a246b5d952a91d8a62e07e1b35",
+        "commit": "649e270bc3aa4becbf59bc4b9fb134542161f586",
+        "tree": "d22703b022e6940d813aeda58ce04b37e415724b",
         "workpackages": [
             "WP14",
             "WP15",
@@ -301,8 +301,8 @@ def test_build_provenance_rejects_unforced_pure_core_wheelhouse(tmp_path: Path) 
     workflow = tmp_path / ".github/workflows/wheels.yml"
     workflow.write_text(
         workflow.read_text(encoding="utf-8").replace(
-            '--platform any "pyowl-core==0.2.0"',
-            '"pyowl-core==0.2.0"',
+            '--platform any "pyowl-core==0.2.1"',
+            '"pyowl-core==0.2.1"',
             1,
         ),
         encoding="utf-8",
@@ -323,8 +323,8 @@ def test_build_provenance_rejects_unforced_musllinux_core_wheelhouse(
         prefix
         + "  musllinux-supported-cpython:"
         + musllinux.replace(
-            '--platform any "pyowl-core==0.2.0"',
-            '"pyowl-core==0.2.0"',
+            '--platform any "pyowl-core==0.2.1"',
+            '"pyowl-core==0.2.1"',
             1,
         ),
         encoding="utf-8",
@@ -339,7 +339,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     compatibility = tmp_path / "release" / "core-compatibility.json"
     compatibility.write_text(
         compatibility.read_text(encoding="utf-8").replace(
-            "d39fe9c9bb9513db8c14fe2bc6d4864377901ad1",
+            "649e270bc3aa4becbf59bc4b9fb134542161f586",
             "c3e7893b0609fcd7df390375267a00356f09cb22",
         ),
         encoding="utf-8",
@@ -353,7 +353,7 @@ def test_build_provenance_rejects_unbound_core_implementation(tmp_path: Path) ->
     ("bound_value", "replacement"),
     [
         (
-            "d29bbcc65684c5a246b5d952a91d8a62e07e1b35",
+            "d22703b022e6940d813aeda58ce04b37e415724b",
             "22cc4cbf9c99f1b45785cb29f4f059ec0f86a691",
         ),
         (

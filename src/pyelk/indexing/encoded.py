@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Any, cast
+from typing import Any
 
 import pyowl_core as _core
 
@@ -303,7 +303,7 @@ def _positive_int(value: object, name: str) -> int:
     result = _required_attribute(value, name)
     if isinstance(result, bool) or not isinstance(result, int) or result < 1:
         raise _protocol_error(name, f"expected a positive integer, received {result!r}")
-    return cast(int, result)
+    return result
 
 
 def _required_attribute(value: object, name: str) -> Any:

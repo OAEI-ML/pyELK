@@ -42,7 +42,7 @@ METADATA = (
     b"Requires-Python: >=3.10\n"
     b"License-Expression: Apache-2.0\n"
     + b"".join(f"License-File: {name}\n".encode() for name in LICENSE_PAYLOADS)
-    + b"Requires-Dist: pyowl-core<0.3,>=0.2\n\nfixture\n"
+    + b"Requires-Dist: pyowl-core<0.3,>=0.2.1\n\nfixture\n"
 )
 
 
